@@ -72,6 +72,8 @@ fun AttachmentsEditSection(
     passwordId: Long,
     isPlusActivated: Boolean,
     modifier: Modifier = Modifier,
+    attachmentSource: AttachmentSource = AttachmentSource.LOCAL,
+    keepassContext: AttachmentFacade.KeePassContext? = null,
     pendingDrafts: SnapshotStateList<AttachmentPendingDraft>? = null
 ) {
     val context = LocalContext.current
@@ -111,9 +113,10 @@ fun AttachmentsEditSection(
                 facade.addAttachment(
                     AttachmentFacade.UploadRequest(
                         parentPasswordId = passwordId,
-                        source = AttachmentSource.LOCAL,
+                        source = attachmentSource,
                         uri = uri,
                         isPlusActivated = isPlusActivated,
+                        keepassContext = keepassContext,
                         kdbxSoftLimitAccepted = acceptSoftLimit
                     )
                 )
@@ -137,7 +140,7 @@ fun AttachmentsEditSection(
         val meta = AttachmentUriMetadata.resolve(context, uri)
         val validation = AttachmentSizeValidator.validate(
             sizeBytes = meta.sizeBytes,
-            source = AttachmentSource.LOCAL,
+            source = attachmentSource,
             userAcceptedSoftLimit = false
         )
         when (validation) {
@@ -211,7 +214,12 @@ fun AttachmentsEditSection(
                     secondary = formatSecondaryShort(attachment),
                     onDelete = {
                         scope.launch {
-                            runCatching { facade.deleteAttachment(attachment.id) }
+                            runCatching {
+                                facade.deleteAttachment(
+                                    attachmentId = attachment.id,
+                                    keepassContext = keepassContext
+                                )
+                            }
                                 .onFailure { e ->
                                     Toast.makeText(
                                         context,

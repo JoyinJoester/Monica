@@ -774,16 +774,22 @@ fun WebDavBackupScreen(
                                 // 获取所有密码数据
                                 val allPasswords = passwordRepository.getAllPasswordEntries().first()
                                 
-                                // ✅ 解密密码再备份（修复：之前导出的是加密数据）
+                                // WebDAV 是跨端备份；如果 Android 本机密钥不可用，不能把设备密文写进备份。
                                 val securityManager = takagi.ru.monica.security.SecurityManager(context)
+                                val failedPasswordTitles = mutableListOf<String>()
                                 val decryptedPasswords = allPasswords.map { entry ->
                                     try {
                                         entry.copy(password = securityManager.decryptData(entry.password))
                                     } catch (e: Exception) {
-                                        // 如果解密失败，保留原值（可能已是明文）
                                         android.util.Log.w("WebDavBackupScreen", "无法解密密码 ${entry.title}: ${e.message}")
-                                        entry
+                                        failedPasswordTitles += entry.title.ifBlank { entry.website.ifBlank { entry.username } }
+                                        entry.copy(password = "")
                                     }
+                                }
+                                if (failedPasswordTitles.isNotEmpty()) {
+                                    throw IllegalStateException(
+                                        "有 ${failedPasswordTitles.size} 条密码无法解密，已取消备份。请先用主密码解锁 Monica 后重新备份。"
+                                    )
                                 }
                                 
                                 // 获取所有其他数据(TOTP、银行卡、证件)

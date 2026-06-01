@@ -56,6 +56,7 @@ import takagi.ru.monica.keepass.KeePassDxPasskeyCodec
 import takagi.ru.monica.keepass.KeePassPasskeySyncCodec
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
+import takagi.ru.monica.attachments.executor.KeePassAttachmentRef
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.workers.KeePassRemoteUploadWorker
 import java.io.ByteArrayInputStream
@@ -991,7 +992,11 @@ class KeePassKdbxService(
                 ?: return@withContext Result.failure(IllegalArgumentException("Invalid entry uuid"))
             val entry = findEntryByUuid(loaded.keePassDatabase.content.group, targetUuid)
                 ?: return@withContext Result.failure(NoSuchElementException("Entry not found"))
-            val matchRef = entry.binaries.firstOrNull { it.hash.hex().equals(hashHex, ignoreCase = true) }
+            val requestedRef = KeePassAttachmentRef.decode(hashHex)
+            val matchRef = entry.binaries.firstOrNull {
+                it.hash.hex().equals(requestedRef.hashHex, ignoreCase = true) &&
+                    (requestedRef.fileName == null || it.name == requestedRef.fileName)
+            }
                 ?: return@withContext Result.failure(NoSuchElementException("Attachment not found in entry"))
             val data = loaded.keePassDatabase.binaries[matchRef.hash]
                 ?: return@withContext Result.failure(NoSuchElementException("Attachment missing in binary pool"))
@@ -1077,8 +1082,12 @@ class KeePassKdbxService(
                 val oldDb = loaded.keePassDatabase
                 val existingEntry = findEntryByUuid(oldDb.content.group, targetUuid)
                     ?: throw NoSuchElementException("Entry not found")
+                val requestedRef = KeePassAttachmentRef.decode(hashHex)
                 val targetRef = existingEntry.binaries
-                    .firstOrNull { it.hash.hex().equals(hashHex, ignoreCase = true) }
+                    .firstOrNull {
+                        it.hash.hex().equals(requestedRef.hashHex, ignoreCase = true) &&
+                            (requestedRef.fileName == null || it.name == requestedRef.fileName)
+                    }
                 if (targetRef == null) {
                     return@mutateDatabase MutationPlan(updatedDatabase = oldDb, result = false)
                 }

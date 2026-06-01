@@ -182,10 +182,58 @@ object BackupRestoreApplier {
             }
         }
 
-        // 附件恢复：zip 扫描阶段已经把密文 blob 放到 filesDir/secure_attachments/，
-        // 这里按 passwordIdMap 把备份里的 parent id 重映射到新 id 后再 upsert。
+        // 附件恢复：优先使用 portable 格式，它会在当前设备重新生成 localPath/wrappedCek；
+        // 旧 attachments 格式只作为同机/旧备份兼容 fallback。
         // 对应 spec Requirement 9.5 / 9.6。
-        if (content.attachments.isNotEmpty()) {
+        if (content.portableAttachments.isNotEmpty) {
+            val attachmentDao = PasswordDatabase.getDatabase(context).attachmentDao()
+            var attachmentRestored = 0
+            var attachmentSkipped = 0
+            var attachmentMissingPayload = 0
+            var attachmentUnmappedParent = 0
+            val now = System.currentTimeMillis()
+            content.portableAttachments.entries.forEach { entry ->
+                val mappedParentId = passwordIdMap[entry.parentPasswordId]
+                if (mappedParentId == null) {
+                    attachmentUnmappedParent++
+                    return@forEach
+                }
+                val payload = content.portableAttachments.payloads[entry.payloadPath]
+                if (payload == null || !payload.isFile) {
+                    attachmentMissingPayload++
+                    return@forEach
+                }
+                val existingForParent = attachmentDao.getAllByParent(mappedParentId)
+                val duplicate = existingForParent.any { existing ->
+                    existing.fileName == entry.fileName &&
+                        existing.sizeBytes == entry.sizeBytes &&
+                        existing.sha256Hex != null &&
+                        existing.sha256Hex == entry.sha256Hex
+                }
+                if (duplicate) {
+                    attachmentSkipped++
+                    return@forEach
+                }
+                try {
+                    val attachment = takagi.ru.monica.attachments.backup.PortableAttachmentBackup
+                        .materialize(context, entry, payload, mappedParentId, now)
+                    attachmentDao.insert(attachment)
+                    attachmentRestored++
+                } catch (e: Exception) {
+                    android.util.Log.w(
+                        logTag,
+                        "Portable attachment restore failed for ${entry.payloadPath} -> parent $mappedParentId: ${e.message}"
+                    )
+                }
+            }
+            android.util.Log.d(
+                logTag,
+                "Restored portable attachments: total=${content.portableAttachments.entries.size} restored=$attachmentRestored skipped=$attachmentSkipped missingPayload=$attachmentMissingPayload unmappedParent=$attachmentUnmappedParent"
+            )
+            content.portableAttachments.payloads.values.distinct().forEach { payload ->
+                runCatching { payload.delete() }
+            }
+        } else if (content.attachments.isNotEmpty()) {
             val attachmentDao = PasswordDatabase.getDatabase(context).attachmentDao()
             val storageDir = java.io.File(context.filesDir, "secure_attachments")
             var attachmentRestored = 0
@@ -196,8 +244,6 @@ object BackupRestoreApplier {
             content.attachments.forEach { entry ->
                 val mappedParentId = passwordIdMap[entry.parentPasswordId]
                 if (mappedParentId == null) {
-                    // 对应密码没有被恢复（可能是重复项命中了 existingEntry 但 passwordIdMap 已记录），
-                    // 或者压根没出现在备份密码列表。后者跳过，前者 passwordIdMap 里有值会走下面的分支。
                     attachmentUnmappedParent++
                     return@forEach
                 }
@@ -227,13 +273,13 @@ object BackupRestoreApplier {
                 } catch (e: Exception) {
                     android.util.Log.w(
                         logTag,
-                        "Attachment upsert failed for ${entry.localPath} -> parent $mappedParentId: ${e.message}"
+                        "Legacy attachment upsert failed for ${entry.localPath} -> parent $mappedParentId: ${e.message}"
                     )
                 }
             }
             android.util.Log.d(
                 logTag,
-                "Restored attachments: total=${content.attachments.size} restored=$attachmentRestored skipped=$attachmentSkipped missingBlob=$attachmentMissingBlob unmappedParent=$attachmentUnmappedParent"
+                "Restored legacy attachments: total=${content.attachments.size} restored=$attachmentRestored skipped=$attachmentSkipped missingBlob=$attachmentMissingBlob unmappedParent=$attachmentUnmappedParent"
             )
         }
 

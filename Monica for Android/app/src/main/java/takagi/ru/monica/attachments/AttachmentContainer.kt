@@ -4,6 +4,7 @@ import android.content.Context
 import takagi.ru.monica.attachments.executor.BitwardenAttachmentExecutor
 import takagi.ru.monica.attachments.executor.BitwardenAttachmentReconciler
 import takagi.ru.monica.attachments.executor.KeePassAttachmentExecutor
+import takagi.ru.monica.attachments.executor.KeePassAttachmentReconciler
 import takagi.ru.monica.attachments.executor.LocalAttachmentExecutor
 import takagi.ru.monica.attachments.facade.AttachmentBatchMoveAdvisor
 import takagi.ru.monica.attachments.facade.AttachmentFacade
@@ -45,6 +46,7 @@ object AttachmentContainer {
     @Volatile private var keepassExecutorCache: KeePassAttachmentExecutor? = null
     @Volatile private var advisorCache: AttachmentBatchMoveAdvisor? = null
     @Volatile private var reconcilerCache: BitwardenAttachmentReconciler? = null
+    @Volatile private var keepassReconcilerCache: KeePassAttachmentReconciler? = null
     @Volatile private var facadeCache: AttachmentFacade? = null
     @Volatile private var mdbxVaultStoreCache: MdbxVaultStore? = null
 
@@ -100,6 +102,21 @@ object AttachmentContainer {
         }
     }
 
+    fun keepassReconciler(context: Context): KeePassAttachmentReconciler {
+        val app = ensureContext(context)
+        keepassReconcilerCache?.let { return it }
+        synchronized(this) {
+            keepassReconcilerCache?.let { return it }
+            val reconciler = KeePassAttachmentReconciler.create(
+                repository = repository(app),
+                executor = keepassExecutor(app),
+                storage = storage(app)
+            )
+            keepassReconcilerCache = reconciler
+            return reconciler
+        }
+    }
+
     fun repository(context: Context): AttachmentRepository {
         val app = ensureContext(context)
         repositoryCache?.let { return it }
@@ -117,6 +134,7 @@ object AttachmentContainer {
         keepassServiceOverride = service
         // 重置已缓存的 keepass executor，下次调用时重建
         keepassExecutorCache = null
+        keepassReconcilerCache = null
         facadeCache = null
     }
 

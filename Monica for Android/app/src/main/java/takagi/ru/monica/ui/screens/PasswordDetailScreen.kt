@@ -95,6 +95,7 @@ import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.LoginType
 import takagi.ru.monica.data.SsoProvider
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
+import takagi.ru.monica.attachments.AttachmentContainer
 import takagi.ru.monica.attachments.facade.AttachmentFacade
 import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
@@ -430,6 +431,21 @@ fun PasswordDetailScreen(
         val entry = withContext(Dispatchers.IO) {
             viewModel.getRawPasswordEntryById(passwordId)
         } ?: return@LaunchedEffect
+
+        if (entry.keepassDatabaseId != null && !entry.keepassEntryUuid.isNullOrBlank()) {
+            runCatching {
+                AttachmentContainer.keepassReconciler(context).reconcile(
+                    passwordId = entry.id,
+                    databaseId = entry.keepassDatabaseId,
+                    entryUuid = entry.keepassEntryUuid
+                )
+            }.onFailure { error ->
+                android.util.Log.w(
+                    "PasswordDetailScreen",
+                    "KeePass attachment metadata reconcile failed: ${error::class.simpleName}"
+                )
+            }
+        }
 
         val resolvedGroupPasswords = withContext(Dispatchers.Default) {
             resolvePasswordDetailGroupPasswords(entry, allPasswords)

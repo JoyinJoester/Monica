@@ -85,13 +85,22 @@ class AutoBackupWorker(
             val secureItems = secureItemRepo.getAllItems().first()
 
             val securityManager = takagi.ru.monica.security.SecurityManager(applicationContext)
+            var failedPasswordDecryptCount = 0
             val decryptedPasswords = passwords.map { entry ->
                 try {
                     entry.copy(password = securityManager.decryptData(entry.password))
                 } catch (e: Exception) {
                     android.util.Log.w(TAG, "无法解密密码 ${entry.title}: ${e.message}")
-                    entry
+                    failedPasswordDecryptCount++
+                    entry.copy(password = "")
                 }
+            }
+            if (failedPasswordDecryptCount > 0) {
+                android.util.Log.w(
+                    TAG,
+                    "Auto backup postponed: $failedPasswordDecryptCount password secrets could not be decrypted"
+                )
+                return androidx.work.ListenableWorker.Result.retry()
             }
 
             val backupPreferences = webDavHelper.getBackupPreferences()

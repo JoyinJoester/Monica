@@ -2085,13 +2085,16 @@ class WebDavHelper(
                         }
                     }
 
-                    // 附件备份：写入 `attachments/<uuid>.enc` 和 `attachments/attachments_meta.json`
+                    // 附件备份：保留旧 `attachments/` 同机恢复格式；加密备份额外写入可跨设备恢复的 portable 格式。
                     // 对应 spec Requirement 9.5。仅备份 LOCAL 附件（Bitwarden/KeePass 附件有自己的远端/kdbx 容器）。
                     try {
                         val attachmentRepository =
                             takagi.ru.monica.attachments.AttachmentContainer.repository(context)
                         val attachmentStorage = File(context.filesDir, "secure_attachments")
                         val localAttachments = attachmentRepository.listAllActiveLocalAttachments()
+                            .filter {
+                                it.sourceEnum == takagi.ru.monica.attachments.model.AttachmentSource.LOCAL
+                            }
 
                         if (localAttachments.isNotEmpty()) {
                             // 1. 写入密文 blob（按 Room 中存的 local_path 去取）
@@ -2120,6 +2123,45 @@ class WebDavHelper(
                                 "WebDavHelper",
                                 "Backup attachments: ${localAttachments.size} records, ${writtenBlobs.size} blobs"
                             )
+
+                            if (enableEncryption && encryptionPassword.isNotEmpty()) {
+                                val portable = takagi.ru.monica.attachments.backup.PortableAttachmentBackup
+                                    .export(context, localAttachments)
+                                val portableEntries = mutableListOf<takagi.ru.monica.attachments.backup.PortableAttachmentBackup.Entry>()
+                                portable.payloads.forEach { payload ->
+                                    val zipEntry = ZipEntry(payload.entryName)
+                                    zipOut.putNextEntry(zipEntry)
+                                    val written = takagi.ru.monica.attachments.backup.PortableAttachmentBackup
+                                        .writePayload(context, payload, zipOut)
+                                    zipOut.closeEntry()
+                                    if (written) {
+                                        portableEntries += payload.entry
+                                    } else {
+                                        warnings.add("附件可迁移备份失败: ${payload.attachment.fileName}")
+                                    }
+                                }
+                                val portableMetaFile = File(cacheBackupDir, "attachments_portable.json")
+                                portableMetaFile.writeText(
+                                    takagi.ru.monica.attachments.backup.PortableAttachmentBackup
+                                        .encodeManifest(portableEntries),
+                                    Charsets.UTF_8
+                                )
+                                addFileToZip(
+                                    zipOut,
+                                    portableMetaFile,
+                                    takagi.ru.monica.attachments.backup.PortableAttachmentBackup.MANIFEST_ENTRY
+                                )
+                                portableMetaFile.delete()
+                                android.util.Log.d(
+                                    "WebDavHelper",
+                                    "Backup portable attachments: ${portableEntries.size}/${localAttachments.size}"
+                                )
+                                if (portableEntries.size < localAttachments.size) {
+                                    warnings.add("部分附件无法解密备份: ${localAttachments.size - portableEntries.size}个")
+                                }
+                            } else {
+                                warnings.add("本地附件跨设备恢复需要启用备份加密；当前仅保留同机兼容附件备份")
+                            }
                         }
                     } catch (e: Exception) {
                         android.util.Log.w("WebDavHelper", "Failed to backup attachments: ${e.message}")
@@ -2507,6 +2549,9 @@ class WebDavHelper(
                 val passkeys = mutableListOf<PasskeyEntry>()
                 val passwordHistory = mutableListOf<PasswordHistoryBackupEntry>()
                 val pendingAttachments = mutableListOf<takagi.ru.monica.attachments.backup.AttachmentBackupCodec.Entry>()
+                val pendingPortableAttachmentEntries =
+                    mutableListOf<takagi.ru.monica.attachments.backup.PortableAttachmentBackup.Entry>()
+                val pendingPortableAttachmentPayloads = mutableMapOf<String, File>()
                 
                 // 临时存储CSV文件路径，延后处理
                 var passwordsCsvFile: File? = null
@@ -2883,6 +2928,30 @@ class WebDavHelper(
                                         tempFile.copyTo(destFile, overwrite = true)
                                     } catch (e: Exception) {
                                         warnings.add("自定义图标恢复失败: $entryName - ${e.message}")
+                                    }
+                                }
+                                normalizedEntryName.startsWith(
+                                    "${takagi.ru.monica.attachments.backup.PortableAttachmentBackup.DIR_NAME}/"
+                                ) -> {
+                                    try {
+                                        if (normalizedEntryName == takagi.ru.monica.attachments.backup.PortableAttachmentBackup.MANIFEST_ENTRY) {
+                                            val manifestText = tempFile.readText(Charsets.UTF_8)
+                                            val manifest = takagi.ru.monica.attachments.backup
+                                                .PortableAttachmentBackup.decodeManifest(manifestText)
+                                            pendingPortableAttachmentEntries.addAll(manifest.entries.filter { it.isValid() })
+                                            android.util.Log.d(
+                                                "WebDavHelper",
+                                                "Collected portable attachments manifest: ${manifest.entries.size} entries"
+                                            )
+                                        } else {
+                                            pendingPortableAttachmentPayloads[normalizedEntryName] = tempFile
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w(
+                                            "WebDavHelper",
+                                            "Failed to restore portable attachment entry $entryName: ${e.message}"
+                                        )
+                                        warnings.add("可迁移附件恢复失败: $entryName - ${e.message}")
                                     }
                                 }
                                 normalizedEntryName.contains("/attachments/") || normalizedEntryName.startsWith("attachments/") -> {
@@ -3478,7 +3547,11 @@ class WebDavHelper(
                             }
                         } finally {
                             // 只有当 tempFile 不是 passwordsCsvFile 时才删除
-                            if (tempFile != passwordsCsvFile && tempFile !in secureCsvFiles) {
+                            if (
+                                tempFile != passwordsCsvFile &&
+                                tempFile !in secureCsvFiles &&
+                                tempFile !in pendingPortableAttachmentPayloads.values
+                            ) {
                                 tempFile.delete()
                             }
                         }
@@ -3700,7 +3773,11 @@ class WebDavHelper(
                         passkeys = passkeys,
                         customFieldsMap = pendingCustomFields.toMap(),
                         passwordHistory = passwordHistory,
-                        attachments = pendingAttachments.toList()
+                        attachments = pendingAttachments.toList(),
+                        portableAttachments = takagi.ru.monica.attachments.backup.PortableAttachmentBackup.RestorePlan(
+                            entries = pendingPortableAttachmentEntries.toList(),
+                            payloads = pendingPortableAttachmentPayloads.toMap()
+                        )
                     ),
                     report = report,
                     monicaConfigDetected = detectedMonicaConfigEntries.isNotEmpty(),
@@ -4988,6 +5065,8 @@ data class BackupContent(
     val passkeys: List<PasskeyEntry> = emptyList(),
     val customFieldsMap: Map<Long, List<CustomFieldBackupEntry>> = emptyMap(),
     val passwordHistory: List<PasswordHistoryBackupEntry> = emptyList(),
+    val portableAttachments: takagi.ru.monica.attachments.backup.PortableAttachmentBackup.RestorePlan =
+        takagi.ru.monica.attachments.backup.PortableAttachmentBackup.RestorePlan(),
     /**
      * 从备份 zip 里解析出来的 LOCAL 附件清单。
      *

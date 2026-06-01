@@ -88,6 +88,7 @@ import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.isEmpty
 import takagi.ru.monica.data.model.isSshKeyEntry
+import takagi.ru.monica.attachments.facade.AttachmentFacade
 import takagi.ru.monica.ui.components.AppSelectorDialog
 import takagi.ru.monica.ui.components.CustomIconActionDialog
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
@@ -315,6 +316,7 @@ fun AddEditPasswordScreen(
     // KeePass 数据库选择
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
     var keepassGroupPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var editingKeePassEntryUuid by rememberSaveable { mutableStateOf<String?>(null) }
     val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
 
     // MDBX 数据库选择
@@ -1097,6 +1099,7 @@ fun AddEditPasswordScreen(
                     categoryId = entry.categoryId
                     keepassDatabaseId = entry.keepassDatabaseId
                     keepassGroupPath = entry.keepassGroupPath
+                    editingKeePassEntryUuid = entry.keepassEntryUuid
                     mdbxDatabaseId = entry.mdbxDatabaseId
                     mdbxFolderId = entry.mdbxFolderId
                     bitwardenVaultId = entry.bitwardenVaultId
@@ -2549,9 +2552,28 @@ fun AddEditPasswordScreen(
 
             // 附件区块：编辑模式直接操作附件表；新建阶段使用草稿 list，在保存后统一 flush
             item {
+                val editKeePassContext = if (
+                    isEditing &&
+                    keepassDatabaseId != null
+                ) {
+                    editingKeePassEntryUuid?.takeIf { it.isNotBlank() }?.let { entryUuid ->
+                        AttachmentFacade.KeePassContext(
+                            databaseId = keepassDatabaseId!!,
+                            entryUuid = entryUuid
+                        )
+                    }
+                } else {
+                    null
+                }
                 takagi.ru.monica.attachments.ui.AttachmentsEditSection(
                     passwordId = passwordId ?: -1L,
                     isPlusActivated = settings.isPlusActivated,
+                    attachmentSource = if (editKeePassContext != null) {
+                        takagi.ru.monica.attachments.model.AttachmentSource.KEEPASS
+                    } else {
+                        takagi.ru.monica.attachments.model.AttachmentSource.LOCAL
+                    },
+                    keepassContext = editKeePassContext,
                     pendingDrafts = if (isEditing) null else pendingAttachmentDrafts
                 )
             }

@@ -1238,6 +1238,14 @@ class MdbxVaultStore(
                 val attachmentId = attachmentObjectId(parentEntryId, attachment)
                 val commitId = appendCommit(db, "attachment", attachmentId, epochKey)
                 val now = now()
+                val portableCek = attachment.wrappedCek
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { wrapped ->
+                        MdbxAttachmentCekPayload.fromLocalWrappedCek(
+                            wrappedCek = wrapped,
+                            unwrapToBase64 = securityManager::decryptData
+                        )
+                    }
                 db.execSQL(
                     """
                     INSERT OR REPLACE INTO attachments (
@@ -1261,7 +1269,7 @@ class MdbxVaultStore(
                         now,
                         deviceId,
                         deviceId,
-                        attachment.wrappedCek?.let { encrypt(it, epochKey) },
+                        portableCek?.let { encrypt(it, epochKey) },
                         attachment.createdAt,
                         attachment.updatedAt
                     )
@@ -1773,6 +1781,10 @@ class MdbxVaultStore(
                 val commitId = appendCommit(db, "attachment", attachmentId, epochKey)
                 val now = now()
                 val projectId = parentEntryId
+                val portableCek = MdbxAttachmentCekPayload.fromLocalWrappedCek(
+                    wrappedCek = wrappedCek,
+                    unwrapToBase64 = securityManager::decryptData
+                )
                 db.execSQL(
                     """
                     INSERT OR REPLACE INTO attachments (
@@ -1797,7 +1809,7 @@ class MdbxVaultStore(
                         now,
                         deviceId,
                         deviceId,
-                        encrypt(wrappedCek, epochKey),
+                        encrypt(portableCek, epochKey),
                         attachment.createdAt,
                         attachment.updatedAt
                     )

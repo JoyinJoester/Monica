@@ -51,6 +51,7 @@ import takagi.ru.monica.repository.MdbxApplyResult
 import takagi.ru.monica.repository.MdbxBenchmarkResult
 import takagi.ru.monica.repository.MdbxSnapshotSummary
 import takagi.ru.monica.repository.MdbxStoredVaultEntry
+import takagi.ru.monica.repository.MdbxAttachmentCekPayload
 import takagi.ru.monica.repository.MdbxStructurePreview
 import takagi.ru.monica.repository.MdbxSyncBundle
 import takagi.ru.monica.repository.MdbxVaultCredential
@@ -2281,6 +2282,12 @@ class MdbxViewModel(
             val entryId = stored.entryId ?: stored.projectId
             val parentPasswordId = importedPasswordIds[entryId] ?: return@forEach
             if (stored.wrappedCek.isNullOrBlank()) return@forEach
+            val localWrappedCek = runCatching {
+                MdbxAttachmentCekPayload.toLocalWrappedCek(
+                    storedValue = stored.wrappedCek,
+                    wrapBase64 = securityManager::encryptData
+                )
+            }.getOrNull() ?: return@forEach
             val relativePath = "${UUID.randomUUID()}.enc"
             File(dir, relativePath).writeBytes(stored.blob)
             attachmentDao.insert(
@@ -2292,7 +2299,7 @@ class MdbxViewModel(
                     mimeType = stored.mimeType.ifBlank { "application/octet-stream" },
                     sizeBytes = stored.originalSize,
                     sha256Hex = stored.contentHash,
-                    wrappedCek = stored.wrappedCek,
+                    wrappedCek = localWrappedCek,
                     localPath = relativePath,
                     bitwardenAttachmentId = null,
                     bitwardenUrl = null,

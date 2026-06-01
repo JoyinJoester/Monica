@@ -87,7 +87,7 @@ class KeePassAttachmentExecutor(
                 sha256Hex = null,
                 wrappedCek = null,
                 localPath = null,
-                keepassBinaryRef = kdbxInfo.hashHex,
+                keepassBinaryRef = KeePassAttachmentRef.from(kdbxInfo.hashHex, kdbxInfo.fileName).encode(),
                 downloadState = AttachmentDownloadState.PENDING.name,
                 createdAt = now,
                 updatedAt = now
@@ -114,7 +114,7 @@ class KeePassAttachmentExecutor(
             sha256Hex = blob.sha256Hex,
             wrappedCek = wrappedLocalCek,
             localPath = blob.relativePath,
-            keepassBinaryRef = kdbxInfo.hashHex,
+            keepassBinaryRef = KeePassAttachmentRef.from(kdbxInfo.hashHex, kdbxInfo.fileName).encode(),
             downloadState = AttachmentDownloadState.DOWNLOADED.name,
             createdAt = now,
             updatedAt = now
