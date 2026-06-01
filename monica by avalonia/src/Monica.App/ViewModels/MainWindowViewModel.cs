@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using Monica.Core.ImportExport;
 using Monica.Core.Models;
 using Monica.Core.Services;
+using Monica.Data;
 using Monica.Data.Repositories;
 using Monica.Platform.Services;
 
@@ -19,9 +20,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly IImportExportService _importExportService;
     private readonly IClipboardService _clipboardService;
     private readonly IMdbxVaultService _mdbxVaultService;
+    private readonly IVaultCredentialStore _credentialStore;
 
     public MainWindowViewModel(
         IMonicaRepository repository,
+        IVaultCredentialStore credentialStore,
         ICryptoService cryptoService,
         ITotpService totpService,
         IPasswordGeneratorService passwordGenerator,
@@ -31,6 +34,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IMdbxVaultService mdbxVaultService)
     {
         _repository = repository;
+        _credentialStore = credentialStore;
         _cryptoService = cryptoService;
         _totpService = totpService;
         _passwordGenerator = passwordGenerator;
@@ -51,10 +55,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool _isUnlocked;
 
     [ObservableProperty]
+    private bool _isVaultInitialized;
+
+    [ObservableProperty]
     private string _selectedSection = "Passwords";
 
     [ObservableProperty]
     private string _masterPassword = "";
+
+    [ObservableProperty]
+    private string _confirmMasterPassword = "";
 
     [ObservableProperty]
     private string _searchText = "";
@@ -67,6 +77,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     [ObservableProperty]
     private string _exportPreview = "";
+
+    public string LoginTitle => IsVaultInitialized ? "Unlock Monica" : "Create Monica Vault";
+    public string LoginDescription => IsVaultInitialized
+        ? "Use your master password to open the Avalonia desktop vault."
+        : "Choose a master password. It will be required every time this desktop vault opens.";
+    public string LoginButtonText => IsVaultInitialized ? "Unlock" : "Create Vault";
 
     public string PasswordCountText => $"{Passwords.Count} items";
     public string TotpCountText => $"{TotpItems.Count} authenticators";
@@ -82,67 +98,129 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string value) => OnPropertyChanged(nameof(FilteredPasswords));
 
+    partial void OnIsVaultInitializedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(LoginTitle));
+        OnPropertyChanged(nameof(LoginDescription));
+        OnPropertyChanged(nameof(LoginButtonText));
+    }
+
+    [RelayCommand]
+    public async Task InitializeAsync()
+    {
+        try
+        {
+            IsVaultInitialized = await _credentialStore.GetAsync() is not null;
+            StatusMessage = IsVaultInitialized
+                ? "Vault locked"
+                : "First run: create a master password.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Vault metadata could not be loaded: {ex.Message}";
+        }
+    }
+
     [RelayCommand]
     private async Task UnlockAsync()
     {
-        if (string.IsNullOrWhiteSpace(MasterPassword))
+        try
         {
-            StatusMessage = "Enter a master password to unlock the desktop vault.";
-            return;
-        }
+            if (string.IsNullOrWhiteSpace(MasterPassword))
+            {
+                StatusMessage = "Enter a master password.";
+                return;
+            }
 
-        var salt = "Monica Avalonia Desktop"u8.ToArray();
-        _cryptoService.InitializeSession(MasterPassword, salt);
-        IsUnlocked = true;
-        StatusMessage = "Vault unlocked";
-        await LoadAsync();
+            var storedHash = await _credentialStore.GetAsync();
+            if (storedHash is null)
+            {
+                if (MasterPassword.Length < 8)
+                {
+                    StatusMessage = "Use at least 8 characters for the master password.";
+                    return;
+                }
+
+                if (!string.Equals(MasterPassword, ConfirmMasterPassword, StringComparison.Ordinal))
+                {
+                    StatusMessage = "The confirmation password does not match.";
+                    return;
+                }
+
+                storedHash = _cryptoService.HashMasterPassword(MasterPassword);
+                await _credentialStore.SaveAsync(storedHash);
+                IsVaultInitialized = true;
+            }
+
+            if (!_cryptoService.VerifyMasterPassword(MasterPassword, storedHash))
+            {
+                StatusMessage = "Wrong master password.";
+                MasterPassword = "";
+                ConfirmMasterPassword = "";
+                return;
+            }
+
+            IsUnlocked = true;
+            MasterPassword = "";
+            ConfirmMasterPassword = "";
+            StatusMessage = "Vault unlocked";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            IsUnlocked = false;
+            StatusMessage = $"Unlock failed: {ex.Message}";
+        }
     }
 
     [RelayCommand]
     public async Task LoadAsync()
     {
-        Passwords.Clear();
-        TotpItems.Clear();
-        WalletItems.Clear();
-        Categories.Clear();
-        MdbxDatabases.Clear();
-
-        foreach (var item in await _repository.GetPasswordsAsync())
+        try
         {
-            Passwords.Add(item);
-        }
+            Passwords.Clear();
+            TotpItems.Clear();
+            WalletItems.Clear();
+            Categories.Clear();
+            MdbxDatabases.Clear();
 
-        foreach (var item in await _repository.GetSecureItemsAsync(VaultItemType.Totp))
-        {
-            RefreshTotpDisplay(item);
-            TotpItems.Add(item);
-        }
-
-        foreach (var item in await _repository.GetSecureItemsAsync())
-        {
-            if (item.ItemType is VaultItemType.BankCard or VaultItemType.Document or VaultItemType.Note)
+            foreach (var item in await _repository.GetPasswordsAsync())
             {
-                WalletItems.Add(item);
+                Passwords.Add(item);
             }
-        }
 
-        foreach (var category in await _repository.GetCategoriesAsync())
+            foreach (var item in await _repository.GetSecureItemsAsync(VaultItemType.Totp))
+            {
+                RefreshTotpDisplay(item);
+                TotpItems.Add(item);
+            }
+
+            foreach (var item in await _repository.GetSecureItemsAsync())
+            {
+                if (item.ItemType is VaultItemType.BankCard or VaultItemType.Document or VaultItemType.Note)
+                {
+                    WalletItems.Add(item);
+                }
+            }
+
+            foreach (var category in await _repository.GetCategoriesAsync())
+            {
+                Categories.Add(category);
+            }
+
+            foreach (var database in await _repository.GetMdbxDatabasesAsync())
+            {
+                MdbxDatabases.Add(database);
+            }
+
+            RaiseCounts();
+            OnPropertyChanged(nameof(FilteredPasswords));
+        }
+        catch (Exception ex)
         {
-            Categories.Add(category);
+            IsUnlocked = false;
+            StatusMessage = $"Vault load failed: {ex.Message}";
         }
-
-        foreach (var database in await _repository.GetMdbxDatabasesAsync())
-        {
-            MdbxDatabases.Add(database);
-        }
-
-        if (Passwords.Count == 0 && TotpItems.Count == 0 && WalletItems.Count == 0)
-        {
-            await SeedDemoDataAsync();
-        }
-
-        RaiseCounts();
-        OnPropertyChanged(nameof(FilteredPasswords));
     }
 
     [RelayCommand]
@@ -316,49 +394,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         item.TotpCode = _totpService.GenerateCode(data.Secret, data.Period, data.Digits, data.OtpType, data.Counter);
         item.TotpTimeRemaining = $"{_totpService.GetRemainingSeconds(data.Period)}s";
         item.TotpProgress = _totpService.GetProgress(data.Period);
-    }
-
-    private async Task SeedDemoDataAsync()
-    {
-        var defaultCategory = new Category { Name = "Personal", SortOrder = 0 };
-        await _repository.SaveCategoryAsync(defaultCategory);
-        Categories.Add(defaultCategory);
-
-        var encryptedPassword = _cryptoService.IsUnlocked ? _cryptoService.EncryptString("Monica-Desktop-2026!") : "Monica-Desktop-2026!";
-        var password = new PasswordEntry
-        {
-            Title = "Monica Account",
-            Website = "https://monica.local",
-            Username = "desktop@monica",
-            Password = encryptedPassword,
-            Notes = "Seed entry showing the migrated WinUI card layout.",
-            IsFavorite = true,
-            CategoryId = defaultCategory.Id
-        };
-        await _repository.SavePasswordAsync(password);
-        Passwords.Add(password);
-
-        var totp = new SecureItem
-        {
-            ItemType = VaultItemType.Totp,
-            Title = "Monica TOTP",
-            Notes = "Issuer: Monica",
-            ItemData = """{"secret":"JBSWY3DPEHPK3PXP","period":30,"digits":6,"otpType":"TOTP"}""",
-            IsFavorite = true
-        };
-        RefreshTotpDisplay(totp);
-        await _repository.SaveSecureItemAsync(totp);
-        TotpItems.Add(totp);
-
-        var card = new SecureItem
-        {
-            ItemType = VaultItemType.BankCard,
-            Title = "Primary Card",
-            Notes = "Wallet item parity with Android card package.",
-            ItemData = "{}"
-        };
-        await _repository.SaveSecureItemAsync(card);
-        WalletItems.Add(card);
     }
 
     private void RaiseCounts()

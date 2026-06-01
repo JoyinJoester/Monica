@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Monica.App\Monica.App.csproj" />
     <ProjectReference Include="..\..\src\Monica.Core\Monica.Core.csproj" />
     <ProjectReference Include="..\..\src\Monica.Data\Monica.Data.csproj" />
     <ProjectReference Include="..\..\src\Monica.Platform\Monica.Platform.csproj" />

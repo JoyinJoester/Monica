@@ -35,13 +35,14 @@
             <Grid IsVisible="{Binding !IsUnlocked}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                 <StackPanel Width="360" Spacing="16" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <ic:FluentIcon Icon="LockClosed" FontSize="48" HorizontalAlignment="Center" />
-                    <TextBlock Text="Unlock Monica" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                    <TextBlock Text="Use your master password to open the Avalonia desktop vault." TextWrapping="Wrap" TextAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Text="{Binding LoginTitle}" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding LoginDescription}" TextWrapping="Wrap" TextAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     <TextBox PasswordChar="*" PlaceholderText="Master password" Text="{Binding MasterPassword}" />
+                    <TextBox IsVisible="{Binding !IsVaultInitialized}" PasswordChar="*" PlaceholderText="Confirm master password" Text="{Binding ConfirmMasterPassword}" />
                     <Button Command="{Binding UnlockCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <ic:FluentIcon Icon="Key" FontSize="20" />
-                            <TextBlock Text="Unlock" />
+                            <TextBlock Text="{Binding LoginButtonText}" />
                         </StackPanel>
                     </Button>
                     <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextAlignment="Center" />

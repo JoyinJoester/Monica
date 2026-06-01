@@ -43,6 +43,7 @@ public partial class App : Application
         services.AddHttpClient();
         services.AddSingleton<ISqliteConnectionFactory, SqliteConnectionFactory>();
         services.AddSingleton<IDatabaseMigrator, DatabaseMigrator>();
+        services.AddSingleton<IVaultCredentialStore, VaultCredentialStore>();
         services.AddSingleton<IMonicaRepository, MonicaRepository>();
         services.AddSingleton<ICryptoService, CryptoService>();
         services.AddSingleton<ITotpService, TotpService>();

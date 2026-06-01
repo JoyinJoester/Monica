@@ -25,6 +25,7 @@ public sealed class CryptoService : ICryptoService
     private const int ArgonIterations = 3;
     private const int ArgonMemoryKiB = 64 * 1024;
     private const int ArgonParallelism = 2;
+    private const int Pbkdf2Iterations = 600_000;
     private byte[]? _sessionKey;
 
     public bool IsUnlocked => _sessionKey is not null;
@@ -39,13 +40,13 @@ public sealed class CryptoService : ICryptoService
     public MasterPasswordHash HashMasterPassword(string password, byte[]? salt = null)
     {
         var actualSalt = salt ?? CreateSalt();
-        var hash = DeriveKey(password, actualSalt);
-        return new MasterPasswordHash(Convert.ToBase64String(hash), actualSalt, "argon2id", ArgonIterations, ArgonMemoryKiB, ArgonParallelism);
+        var hash = DerivePbkdf2Key(password, actualSalt, Pbkdf2Iterations);
+        return new MasterPasswordHash(Convert.ToBase64String(hash), actualSalt, "pbkdf2-sha256", Pbkdf2Iterations, 0, 1);
     }
 
     public bool VerifyMasterPassword(string password, MasterPasswordHash storedHash)
     {
-        var candidate = DeriveKey(password, storedHash.Salt);
+        var candidate = DeriveKey(password, storedHash);
         var expected = Convert.FromBase64String(storedHash.Hash);
         var verified = CryptographicOperations.FixedTimeEquals(candidate, expected);
         if (verified)
@@ -58,7 +59,7 @@ public sealed class CryptoService : ICryptoService
 
     public void InitializeSession(string password, byte[] salt)
     {
-        _sessionKey = DeriveKey(password, salt);
+        _sessionKey = DerivePbkdf2Key(password, salt, Pbkdf2Iterations);
     }
 
     public string EncryptString(string plainText)
@@ -110,15 +111,32 @@ public sealed class CryptoService : ICryptoService
         return Encoding.UTF8.GetString(plainBytes);
     }
 
-    private static byte[] DeriveKey(string password, byte[] salt)
+    private static byte[] DeriveKey(string password, MasterPasswordHash storedHash)
+    {
+        return storedHash.Kdf.Equals("argon2id", StringComparison.OrdinalIgnoreCase)
+            ? DeriveArgon2Key(password, storedHash.Salt, storedHash.Iterations, storedHash.MemoryKiB, storedHash.Parallelism)
+            : DerivePbkdf2Key(password, storedHash.Salt, storedHash.Iterations > 0 ? storedHash.Iterations : Pbkdf2Iterations);
+    }
+
+    private static byte[] DerivePbkdf2Key(string password, byte[] salt, int iterations)
+    {
+        return Rfc2898DeriveBytes.Pbkdf2(
+            Encoding.UTF8.GetBytes(password),
+            salt,
+            iterations,
+            HashAlgorithmName.SHA256,
+            KeySize);
+    }
+
+    private static byte[] DeriveArgon2Key(string password, byte[] salt, int iterations, int memoryKiB, int parallelism)
     {
         var passwordBytes = Encoding.UTF8.GetBytes(password);
         using var argon2 = new Argon2id(passwordBytes)
         {
             Salt = salt,
-            DegreeOfParallelism = ArgonParallelism,
-            Iterations = ArgonIterations,
-            MemorySize = ArgonMemoryKiB
+            DegreeOfParallelism = parallelism > 0 ? parallelism : ArgonParallelism,
+            Iterations = iterations > 0 ? iterations : ArgonIterations,
+            MemorySize = memoryKiB > 0 ? memoryKiB : ArgonMemoryKiB
         };
 
         return argon2.GetBytes(KeySize);

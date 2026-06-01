@@ -316,6 +316,19 @@ public sealed class DatabaseMigrator(ISqliteConnectionFactory connectionFactory)
         """,
         "CREATE INDEX IF NOT EXISTS index_attachments_owner ON attachments(owner_type, owner_id);",
         "CREATE INDEX IF NOT EXISTS index_attachments_bw_id ON attachments(bitwarden_vault_id);",
-        "CREATE INDEX IF NOT EXISTS index_attachments_kp_ref ON attachments(keepass_binary_ref);"
+        "CREATE INDEX IF NOT EXISTS index_attachments_kp_ref ON attachments(keepass_binary_ref);",
+        """
+        CREATE TABLE IF NOT EXISTS vault_credentials (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            password_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            kdf TEXT NOT NULL,
+            iterations INTEGER NOT NULL,
+            memory_kib INTEGER NOT NULL,
+            parallelism INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        """
     ];
 }
