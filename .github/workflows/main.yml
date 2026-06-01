@@ -83,10 +83,15 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
 
+      - name: List debug APK outputs
+        run: find app/build/outputs/apk/debug -maxdepth 1 -type f -print || true
+
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
           name: debug-apk
-          path: "Monica for Android/app/build/outputs/apk/debug/*.apk"
+          path: |
+            Monica for Android/app/build/outputs/apk/debug/*.apk
+            Monica for Android/app/build/outputs/apk/debug/*.APK
           retention-days: 7
           if-no-files-found: error
