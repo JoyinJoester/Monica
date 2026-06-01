@@ -21,6 +21,7 @@ public partial class SecureItem : ObservableObject
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public string ItemData { get; set; } = "{}";
     public string ImagePaths { get; set; } = "[]";
+    public long? BoundPasswordId { get; set; }
     public long? CategoryId { get; set; }
     public long? KeepassDatabaseId { get; set; }
     public string? KeepassGroupPath { get; set; }

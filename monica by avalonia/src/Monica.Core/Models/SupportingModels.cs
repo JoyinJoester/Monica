@@ -36,6 +36,16 @@ public sealed class Attachment
     public string? KeepassBinaryRef { get; set; }
 }
 
+public sealed class CustomField
+{
+    public long Id { get; set; }
+    public long EntryId { get; set; }
+    public string Title { get; set; } = "";
+    public string Value { get; set; } = "";
+    public bool IsProtected { get; set; }
+    public int SortOrder { get; set; }
+}
+
 public sealed class PasskeyEntry
 {
     public long Id { get; set; }

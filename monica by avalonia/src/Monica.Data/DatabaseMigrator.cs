@@ -26,6 +26,8 @@ public sealed class DatabaseMigrator(ISqliteConnectionFactory connectionFactory)
         }
 
         await CreateCurrentSchemaAsync(connection, cancellationToken);
+        await EnsureColumnAsync(connection, "secure_items", "bound_password_id", "INTEGER DEFAULT NULL", cancellationToken);
+        await ExecuteAsync(connection, "CREATE INDEX IF NOT EXISTS index_secure_items_bound_password_id ON secure_items(bound_password_id);", cancellationToken);
         await ExecuteAsync(connection, $"PRAGMA user_version={CurrentSchemaVersion};", cancellationToken);
     }
 
@@ -43,6 +45,22 @@ public sealed class DatabaseMigrator(ISqliteConnectionFactory connectionFactory)
         {
             await ExecuteAsync(connection, sql, cancellationToken);
         }
+    }
+
+    private static async Task EnsureColumnAsync(SqliteConnection connection, string tableName, string columnName, string columnDefinition, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA table_info({tableName});";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        await ExecuteAsync(connection, $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};", cancellationToken);
     }
 
     private static async Task ExecuteAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken)
@@ -128,6 +146,18 @@ public sealed class DatabaseMigrator(ISqliteConnectionFactory connectionFactory)
         "CREATE INDEX IF NOT EXISTS index_password_entries_mdbx_database_folder ON password_entries(mdbx_database_id, mdbx_folder_id);",
         "CREATE UNIQUE INDEX IF NOT EXISTS index_password_entries_bitwarden_vault_cipher_unique ON password_entries(bitwarden_vault_id, bitwarden_cipher_id) WHERE bitwarden_vault_id IS NOT NULL AND bitwarden_cipher_id IS NOT NULL;",
         """
+        CREATE TABLE IF NOT EXISTS custom_fields (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            entry_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            value TEXT NOT NULL DEFAULT '',
+            is_protected INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY(entry_id) REFERENCES password_entries(id) ON DELETE CASCADE
+        );
+        """,
+        "CREATE INDEX IF NOT EXISTS index_custom_fields_entry_id ON custom_fields(entry_id);",
+        """
         CREATE TABLE IF NOT EXISTS secure_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
             item_type TEXT NOT NULL,
@@ -139,6 +169,7 @@ public sealed class DatabaseMigrator(ISqliteConnectionFactory connectionFactory)
             updated_at INTEGER NOT NULL,
             item_data TEXT NOT NULL DEFAULT '{}',
             image_paths TEXT NOT NULL DEFAULT '[]',
+            bound_password_id INTEGER DEFAULT NULL,
             category_id INTEGER DEFAULT NULL,
             keepass_database_id INTEGER DEFAULT NULL,
             keepass_group_path TEXT DEFAULT NULL,

@@ -96,7 +96,7 @@ public sealed class AppSettingsService : IAppSettingsService
     {
         settings.Language = NormalizeChoice(settings.Language, "system", "system", "en-US", "zh-CN");
         settings.Theme = NormalizeChoice(settings.Theme, "system", "system", "light", "dark");
-        settings.StartupSection = NormalizeChoice(settings.StartupSection, "Passwords", "Passwords", "Notes", "Totp", "Cards", "Generator", "Sync", "Settings");
+        settings.StartupSection = NormalizeChoice(settings.StartupSection, "Passwords", "Passwords", "Notes", "Totp", "Cards", "Generator", "RecycleBin", "Sync", "Settings");
         settings.SyncConflictStrategy = NormalizeChoice(settings.SyncConflictStrategy, "ask", "ask", "local-wins", "remote-wins");
         settings.AutoLockMinutes = Clamp(settings.AutoLockMinutes, 1, 120);
         settings.ClipboardClearSeconds = Clamp(settings.ClipboardClearSeconds, 10, 600);

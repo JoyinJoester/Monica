@@ -24,6 +24,9 @@ public partial class PasswordEntry : ObservableObject
     [ObservableProperty]
     private bool _isFavorite;
 
+    [ObservableProperty]
+    private bool _isSelected;
+
     public int SortOrder { get; set; }
     public bool IsGroupCover { get; set; }
     public string AppPackageName { get; set; } = "";
@@ -72,6 +75,10 @@ public partial class PasswordEntry : ObservableObject
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public string TitleInitial => string.IsNullOrWhiteSpace(Title) ? "?" : Title.Trim()[0].ToString().ToUpperInvariant();
+    public bool HasAuthenticator => !string.IsNullOrWhiteSpace(AuthenticatorKey);
+    public string TotpCode { get; set; } = "------";
+    public string TotpTimeRemaining { get; set; } = "";
+    public double TotpProgress { get; set; }
     public bool IsWifiEntry => LoginType == PasswordLoginType.Wifi;
     public bool IsSshKeyEntry => LoginType == PasswordLoginType.SshKey;
     public bool IsBitwardenEntry => BitwardenVaultId is not null;

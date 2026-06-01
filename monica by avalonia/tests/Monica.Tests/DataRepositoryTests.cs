@@ -82,6 +82,43 @@ public sealed class DataRepositoryTests
         Assert.Single(await repository.GetPasswordsAsync(includeDeleted: true));
     }
 
+    [Fact]
+    public async Task Repository_restores_and_permanently_deletes_password_with_bound_data()
+    {
+        var path = GetTempDatabasePath();
+        var factory = new SqliteConnectionFactory(path);
+        var repository = new MonicaRepository(factory, new DatabaseMigrator(factory));
+        var entry = new PasswordEntry { Title = "Recover me", Password = "encrypted" };
+        await repository.SavePasswordAsync(entry);
+        await repository.ReplaceCustomFieldsAsync(entry.Id, [new CustomField { Title = "PIN", Value = "1234" }]);
+        var totp = new SecureItem
+        {
+            ItemType = VaultItemType.Totp,
+            Title = "Recover me",
+            BoundPasswordId = entry.Id,
+            ItemData = """{"secret":"JBSWY3DPEHPK3PXP"}"""
+        };
+        await repository.SaveSecureItemAsync(totp);
+
+        await repository.SoftDeletePasswordAsync(entry.Id);
+
+        Assert.Empty(await repository.GetPasswordsAsync());
+        Assert.Empty(await repository.GetSecureItemsByBoundPasswordIdAsync(entry.Id));
+        Assert.Single(await repository.GetSecureItemsByBoundPasswordIdAsync(entry.Id, includeDeleted: true));
+
+        await repository.RestorePasswordAsync(entry.Id);
+
+        Assert.Single(await repository.GetPasswordsAsync());
+        Assert.Single(await repository.GetSecureItemsByBoundPasswordIdAsync(entry.Id));
+
+        await repository.SoftDeletePasswordAsync(entry.Id);
+        await repository.DeletePasswordPermanentlyAsync(entry.Id);
+
+        Assert.Empty(await repository.GetPasswordsAsync(includeDeleted: true));
+        Assert.Empty(await repository.GetCustomFieldsAsync(entry.Id));
+        Assert.Empty(await repository.GetSecureItemsByBoundPasswordIdAsync(entry.Id, includeDeleted: true));
+    }
+
     private static string GetTempDatabasePath()
     {
         var path = Path.Combine(Path.GetTempPath(), "monica-tests", $"{Guid.NewGuid():N}.db");

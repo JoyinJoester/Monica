@@ -1,6 +1,7 @@
 using Monica.App.Services;
 using Monica.App.ViewModels;
 using Monica.Core.ImportExport;
+using Monica.Core.Models;
 using Monica.Core.Services;
 using Monica.Data;
 using Monica.Data.Repositories;
@@ -80,6 +81,8 @@ public sealed class AppSettingsTests
             new PlatformCapabilityService(),
             new NoopClipboardService(),
             new MdbxVaultService(),
+            new NoopPasswordEditorDialogService(),
+            new NoopPasswordDetailDialogService(),
             new AppSettingsService(settingsPath),
             new LocalizationService());
     }
@@ -94,5 +97,30 @@ public sealed class AppSettingsTests
     private sealed class NoopClipboardService : IClipboardService
     {
         public Task SetTextAsync(string text, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class NoopPasswordEditorDialogService : IPasswordEditorDialogService
+    {
+        public Task<PasswordEditorViewModel?> ShowAsync(
+            PasswordEntry? entry,
+            IReadOnlyList<Category> categories,
+            string plainPassword,
+            IReadOnlyList<string>? siblingPasswords = null,
+            IReadOnlyList<SecureItem>? notes = null,
+            IReadOnlyList<CustomField>? customFields = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<PasswordEditorViewModel?>(null);
+    }
+
+    private sealed class NoopPasswordDetailDialogService : IPasswordDetailDialogService
+    {
+        public Task ShowAsync(
+            PasswordEntry entry,
+            IReadOnlyList<PasswordEntry> siblings,
+            Category? category,
+            SecureItem? boundNote,
+            IReadOnlyList<CustomField> customFields,
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 }

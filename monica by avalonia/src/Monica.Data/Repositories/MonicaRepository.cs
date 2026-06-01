@@ -8,8 +8,16 @@ public interface IMonicaRepository
     Task<IReadOnlyList<PasswordEntry>> GetPasswordsAsync(bool includeDeleted = false, CancellationToken cancellationToken = default);
     Task<long> SavePasswordAsync(PasswordEntry entry, CancellationToken cancellationToken = default);
     Task SoftDeletePasswordAsync(long id, CancellationToken cancellationToken = default);
+    Task RestorePasswordAsync(long id, CancellationToken cancellationToken = default);
+    Task DeletePasswordPermanentlyAsync(long id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CustomField>> GetCustomFieldsAsync(long entryId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<long, IReadOnlyList<CustomField>>> GetCustomFieldsByEntryIdsAsync(IReadOnlyList<long> entryIds, CancellationToken cancellationToken = default);
+    Task ReplaceCustomFieldsAsync(long entryId, IReadOnlyList<CustomField> fields, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<long>> SearchEntryIdsByCustomFieldContentAsync(string query, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SecureItem>> GetSecureItemsAsync(VaultItemType? itemType = null, bool includeDeleted = false, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<SecureItem>> GetSecureItemsByBoundPasswordIdAsync(long passwordId, bool includeDeleted = false, CancellationToken cancellationToken = default);
     Task<long> SaveSecureItemAsync(SecureItem item, CancellationToken cancellationToken = default);
+    Task SoftDeleteSecureItemAsync(long id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Category>> GetCategoriesAsync(CancellationToken cancellationToken = default);
     Task<long> SaveCategoryAsync(Category category, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<LocalMdbxDatabase>> GetMdbxDatabasesAsync(CancellationToken cancellationToken = default);
@@ -102,9 +110,138 @@ public sealed class MonicaRepository(ISqliteConnectionFactory connectionFactory,
     {
         await migrator.MigrateAsync(cancellationToken);
         await using var connection = connectionFactory.CreateConnection();
+        var deletedAt = ToUnixMilliseconds(DateTimeOffset.UtcNow);
         await connection.ExecuteAsync(
             "UPDATE password_entries SET is_deleted = 1, deleted_at = @DeletedAt, updated_at = @DeletedAt WHERE id = @Id",
-            new { Id = id, DeletedAt = ToUnixMilliseconds(DateTimeOffset.UtcNow) });
+            new { Id = id, DeletedAt = deletedAt });
+        await connection.ExecuteAsync(
+            "UPDATE secure_items SET is_deleted = 1, deleted_at = @DeletedAt, updated_at = @DeletedAt WHERE bound_password_id = @Id AND item_type = 'TOTP'",
+            new { Id = id, DeletedAt = deletedAt });
+    }
+
+    public async Task RestorePasswordAsync(long id, CancellationToken cancellationToken = default)
+    {
+        await migrator.MigrateAsync(cancellationToken);
+        await using var connection = connectionFactory.CreateConnection();
+        var updatedAt = ToUnixMilliseconds(DateTimeOffset.UtcNow);
+        await connection.ExecuteAsync(
+            "UPDATE password_entries SET is_deleted = 0, deleted_at = NULL, updated_at = @UpdatedAt WHERE id = @Id",
+            new { Id = id, UpdatedAt = updatedAt });
+        await connection.ExecuteAsync(
+            "UPDATE secure_items SET is_deleted = 0, deleted_at = NULL, updated_at = @UpdatedAt WHERE bound_password_id = @Id AND item_type = 'TOTP'",
+            new { Id = id, UpdatedAt = updatedAt });
+    }
+
+    public async Task DeletePasswordPermanentlyAsync(long id, CancellationToken cancellationToken = default)
+    {
+        await migrator.MigrateAsync(cancellationToken);
+        await using var connection = connectionFactory.CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await connection.ExecuteAsync("DELETE FROM custom_fields WHERE entry_id = @Id", new { Id = id }, transaction);
+        await connection.ExecuteAsync("DELETE FROM secure_items WHERE bound_password_id = @Id AND item_type = 'TOTP'", new { Id = id }, transaction);
+        await connection.ExecuteAsync("DELETE FROM password_entries WHERE id = @Id", new { Id = id }, transaction);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<CustomField>> GetCustomFieldsAsync(long entryId, CancellationToken cancellationToken = default)
+    {
+        await migrator.MigrateAsync(cancellationToken);
+        await using var connection = connectionFactory.CreateConnection();
+        var rows = await connection.QueryAsync<CustomFieldRow>(
+            """
+            SELECT id, entry_id, title, value, is_protected, sort_order
+            FROM custom_fields
+            WHERE entry_id = @EntryId
+            ORDER BY sort_order ASC, id ASC
+            """,
+            new { EntryId = entryId });
+
+        return rows.Select(ToModel).ToList();
+    }
+
+    public async Task<IReadOnlyDictionary<long, IReadOnlyList<CustomField>>> GetCustomFieldsByEntryIdsAsync(IReadOnlyList<long> entryIds, CancellationToken cancellationToken = default)
+    {
+        await migrator.MigrateAsync(cancellationToken);
+        var ids = entryIds.Where(id => id > 0).Distinct().ToArray();
+        if (ids.Length == 0)
+        {
+            return new Dictionary<long, IReadOnlyList<CustomField>>();
+        }
+
+        await using var connection = connectionFactory.CreateConnection();
+        var rows = await connection.QueryAsync<CustomFieldRow>(
+            """
+            SELECT id, entry_id, title, value, is_protected, sort_order
+            FROM custom_fields
+            WHERE entry_id IN @EntryIds
+            ORDER BY entry_id ASC, sort_order ASC, id ASC
+            """,
+            new { EntryIds = ids });
+
+        return rows
+            .Select(ToModel)
+            .GroupBy(field => field.EntryId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<CustomField>)group.ToList());
+    }
+
+    public async Task ReplaceCustomFieldsAsync(long entryId, IReadOnlyList<CustomField> fields, CancellationToken cancellationToken = default)
+    {
+        await migrator.MigrateAsync(cancellationToken);
+        await using var connection = connectionFactory.CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await connection.ExecuteAsync("DELETE FROM custom_fields WHERE entry_id = @EntryId", new { EntryId = entryId }, transaction);
+
+        var rows = fields
+            .Where(field => !string.IsNullOrWhiteSpace(field.Title) && !string.IsNullOrWhiteSpace(field.Value))
+            .Select((field, index) => new
+            {
+                EntryId = entryId,
+                Title = field.Title.Trim(),
+                Value = field.Value.Trim(),
+                IsProtected = field.IsProtected ? 1 : 0,
+                SortOrder = index
+            })
+            .ToArray();
+
+        if (rows.Length > 0)
+        {
+            await connection.ExecuteAsync(
+                """
+                INSERT INTO custom_fields(entry_id, title, value, is_protected, sort_order)
+                VALUES(@EntryId, @Title, @Value, @IsProtected, @SortOrder)
+                """,
+                rows,
+                transaction);
+        }
+
+        await connection.ExecuteAsync(
+            "UPDATE password_entries SET updated_at = @UpdatedAt WHERE id = @EntryId",
+            new { EntryId = entryId, UpdatedAt = ToUnixMilliseconds(DateTimeOffset.UtcNow) },
+            transaction);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<long>> SearchEntryIdsByCustomFieldContentAsync(string query, CancellationToken cancellationToken = default)
+    {
+        await migrator.MigrateAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return [];
+        }
+
+        await using var connection = connectionFactory.CreateConnection();
+        var ids = await connection.QueryAsync<long>(
+            """
+            SELECT DISTINCT entry_id
+            FROM custom_fields
+            WHERE title LIKE @Query OR value LIKE @Query
+            ORDER BY entry_id ASC
+            """,
+            new { Query = $"%{query.Trim()}%" });
+
+        return ids.ToList();
     }
 
     public async Task<IReadOnlyList<SecureItem>> GetSecureItemsAsync(VaultItemType? itemType = null, bool includeDeleted = false, CancellationToken cancellationToken = default)
@@ -119,6 +256,22 @@ public sealed class MonicaRepository(ISqliteConnectionFactory connectionFactory,
             ORDER BY is_favorite DESC, sort_order ASC, updated_at DESC
             """,
             new { IncludeDeleted = includeDeleted ? 1 : 0, ItemType = itemType?.ToString().ToUpperInvariant() });
+        return rows.Select(ToModel).ToList();
+    }
+
+    public async Task<IReadOnlyList<SecureItem>> GetSecureItemsByBoundPasswordIdAsync(long passwordId, bool includeDeleted = false, CancellationToken cancellationToken = default)
+    {
+        await migrator.MigrateAsync(cancellationToken);
+        await using var connection = connectionFactory.CreateConnection();
+        var rows = await connection.QueryAsync<SecureItemRow>(
+            """
+            SELECT * FROM secure_items
+            WHERE bound_password_id = @PasswordId
+              AND item_type = 'TOTP'
+              AND (@IncludeDeleted = 1 OR is_deleted = 0)
+            ORDER BY updated_at DESC, id DESC
+            """,
+            new { PasswordId = passwordId, IncludeDeleted = includeDeleted ? 1 : 0 });
         return rows.Select(ToModel).ToList();
     }
 
@@ -137,12 +290,12 @@ public sealed class MonicaRepository(ISqliteConnectionFactory connectionFactory,
             const string sql =
                 """
                 INSERT INTO secure_items (
-                    item_type, title, notes, is_favorite, sort_order, created_at, updated_at, item_data, image_paths,
+                    item_type, title, notes, is_favorite, sort_order, created_at, updated_at, item_data, image_paths, bound_password_id,
                     category_id, keepass_database_id, keepass_group_path, keepass_entry_uuid, keepass_group_uuid,
                     mdbx_database_id, mdbx_folder_id, is_deleted, deleted_at, replica_group_id, bitwarden_vault_id,
                     bitwarden_cipher_id, bitwarden_folder_id, bitwarden_revision_date, bitwarden_local_modified, sync_status)
                 VALUES (
-                    @ItemType, @Title, @Notes, @IsFavorite, @SortOrder, @CreatedAt, @UpdatedAt, @ItemData, @ImagePaths,
+                    @ItemType, @Title, @Notes, @IsFavorite, @SortOrder, @CreatedAt, @UpdatedAt, @ItemData, @ImagePaths, @BoundPasswordId,
                     @CategoryId, @KeepassDatabaseId, @KeepassGroupPath, @KeepassEntryUuid, @KeepassGroupUuid,
                     @MdbxDatabaseId, @MdbxFolderId, @IsDeleted, @DeletedAt, @ReplicaGroupId, @BitwardenVaultId,
                     @BitwardenCipherId, @BitwardenFolderId, @BitwardenRevisionDate, @BitwardenLocalModified, @SyncStatus);
@@ -156,6 +309,7 @@ public sealed class MonicaRepository(ISqliteConnectionFactory connectionFactory,
                 """
                 UPDATE secure_items SET item_type=@ItemType, title=@Title, notes=@Notes, is_favorite=@IsFavorite,
                     sort_order=@SortOrder, updated_at=@UpdatedAt, item_data=@ItemData, image_paths=@ImagePaths,
+                    bound_password_id=@BoundPasswordId,
                     category_id=@CategoryId, keepass_database_id=@KeepassDatabaseId, keepass_group_path=@KeepassGroupPath,
                     keepass_entry_uuid=@KeepassEntryUuid, keepass_group_uuid=@KeepassGroupUuid, mdbx_database_id=@MdbxDatabaseId,
                     mdbx_folder_id=@MdbxFolderId, is_deleted=@IsDeleted, deleted_at=@DeletedAt, replica_group_id=@ReplicaGroupId,
@@ -168,6 +322,15 @@ public sealed class MonicaRepository(ISqliteConnectionFactory connectionFactory,
         }
 
         return item.Id;
+    }
+
+    public async Task SoftDeleteSecureItemAsync(long id, CancellationToken cancellationToken = default)
+    {
+        await migrator.MigrateAsync(cancellationToken);
+        await using var connection = connectionFactory.CreateConnection();
+        await connection.ExecuteAsync(
+            "UPDATE secure_items SET is_deleted = 1, deleted_at = @DeletedAt, updated_at = @DeletedAt WHERE id = @Id",
+            new { Id = id, DeletedAt = ToUnixMilliseconds(DateTimeOffset.UtcNow) });
     }
 
     public async Task<IReadOnlyList<Category>> GetCategoriesAsync(CancellationToken cancellationToken = default)
@@ -394,6 +557,16 @@ public sealed class MonicaRepository(ISqliteConnectionFactory connectionFactory,
         BitwardenLocalModified = entry.BitwardenLocalModified ? 1 : 0
     };
 
+    private static CustomField ToModel(CustomFieldRow row) => new()
+    {
+        Id = row.Id,
+        EntryId = row.EntryId,
+        Title = row.Title,
+        Value = row.Value,
+        IsProtected = row.IsProtected,
+        SortOrder = row.SortOrder
+    };
+
     private static SecureItem ToModel(SecureItemRow row) => new()
     {
         Id = row.Id,
@@ -406,6 +579,7 @@ public sealed class MonicaRepository(ISqliteConnectionFactory connectionFactory,
         UpdatedAt = FromUnixMilliseconds(row.UpdatedAt),
         ItemData = row.ItemData,
         ImagePaths = row.ImagePaths,
+        BoundPasswordId = row.BoundPasswordId,
         CategoryId = row.CategoryId,
         KeepassDatabaseId = row.KeepassDatabaseId,
         KeepassGroupPath = row.KeepassGroupPath,
@@ -436,6 +610,7 @@ public sealed class MonicaRepository(ISqliteConnectionFactory connectionFactory,
         UpdatedAt = ToUnixMilliseconds(item.UpdatedAt),
         item.ItemData,
         item.ImagePaths,
+        item.BoundPasswordId,
         item.CategoryId,
         item.KeepassDatabaseId,
         item.KeepassGroupPath,
@@ -594,6 +769,16 @@ public sealed class MonicaRepository(ISqliteConnectionFactory connectionFactory,
         public bool BitwardenLocalModified { get; init; }
     }
 
+    private sealed class CustomFieldRow
+    {
+        public long Id { get; init; }
+        public long EntryId { get; init; }
+        public string Title { get; init; } = "";
+        public string Value { get; init; } = "";
+        public bool IsProtected { get; init; }
+        public int SortOrder { get; init; }
+    }
+
     private sealed class SecureItemRow
     {
         public long Id { get; init; }
@@ -606,6 +791,7 @@ public sealed class MonicaRepository(ISqliteConnectionFactory connectionFactory,
         public long UpdatedAt { get; init; }
         public string ItemData { get; init; } = "{}";
         public string ImagePaths { get; init; } = "[]";
+        public long? BoundPasswordId { get; init; }
         public long? CategoryId { get; init; }
         public long? KeepassDatabaseId { get; init; }
         public string? KeepassGroupPath { get; init; }

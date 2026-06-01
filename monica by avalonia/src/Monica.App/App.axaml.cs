@@ -55,6 +55,16 @@ public partial class App : Application
         services.AddSingleton<IKeePassVaultService, KeePassVaultService>();
         services.AddSingleton<IMdbxVaultService, MdbxVaultService>();
         services.AddSingleton<IClipboardService>(_ => new AvaloniaClipboardService(() => mainWindow));
+        services.AddSingleton<IPasswordEditorDialogService>(_ => new PasswordEditorDialogService(
+            () => mainWindow,
+            _.GetRequiredService<ILocalizationService>(),
+            _.GetRequiredService<IPasswordGeneratorService>()));
+        services.AddSingleton<IPasswordDetailDialogService>(_ => new PasswordDetailDialogService(
+            () => mainWindow,
+            _.GetRequiredService<ILocalizationService>(),
+            _.GetRequiredService<IClipboardService>(),
+            _.GetRequiredService<ICryptoService>(),
+            _.GetRequiredService<ITotpService>()));
         services.AddSingleton<IAppSettingsService, AppSettingsService>();
         services.AddSingleton<ILocalizationService, LocalizationService>();
         services.AddSingleton<MainWindowViewModel>();

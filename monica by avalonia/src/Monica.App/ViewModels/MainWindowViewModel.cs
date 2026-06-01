@@ -1,5 +1,5 @@
 using System.Collections.ObjectModel;
-using System.Text.Json;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Styling;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -26,10 +26,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly IImportExportService _importExportService;
     private readonly IClipboardService _clipboardService;
     private readonly IMdbxVaultService _mdbxVaultService;
+    private readonly IPasswordEditorDialogService _passwordEditorDialogService;
+    private readonly IPasswordDetailDialogService _passwordDetailDialogService;
     private readonly IVaultCredentialStore _credentialStore;
     private readonly IAppSettingsService _settingsService;
     private readonly ILocalizationService _localization;
     private readonly IReadOnlyList<PlatformCapability> _sourceCapabilities;
+    private IReadOnlyDictionary<long, IReadOnlyList<CustomField>> _passwordCustomFields = new Dictionary<long, IReadOnlyList<CustomField>>();
     private bool _isApplyingSettings;
 
     public MainWindowViewModel(
@@ -42,6 +45,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IPlatformCapabilityService platformCapabilityService,
         IClipboardService clipboardService,
         IMdbxVaultService mdbxVaultService,
+        IPasswordEditorDialogService passwordEditorDialogService,
+        IPasswordDetailDialogService passwordDetailDialogService,
         IAppSettingsService settingsService,
         ILocalizationService localization)
     {
@@ -53,6 +58,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _importExportService = importExportService;
         _clipboardService = clipboardService;
         _mdbxVaultService = mdbxVaultService;
+        _passwordEditorDialogService = passwordEditorDialogService;
+        _passwordDetailDialogService = passwordDetailDialogService;
         _settingsService = settingsService;
         _localization = localization;
         _localization.PropertyChanged += (_, _) => RefreshLocalizedProperties();
@@ -63,6 +70,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public ILocalizationService L => _localization;
     public ObservableCollection<PasswordEntry> Passwords { get; } = [];
+    public ObservableCollection<PasswordEntry> DeletedPasswords { get; } = [];
+    public ObservableCollection<SecureItem> NoteItems { get; } = [];
     public ObservableCollection<SecureItem> TotpItems { get; } = [];
     public ObservableCollection<SecureItem> WalletItems { get; } = [];
     public ObservableCollection<Category> Categories { get; } = [];
@@ -101,6 +110,27 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     [ObservableProperty]
     private string _exportPreview = "";
+
+    [ObservableProperty]
+    private SecureItem? _selectedNote;
+
+    [ObservableProperty]
+    private string _noteTitle = "";
+
+    [ObservableProperty]
+    private string _noteContent = "";
+
+    [ObservableProperty]
+    private string _noteTagsText = "";
+
+    [ObservableProperty]
+    private bool _noteIsMarkdown = true;
+
+    [ObservableProperty]
+    private bool _notePreviewMode;
+
+    [ObservableProperty]
+    private bool _noteIsFavorite;
 
     [ObservableProperty]
     private string _settingsLanguage = "system";
@@ -179,20 +209,59 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public string LoginButtonText => IsVaultInitialized ? _localization.Unlock : _localization.CreateVault;
 
     public string PasswordCountText => _localization.Format("PasswordCountFormat", Passwords.Count);
+    public string DeletedPasswordCountText => _localization.Format("DeletedPasswordCountFormat", DeletedPasswords.Count);
+    public string SelectedPasswordCountText => _localization.Format("SelectedPasswordCountFormat", SelectedPasswordCount);
+    public string NoteCountText => _localization.Format("NoteCountFormat", NoteItems.Count);
     public string TotpCountText => _localization.Format("TotpCountFormat", TotpItems.Count);
     public string WalletCountText => _localization.Format("WalletCountFormat", WalletItems.Count);
+    public string NotePreviewMarkdown => NoteIsMarkdown ? NoteContent : "";
+    public string NotePlainPreview => NoteContentCodec.ToPlainPreview(NoteContent, NoteIsMarkdown);
+    public int SelectedPasswordCount => Passwords.Count(item => item.IsSelected);
+    public bool HasSelectedPasswords => SelectedPasswordCount > 0;
+    public bool AreAllFilteredPasswordsSelected
+    {
+        get
+        {
+            var filtered = FilteredPasswords.ToArray();
+            return filtered.Length > 0 && filtered.All(item => item.IsSelected);
+        }
+        set
+        {
+            foreach (var item in FilteredPasswords)
+            {
+                item.IsSelected = value;
+            }
+
+            RaisePasswordSelectionState();
+        }
+    }
 
     public IEnumerable<PasswordEntry> FilteredPasswords =>
         string.IsNullOrWhiteSpace(SearchText)
             ? Passwords
-            : Passwords.Where(item =>
-                item.Title.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
-                item.Username.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
-                item.Website.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+            : Passwords.Where(item => MatchesPasswordSearch(item, SearchText));
 
-    partial void OnSearchTextChanged(string value) => OnPropertyChanged(nameof(FilteredPasswords));
+    partial void OnSearchTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(FilteredPasswords));
+        RaisePasswordSelectionState();
+    }
 
     partial void OnSelectedSectionChanged(string value) => OnPropertyChanged(nameof(SelectedSectionTitle));
+
+    partial void OnNoteContentChanged(string value)
+    {
+        OnPropertyChanged(nameof(NotePreviewMarkdown));
+        OnPropertyChanged(nameof(NotePlainPreview));
+    }
+
+    partial void OnNoteIsMarkdownChanged(bool value)
+    {
+        OnPropertyChanged(nameof(NotePreviewMarkdown));
+        OnPropertyChanged(nameof(NotePlainPreview));
+    }
+
+    partial void OnSelectedNoteChanged(SecureItem? value) => LoadNoteIntoEditor(value);
 
     partial void OnIsVaultInitializedChanged(bool value)
     {
@@ -317,25 +386,38 @@ public sealed partial class MainWindowViewModel : ObservableObject
         try
         {
             Passwords.Clear();
+            DeletedPasswords.Clear();
+            NoteItems.Clear();
             TotpItems.Clear();
             WalletItems.Clear();
             Categories.Clear();
             MdbxDatabases.Clear();
 
-            foreach (var item in await _repository.GetPasswordsAsync())
+            var passwords = await _repository.GetPasswordsAsync();
+            _passwordCustomFields = await _repository.GetCustomFieldsByEntryIdsAsync(passwords.Select(item => item.Id).ToArray());
+            foreach (var item in passwords)
             {
+                RefreshPasswordTotpDisplay(item);
+                item.IsSelected = false;
+                TrackPasswordSelection(item);
                 Passwords.Add(item);
             }
 
-            foreach (var item in await _repository.GetSecureItemsAsync(VaultItemType.Totp))
+            foreach (var item in (await _repository.GetPasswordsAsync(includeDeleted: true)).Where(item => item.IsDeleted))
             {
-                RefreshTotpDisplay(item);
-                TotpItems.Add(item);
+                RefreshPasswordTotpDisplay(item);
+                TrackPasswordSelection(item);
+                DeletedPasswords.Add(item);
+            }
+
+            foreach (var item in await _repository.GetSecureItemsAsync(VaultItemType.Note))
+            {
+                NoteItems.Add(item);
             }
 
             foreach (var item in await _repository.GetSecureItemsAsync())
             {
-                if (item.ItemType is VaultItemType.BankCard or VaultItemType.Document or VaultItemType.Note)
+                if (item.ItemType is VaultItemType.BankCard or VaultItemType.Document)
                 {
                     WalletItems.Add(item);
                 }
@@ -351,6 +433,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 MdbxDatabases.Add(database);
             }
 
+            await LoadTotpItemsAsync();
             RaiseCounts();
             OnPropertyChanged(nameof(FilteredPasswords));
         }
@@ -373,35 +456,109 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task AddPasswordAsync()
     {
-        var password = GeneratedPassword;
-        if (string.IsNullOrWhiteSpace(password))
+        var initialPassword = string.IsNullOrWhiteSpace(GeneratedPassword) ? "" : GeneratedPassword;
+        var editor = await _passwordEditorDialogService.ShowAsync(
+            null,
+            Categories.ToList(),
+            initialPassword,
+            notes: NoteItems.ToList());
+        if (editor is null)
         {
-            password = _passwordGenerator.GeneratePassword();
+            return;
         }
 
-        var entry = new PasswordEntry
+        var entries = editor
+            .BuildEntries(ProtectPasswords(editor.GetPasswordRows()))
+            .ToList();
+        foreach (var entry in entries)
         {
-            Title = $"New Login {Passwords.Count + 1}",
-            Website = "https://example.com",
-            Username = "user@example.com",
-            Password = _cryptoService.IsUnlocked ? _cryptoService.EncryptString(password) : password,
-            Notes = "Created from Monica by Avalonia.",
-            IsFavorite = Passwords.Count == 0
-        };
+            await _repository.SavePasswordAsync(entry);
+            await _repository.LogAsync(new OperationLog
+            {
+                ItemType = "PASSWORD",
+                ItemId = entry.Id,
+                ItemTitle = entry.Title,
+                OperationType = "CREATE",
+                DeviceName = Environment.MachineName
+            });
+        }
 
-        await _repository.SavePasswordAsync(entry);
-        await _repository.LogAsync(new OperationLog
+        var customFields = BindCustomFields(entries[0].Id, editor.GetCustomFields());
+        await _repository.ReplaceCustomFieldsAsync(entries[0].Id, customFields);
+        SetPasswordCustomFields(entries[0].Id, customFields);
+        foreach (var entry in entries)
         {
-            ItemType = "PASSWORD",
-            ItemId = entry.Id,
-            ItemTitle = entry.Title,
-            OperationType = "CREATE",
-            DeviceName = Environment.MachineName
-        });
-        Passwords.Insert(0, entry);
+            RefreshPasswordTotpDisplay(entry);
+        }
+
+        await SynchronizeBoundTotpAsync(entries[0]);
+        ReplacePasswordGroup([], entries);
+        await LoadTotpItemsAsync();
         RaiseCounts();
         OnPropertyChanged(nameof(FilteredPasswords));
-        StatusMessage = _localization.Format("CreatedPasswordFormat", entry.Title);
+        StatusMessage = _localization.Format("CreatedPasswordFormat", entries[0].Title);
+    }
+
+    [RelayCommand]
+    private async Task EditPasswordAsync(PasswordEntry? entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+
+        var siblings = GetPasswordSiblings(entry).ToList();
+        var customFields = await GetGroupCustomFieldsAsync(entry, siblings);
+        var editor = await _passwordEditorDialogService.ShowAsync(
+            entry,
+            Categories.ToList(),
+            UnprotectPassword(entry.Password),
+            siblings.Select(item => UnprotectPassword(item.Password)).ToArray(),
+            NoteItems.ToList(),
+            customFields);
+        if (editor is null)
+        {
+            return;
+        }
+
+        var passwordRows = editor.GetPasswordRows();
+        var storedPasswords = ProtectPasswords(passwordRows);
+        var updatedEntries = new List<PasswordEntry>();
+        for (var index = 0; index < storedPasswords.Count; index++)
+        {
+            var source = index < siblings.Count ? siblings[index] : null;
+            var updated = editor.BuildEntryFrom(source, storedPasswords[index]);
+            await _repository.SavePasswordAsync(updated);
+            await _repository.LogAsync(new OperationLog
+            {
+                ItemType = "PASSWORD",
+                ItemId = updated.Id,
+                ItemTitle = updated.Title,
+                OperationType = source is null ? "CREATE" : "UPDATE",
+                DeviceName = Environment.MachineName
+            });
+            updatedEntries.Add(updated);
+        }
+
+        foreach (var removed in siblings.Skip(storedPasswords.Count))
+        {
+            await _repository.SoftDeletePasswordAsync(removed.Id);
+        }
+
+        var updatedCustomFields = BindCustomFields(updatedEntries[0].Id, editor.GetCustomFields());
+        await _repository.ReplaceCustomFieldsAsync(updatedEntries[0].Id, updatedCustomFields);
+        SetPasswordCustomFields(updatedEntries[0].Id, updatedCustomFields);
+        foreach (var updated in updatedEntries)
+        {
+            RefreshPasswordTotpDisplay(updated);
+        }
+
+        await SynchronizeBoundTotpAsync(updatedEntries[0]);
+        ReplacePasswordGroup(siblings, updatedEntries);
+        await LoadTotpItemsAsync();
+        RaiseCounts();
+        OnPropertyChanged(nameof(FilteredPasswords));
+        StatusMessage = _localization.Format("UpdatedPasswordFormat", updatedEntries[0].Title);
     }
 
     [RelayCommand]
@@ -430,6 +587,142 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task CopyUsernameAsync(PasswordEntry? entry)
+    {
+        if (entry is null || string.IsNullOrWhiteSpace(entry.Username))
+        {
+            return;
+        }
+
+        await _clipboardService.SetTextAsync(entry.Username);
+        StatusMessage = _localization.Format("CopiedUsernameFormat", entry.Title);
+    }
+
+    [RelayCommand]
+    private async Task CopyWebsiteAsync(PasswordEntry? entry)
+    {
+        if (entry is null || string.IsNullOrWhiteSpace(entry.Website))
+        {
+            return;
+        }
+
+        await _clipboardService.SetTextAsync(entry.Website);
+        StatusMessage = _localization.Format("CopiedWebsiteFormat", entry.Title);
+    }
+
+    [RelayCommand]
+    private async Task ShowPasswordDetailsAsync(PasswordEntry? entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+
+        var siblings = (entry.IsDeleted ? GetDeletedPasswordSiblings(entry) : GetPasswordSiblings(entry)).ToList();
+        var customFields = await GetGroupCustomFieldsAsync(entry, siblings);
+        var category = entry.CategoryId is null
+            ? null
+            : Categories.FirstOrDefault(item => item.Id == entry.CategoryId);
+        var boundNote = entry.BoundNoteId is null
+            ? null
+            : NoteItems.FirstOrDefault(item => item.Id == entry.BoundNoteId);
+
+        await _passwordDetailDialogService.ShowAsync(entry, siblings, category, boundNote, customFields);
+    }
+
+    [RelayCommand]
+    private void TogglePasswordSelection(PasswordEntry? entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+
+        entry.IsSelected = !entry.IsSelected;
+        RaisePasswordSelectionState();
+    }
+
+    [RelayCommand]
+    private void ClearPasswordSelection()
+    {
+        foreach (var entry in Passwords.Where(item => item.IsSelected))
+        {
+            entry.IsSelected = false;
+        }
+
+        RaisePasswordSelectionState();
+    }
+
+    [RelayCommand]
+    private async Task FavoriteSelectedPasswordsAsync()
+    {
+        var selected = Passwords.Where(item => item.IsSelected).ToArray();
+        foreach (var entry in selected)
+        {
+            if (!entry.IsFavorite)
+            {
+                entry.IsFavorite = true;
+                await _repository.SavePasswordAsync(entry);
+                await _repository.LogAsync(new OperationLog
+                {
+                    ItemType = "PASSWORD",
+                    ItemId = entry.Id,
+                    ItemTitle = entry.Title,
+                    OperationType = "FAVORITE",
+                    DeviceName = Environment.MachineName
+                });
+            }
+        }
+
+        foreach (var entry in selected)
+        {
+            entry.IsSelected = false;
+        }
+
+        RaisePasswordSelectionState();
+        OnPropertyChanged(nameof(FilteredPasswords));
+        StatusMessage = _localization.Format("FavoritedPasswordCountFormat", selected.Length);
+    }
+
+    [RelayCommand]
+    private async Task DeleteSelectedPasswordsAsync()
+    {
+        var selected = Passwords.Where(item => item.IsSelected).ToArray();
+        var handled = new HashSet<long>();
+        foreach (var entry in selected)
+        {
+            if (!handled.Add(entry.Id))
+            {
+                continue;
+            }
+
+            var siblings = GetPasswordSiblings(entry).ToArray();
+            foreach (var sibling in siblings)
+            {
+                handled.Add(sibling.Id);
+            }
+
+            await DeletePasswordGroupAsync(entry, siblings, updateStatus: false);
+        }
+
+        RaisePasswordSelectionState();
+        StatusMessage = _localization.Format("MovedSelectedPasswordsToRecycleBinFormat", selected.Length);
+    }
+
+    [RelayCommand]
+    private async Task CopyPasswordTotpAsync(PasswordEntry? entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+
+        RefreshPasswordTotpDisplay(entry);
+        await _clipboardService.SetTextAsync(entry.TotpCode);
+        StatusMessage = _localization.Format("CopiedTotpFormat", entry.Title);
+    }
+
+    [RelayCommand]
     private async Task ToggleFavoriteAsync(PasswordEntry? entry)
     {
         if (entry is null)
@@ -450,11 +743,95 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        await _repository.SoftDeletePasswordAsync(entry.Id);
-        Passwords.Remove(entry);
+        var siblings = GetPasswordSiblings(entry).ToList();
+        await DeletePasswordGroupAsync(entry, siblings, updateStatus: true);
+    }
+
+    private async Task DeletePasswordGroupAsync(PasswordEntry entry, IReadOnlyList<PasswordEntry> siblings, bool updateStatus)
+    {
+        foreach (var item in siblings)
+        {
+            await _repository.SoftDeletePasswordAsync(item.Id);
+            item.IsSelected = false;
+            Passwords.Remove(item);
+            var current = Passwords.FirstOrDefault(password => password.Id == item.Id);
+            if (current is not null)
+            {
+                current.IsSelected = false;
+                Passwords.Remove(current);
+            }
+
+            item.IsDeleted = true;
+            item.DeletedAt = DateTimeOffset.UtcNow;
+            TrackPasswordSelection(item);
+            DeletedPasswords.Insert(0, item);
+        }
+
+        await LoadTotpItemsAsync();
+        RaiseCounts();
+        RaisePasswordSelectionState();
+        OnPropertyChanged(nameof(FilteredPasswords));
+        if (updateStatus)
+        {
+            StatusMessage = _localization.Format("MovedToRecycleBinFormat", entry.Title);
+        }
+    }
+
+    [RelayCommand]
+    private async Task RestorePasswordAsync(PasswordEntry? entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+
+        var siblings = GetDeletedPasswordSiblings(entry).ToList();
+        foreach (var item in siblings)
+        {
+            await _repository.RestorePasswordAsync(item.Id);
+            DeletedPasswords.Remove(item);
+            var current = DeletedPasswords.FirstOrDefault(password => password.Id == item.Id);
+            if (current is not null)
+            {
+                DeletedPasswords.Remove(current);
+            }
+
+            item.IsDeleted = false;
+            item.DeletedAt = null;
+            item.IsSelected = false;
+            RefreshPasswordTotpDisplay(item);
+        }
+
+        ReplacePasswordGroup([], siblings);
+        await LoadTotpItemsAsync();
         RaiseCounts();
         OnPropertyChanged(nameof(FilteredPasswords));
-        StatusMessage = _localization.Format("MovedToRecycleBinFormat", entry.Title);
+        StatusMessage = _localization.Format("RestoredPasswordFormat", entry.Title);
+    }
+
+    [RelayCommand]
+    private async Task DeletePasswordPermanentlyAsync(PasswordEntry? entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+
+        var siblings = GetDeletedPasswordSiblings(entry).ToList();
+        foreach (var item in siblings)
+        {
+            await _repository.DeletePasswordPermanentlyAsync(item.Id);
+            DeletedPasswords.Remove(item);
+            var current = DeletedPasswords.FirstOrDefault(password => password.Id == item.Id);
+            if (current is not null)
+            {
+                DeletedPasswords.Remove(current);
+            }
+        }
+
+        await LoadTotpItemsAsync();
+        RaiseCounts();
+        StatusMessage = _localization.Format("DeletedPasswordPermanentlyFormat", entry.Title);
     }
 
     [RelayCommand]
@@ -502,6 +879,103 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void AddNote()
+    {
+        SelectedNote = null;
+        NoteTitle = "";
+        NoteContent = "";
+        NoteTagsText = "";
+        NoteIsMarkdown = true;
+        NotePreviewMode = false;
+        NoteIsFavorite = false;
+        StatusMessage = _localization.Get("EditingNewSecureNote");
+    }
+
+    [RelayCommand]
+    private async Task SaveNoteAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NoteTitle) && string.IsNullOrWhiteSpace(NoteContent))
+        {
+            StatusMessage = _localization.Get("NoteRequiresContent");
+            return;
+        }
+
+        var payload = NoteContentCodec.BuildSavePayload(
+            NoteTitle,
+            NoteContent,
+            NoteTagsText,
+            NoteIsMarkdown,
+            SelectedNote is null ? [] : NoteContentCodec.DecodeImagePaths(SelectedNote.ImagePaths));
+
+        var item = SelectedNote ?? new SecureItem
+        {
+            ItemType = VaultItemType.Note,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        item.Title = payload.Title;
+        item.Notes = payload.NotesCache;
+        item.ItemData = payload.ItemData;
+        item.ImagePaths = payload.ImagePaths;
+        item.IsFavorite = NoteIsFavorite;
+        item.ItemType = VaultItemType.Note;
+        item.SyncStatus = item.BitwardenVaultId is null ? SyncStatus.None : SyncStatus.Pending;
+
+        await _repository.SaveSecureItemAsync(item);
+        await _repository.LogAsync(new OperationLog
+        {
+            ItemType = "NOTE",
+            ItemId = item.Id,
+            ItemTitle = item.Title,
+            OperationType = SelectedNote is null ? "CREATE" : "UPDATE",
+            DeviceName = Environment.MachineName
+        });
+
+        if (!NoteItems.Contains(item))
+        {
+            NoteItems.Insert(0, item);
+        }
+
+        SelectedNote = item;
+        RaiseCounts();
+        StatusMessage = _localization.Format("SavedNoteFormat", item.Title);
+    }
+
+    [RelayCommand]
+    private async Task ToggleNoteFavoriteAsync()
+    {
+        NoteIsFavorite = !NoteIsFavorite;
+        if (SelectedNote is null)
+        {
+            return;
+        }
+
+        SelectedNote.IsFavorite = NoteIsFavorite;
+        await _repository.SaveSecureItemAsync(SelectedNote);
+        StatusMessage = _localization.Format("SavedNoteFormat", SelectedNote.Title);
+    }
+
+    [RelayCommand]
+    private async Task DeleteNoteAsync(SecureItem? item)
+    {
+        item ??= SelectedNote;
+        if (item is null)
+        {
+            return;
+        }
+
+        await _repository.SoftDeleteSecureItemAsync(item.Id);
+        NoteItems.Remove(item);
+        if (ReferenceEquals(SelectedNote, item) || SelectedNote?.Id == item.Id)
+        {
+            AddNote();
+        }
+
+        RaiseCounts();
+        StatusMessage = _localization.Format("MovedToRecycleBinFormat", item.Title);
+    }
+
+    [RelayCommand]
     private void GeneratePassword()
     {
         GeneratedPassword = _passwordGenerator.GeneratePassword(24);
@@ -527,7 +1001,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public void RefreshTotpDisplay(SecureItem item)
     {
-        var data = ParseTotpData(item.ItemData);
+        var data = TotpDataResolver.ParseStoredItemData(item.ItemData, item.Title, item.Notes);
+        if (data is null || string.IsNullOrWhiteSpace(data.Secret))
+        {
+            item.TotpCode = "------";
+            item.TotpTimeRemaining = "";
+            item.TotpProgress = 0;
+            return;
+        }
+
         item.TotpCode = _totpService.GenerateCode(data.Secret, data.Period, data.Digits, data.OtpType, data.Counter);
         item.TotpTimeRemaining = $"{_totpService.GetRemainingSeconds(data.Period)}s";
         item.TotpProgress = _totpService.GetProgress(data.Period);
@@ -536,8 +1018,333 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private void RaiseCounts()
     {
         OnPropertyChanged(nameof(PasswordCountText));
+        OnPropertyChanged(nameof(DeletedPasswordCountText));
+        OnPropertyChanged(nameof(NoteCountText));
         OnPropertyChanged(nameof(TotpCountText));
         OnPropertyChanged(nameof(WalletCountText));
+    }
+
+    private void RaisePasswordSelectionState()
+    {
+        OnPropertyChanged(nameof(SelectedPasswordCount));
+        OnPropertyChanged(nameof(SelectedPasswordCountText));
+        OnPropertyChanged(nameof(HasSelectedPasswords));
+        OnPropertyChanged(nameof(AreAllFilteredPasswordsSelected));
+    }
+
+    private void TrackPasswordSelection(PasswordEntry entry)
+    {
+        entry.PropertyChanged -= PasswordEntryPropertyChanged;
+        entry.PropertyChanged += PasswordEntryPropertyChanged;
+    }
+
+    private void PasswordEntryPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(PasswordEntry.IsSelected))
+        {
+            RaisePasswordSelectionState();
+        }
+    }
+
+    private string ProtectPassword(string password)
+    {
+        return _cryptoService.IsUnlocked ? _cryptoService.EncryptString(password) : password;
+    }
+
+    private IReadOnlyList<string> ProtectPasswords(IReadOnlyList<string> passwords)
+    {
+        if (passwords.Count == 0)
+        {
+            return [ProtectPassword("")];
+        }
+
+        return passwords.Select(ProtectPassword).ToArray();
+    }
+
+    private string UnprotectPassword(string storedPassword)
+    {
+        if (!_cryptoService.IsUnlocked)
+        {
+            return storedPassword;
+        }
+
+        try
+        {
+            return _cryptoService.DecryptString(storedPassword);
+        }
+        catch
+        {
+            return storedPassword;
+        }
+    }
+
+    private void ReplacePasswordGroup(IReadOnlyList<PasswordEntry> previousEntries, IReadOnlyList<PasswordEntry> updatedEntries)
+    {
+        foreach (var previous in previousEntries)
+        {
+            Passwords.Remove(previous);
+            var current = Passwords.FirstOrDefault(item => item.Id == previous.Id);
+            if (current is not null)
+            {
+                Passwords.Remove(current);
+            }
+        }
+
+        for (var index = updatedEntries.Count - 1; index >= 0; index--)
+        {
+            updatedEntries[index].IsSelected = false;
+            TrackPasswordSelection(updatedEntries[index]);
+            Passwords.Insert(0, updatedEntries[index]);
+        }
+
+        RaisePasswordSelectionState();
+    }
+
+    private static IReadOnlyList<CustomField> BindCustomFields(long entryId, IReadOnlyList<CustomField> fields)
+    {
+        return fields
+            .Select((field, index) => new CustomField
+            {
+                EntryId = entryId,
+                Title = field.Title,
+                Value = field.Value,
+                IsProtected = field.IsProtected,
+                SortOrder = index
+            })
+            .ToArray();
+    }
+
+    private void SetPasswordCustomFields(long entryId, IReadOnlyList<CustomField> fields)
+    {
+        var next = _passwordCustomFields.ToDictionary(pair => pair.Key, pair => pair.Value);
+        if (fields.Count == 0)
+        {
+            next.Remove(entryId);
+        }
+        else
+        {
+            next[entryId] = fields;
+        }
+
+        _passwordCustomFields = next;
+    }
+
+    private async Task<IReadOnlyList<CustomField>> GetGroupCustomFieldsAsync(PasswordEntry entry, IReadOnlyList<PasswordEntry> siblings)
+    {
+        foreach (var candidate in siblings)
+        {
+            var fields = await _repository.GetCustomFieldsAsync(candidate.Id);
+            if (fields.Count > 0 || candidate.Id == entry.Id)
+            {
+                return fields;
+            }
+        }
+
+        return [];
+    }
+
+    private async Task LoadTotpItemsAsync()
+    {
+        TotpItems.Clear();
+        var storedTotps = await _repository.GetSecureItemsAsync(VaultItemType.Totp);
+        var seenVirtualPasswordIds = new HashSet<long>();
+
+        foreach (var item in storedTotps)
+        {
+            RefreshTotpDisplay(item);
+            TotpItems.Add(item);
+            if (item.BoundPasswordId is { } passwordId)
+            {
+                seenVirtualPasswordIds.Add(passwordId);
+            }
+        }
+
+        foreach (var password in Passwords.Where(item => item.HasAuthenticator && !seenVirtualPasswordIds.Contains(item.Id)))
+        {
+            var virtualItem = BuildVirtualTotpItem(password);
+            RefreshTotpDisplay(virtualItem);
+            TotpItems.Add(virtualItem);
+        }
+    }
+
+    private void RefreshPasswordTotpDisplay(PasswordEntry entry)
+    {
+        var data = TotpDataResolver.FromAuthenticatorKey(entry.AuthenticatorKey, entry.Title, entry.Username);
+        if (data is null || string.IsNullOrWhiteSpace(data.Secret))
+        {
+            entry.TotpCode = "------";
+            entry.TotpTimeRemaining = "";
+            entry.TotpProgress = 0;
+            return;
+        }
+
+        entry.TotpCode = _totpService.GenerateCode(data.Secret, data.Period, data.Digits, data.OtpType, data.Counter);
+        entry.TotpTimeRemaining = $"{_totpService.GetRemainingSeconds(data.Period)}s";
+        entry.TotpProgress = _totpService.GetProgress(data.Period);
+    }
+
+    private async Task SynchronizeBoundTotpAsync(PasswordEntry entry)
+    {
+        var existing = await _repository.GetSecureItemsByBoundPasswordIdAsync(entry.Id, includeDeleted: true);
+        var active = existing.Where(item => !item.IsDeleted).OrderBy(item => item.Id).ToArray();
+        var data = TotpDataResolver.FromAuthenticatorKey(entry.AuthenticatorKey, entry.Title, entry.Username);
+        if (data is null || string.IsNullOrWhiteSpace(data.Secret))
+        {
+            foreach (var item in active)
+            {
+                await _repository.SoftDeleteSecureItemAsync(item.Id);
+            }
+
+            return;
+        }
+
+        var primary = active.FirstOrDefault() ?? existing.OrderBy(item => item.Id).FirstOrDefault() ?? new SecureItem
+        {
+            ItemType = VaultItemType.Totp,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        primary.ItemType = VaultItemType.Totp;
+        primary.Title = entry.Title;
+        primary.Notes = string.IsNullOrWhiteSpace(data.AccountName) ? entry.Username : data.AccountName;
+        primary.ItemData = TotpDataResolver.ToItemData(data);
+        primary.BoundPasswordId = entry.Id;
+        primary.CategoryId = entry.CategoryId;
+        primary.KeepassDatabaseId = entry.KeepassDatabaseId;
+        primary.KeepassGroupPath = entry.KeepassGroupPath;
+        primary.KeepassEntryUuid = entry.KeepassEntryUuid;
+        primary.KeepassGroupUuid = entry.KeepassGroupUuid;
+        primary.MdbxDatabaseId = entry.MdbxDatabaseId;
+        primary.MdbxFolderId = entry.MdbxFolderId;
+        primary.BitwardenVaultId = entry.BitwardenVaultId;
+        primary.BitwardenFolderId = entry.BitwardenFolderId;
+        primary.BitwardenCipherId = entry.BitwardenCipherId;
+        primary.BitwardenRevisionDate = entry.BitwardenRevisionDate;
+        primary.BitwardenLocalModified = entry.BitwardenLocalModified;
+        primary.IsDeleted = false;
+        primary.DeletedAt = null;
+        primary.SyncStatus = entry.BitwardenVaultId is null ? SyncStatus.None : SyncStatus.Pending;
+        await _repository.SaveSecureItemAsync(primary);
+
+        foreach (var duplicate in active.Skip(1))
+        {
+            await _repository.SoftDeleteSecureItemAsync(duplicate.Id);
+        }
+    }
+
+    private static SecureItem BuildVirtualTotpItem(PasswordEntry entry)
+    {
+        var data = TotpDataResolver.FromAuthenticatorKey(entry.AuthenticatorKey, entry.Title, entry.Username);
+        return new SecureItem
+        {
+            Id = -entry.Id,
+            ItemType = VaultItemType.Totp,
+            Title = entry.Title,
+            Notes = string.IsNullOrWhiteSpace(data?.AccountName) ? entry.Username : data.AccountName,
+            ItemData = data is null ? "{}" : TotpDataResolver.ToItemData(data),
+            BoundPasswordId = entry.Id,
+            CategoryId = entry.CategoryId,
+            CreatedAt = entry.CreatedAt,
+            UpdatedAt = entry.UpdatedAt
+        };
+    }
+
+    private bool MatchesPasswordSearch(PasswordEntry item, string query)
+    {
+        var term = query.Trim();
+        if (term.Length == 0)
+        {
+            return true;
+        }
+
+        if (ContainsAny(term,
+            item.Title,
+            item.Username,
+            item.Website,
+            item.Notes,
+            item.AuthenticatorKey,
+            item.AppName,
+            item.AppPackageName,
+            item.Email,
+            item.Phone,
+            item.AddressLine,
+            item.City,
+            item.State,
+            item.ZipCode,
+            item.Country,
+            item.CreditCardHolder,
+            item.CreditCardExpiry,
+            item.SsoProvider,
+            item.PasskeyBindings,
+            item.WifiMetadata,
+            item.SshKeyData,
+            item.KeepassGroupPath ?? "",
+            item.MdbxFolderId ?? "",
+            item.BitwardenFolderId ?? ""))
+        {
+            return true;
+        }
+
+        return _passwordCustomFields.TryGetValue(item.Id, out var fields) &&
+            fields.Any(field => ContainsAny(term, field.Title, field.Value));
+    }
+
+    private static bool ContainsAny(string query, params string[] values) =>
+        values.Any(value => value.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<PasswordEntry> GetPasswordSiblings(PasswordEntry entry)
+    {
+        var key = BuildSiblingGroupKey(entry);
+        return Passwords
+            .Where(item => BuildSiblingGroupKey(item) == key)
+            .OrderBy(item => item.Id == 0 ? long.MaxValue : item.Id);
+    }
+
+    private IEnumerable<PasswordEntry> GetDeletedPasswordSiblings(PasswordEntry entry)
+    {
+        var key = BuildSiblingGroupKey(entry);
+        return DeletedPasswords
+            .Where(item => BuildSiblingGroupKey(item) == key)
+            .OrderBy(item => item.Id == 0 ? long.MaxValue : item.Id);
+    }
+
+    private static string BuildSiblingGroupKey(PasswordEntry entry)
+    {
+        var sourceKey = entry.BitwardenCipherId is not null
+            ? $"bw:{entry.BitwardenVaultId}:{entry.BitwardenCipherId}"
+            : entry.BitwardenVaultId is not null
+                ? $"bw-local:{entry.BitwardenVaultId}:{entry.BitwardenFolderId ?? ""}"
+                : entry.KeepassDatabaseId is not null
+                    ? $"kp:{entry.KeepassDatabaseId}:{entry.KeepassGroupPath ?? ""}"
+                    : $"local:{entry.CategoryId?.ToString() ?? "root"}";
+        return string.Join("|",
+            sourceKey,
+            entry.Title.Trim().ToLowerInvariant(),
+            NormalizeWebsiteForSiblingGroupKey(entry.Website),
+            entry.Username.Trim().ToLowerInvariant());
+    }
+
+    private static string NormalizeWebsiteForSiblingGroupKey(string value)
+    {
+        var normalized = value
+            .Trim()
+            .ToLowerInvariant();
+
+        if (normalized.StartsWith("http://", StringComparison.Ordinal))
+        {
+            normalized = normalized["http://".Length..];
+        }
+        else if (normalized.StartsWith("https://", StringComparison.Ordinal))
+        {
+            normalized = normalized["https://".Length..];
+        }
+
+        if (normalized.StartsWith("www.", StringComparison.Ordinal))
+        {
+            normalized = normalized["www.".Length..];
+        }
+
+        return normalized.TrimEnd('/');
     }
 
     private void ApplySettings(DesktopAppSettings settings)
@@ -616,6 +1423,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(LoginDescription));
         OnPropertyChanged(nameof(LoginButtonText));
         RaiseCounts();
+        OnPropertyChanged(nameof(NotePreviewMarkdown));
+        OnPropertyChanged(nameof(NotePlainPreview));
     }
 
     private void RefreshChoiceLabels()
@@ -636,6 +1445,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             new("Totp", _localization.Totp),
             new("Cards", _localization.Cards),
             new("Generator", _localization.Generator),
+            new("RecycleBin", _localization.RecycleBin),
             new("Sync", _localization.SyncAndBackup),
             new("Settings", _localization.Settings));
 
@@ -701,6 +1511,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             "Totp" => _localization.Totp,
             "Cards" => _localization.Cards,
             "Generator" => _localization.Generator,
+            "RecycleBin" => _localization.RecycleBin,
             "Sync" => _localization.SyncAndBackup,
             "Settings" => _localization.Settings,
             _ => section
@@ -722,24 +1533,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
         };
     }
 
-    private static TotpData ParseTotpData(string json)
+    private void LoadNoteIntoEditor(SecureItem? item)
     {
-        try
+        if (item is null)
         {
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-            return new TotpData(
-                root.TryGetProperty("secret", out var secret) ? secret.GetString() ?? "" : "",
-                root.TryGetProperty("period", out var period) ? period.GetInt32() : 30,
-                root.TryGetProperty("digits", out var digits) ? digits.GetInt32() : 6,
-                root.TryGetProperty("otpType", out var otpType) ? otpType.GetString() ?? "TOTP" : "TOTP",
-                root.TryGetProperty("counter", out var counter) ? counter.GetInt64() : 0);
+            return;
         }
-        catch
-        {
-            return new TotpData("", 30, 6, "TOTP", 0);
-        }
-    }
 
-    private sealed record TotpData(string Secret, int Period, int Digits, string OtpType, long Counter);
+        var decoded = NoteContentCodec.DecodeFromItem(item);
+        NoteTitle = item.Title;
+        NoteContent = decoded.Content;
+        NoteTagsText = string.Join(", ", decoded.Tags);
+        NoteIsMarkdown = decoded.IsMarkdown;
+        NoteIsFavorite = item.IsFavorite;
+        NotePreviewMode = decoded.IsMarkdown;
+        StatusMessage = _localization.Format("EditingNoteFormat", item.Title);
+    }
 }

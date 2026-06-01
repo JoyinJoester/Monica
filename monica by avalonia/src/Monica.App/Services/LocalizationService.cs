@@ -18,6 +18,7 @@ public interface ILocalizationService : INotifyPropertyChanged
     string Totp { get; }
     string Cards { get; }
     string Generator { get; }
+    string RecycleBin { get; }
     string SyncAndBackup { get; }
     string Settings { get; }
     string Folders { get; }
@@ -33,11 +34,76 @@ public interface ILocalizationService : INotifyPropertyChanged
     string Unlock { get; }
     string CreateVault { get; }
     string PasswordManager { get; }
+    string DeletedPasswords { get; }
     string Search { get; }
     string AddPassword { get; }
+    string EditPassword { get; }
+    string PasswordDetails { get; }
     string Favorite { get; }
+    string Copy { get; }
     string CopyPassword { get; }
+    string CopyUsername { get; }
+    string CopyWebsite { get; }
+    string BatchFavorite { get; }
+    string BatchDelete { get; }
     string MoveToRecycleBin { get; }
+    string RestorePassword { get; }
+    string DeletePermanently { get; }
+    string Save { get; }
+    string Cancel { get; }
+    string NoFolder { get; }
+    string NewPassword { get; }
+    string PasswordTitleRequired { get; }
+    string PasswordValueRequired { get; }
+    string PasswordTitle { get; }
+    string Website { get; }
+    string Username { get; }
+    string Password { get; }
+    string Category { get; }
+    string BoundNote { get; }
+    string SecurityVerification { get; }
+    string AuthenticatorKey { get; }
+    string AuthenticatorKeyHint { get; }
+    string TotpCode { get; }
+    string RemainingTime { get; }
+    string Issuer { get; }
+    string Account { get; }
+    string TotpSecret { get; }
+    string AppBinding { get; }
+    string AppName { get; }
+    string AppPackageName { get; }
+    string NoBoundNote { get; }
+    string Untitled { get; }
+    string PersonalInfo { get; }
+    string Email { get; }
+    string Phone { get; }
+    string AddressLine { get; }
+    string City { get; }
+    string State { get; }
+    string ZipCode { get; }
+    string Country { get; }
+    string CardInfo { get; }
+    string CreditCardNumber { get; }
+    string CreditCardHolder { get; }
+    string CreditCardExpiry { get; }
+    string CreditCardCvv { get; }
+    string AdvancedLogin { get; }
+    string LoginType { get; }
+    string LoginTypePassword { get; }
+    string LoginTypeSso { get; }
+    string LoginTypeWifi { get; }
+    string LoginTypeSshKey { get; }
+    string SsoProvider { get; }
+    string PasskeyBindings { get; }
+    string WifiMetadata { get; }
+    string SshKeyData { get; }
+    string CustomFields { get; }
+    string CustomFieldsHint { get; }
+    string Notes { get; }
+    string SourceMetadata { get; }
+    string CreatedAt { get; }
+    string UpdatedAt { get; }
+    string Close { get; }
     string TwoStepVerification { get; }
     string AddAuthenticator { get; }
     string CopyCode { get; }
@@ -47,32 +113,56 @@ public interface ILocalizationService : INotifyPropertyChanged
     string DesktopEquivalentsMessage { get; }
     string CreateMdbxMetadata { get; }
     string FeatureParityMap { get; }
+    string FeatureParityMapDescription { get; }
     string ExportPreview { get; }
     string PasswordGenerator { get; }
     string Generate { get; }
     string SaveAsLogin { get; }
     string SecureNotesDescription { get; }
     string CreateSecureItem { get; }
+    string NewSecureNote { get; }
+    string NoteTitleWatermark { get; }
+    string NoteTagsWatermark { get; }
+    string NoteContentWatermark { get; }
+    string PlainText { get; }
+    string Edit { get; }
+    string Preview { get; }
+    string SaveNote { get; }
     string SettingsSubtitle { get; }
     string General { get; }
+    string GeneralSettingsDescription { get; }
     string Language { get; }
+    string LanguageDescription { get; }
     string Theme { get; }
+    string ThemeDescription { get; }
     string StartupView { get; }
+    string StartupViewDescription { get; }
     string Security { get; }
+    string SecuritySettingsDescription { get; }
     string AutoLock { get; }
     string AutoLockDescription { get; }
     string AutoLockAfter { get; }
+    string AutoLockAfterDescription { get; }
     string ClearClipboard { get; }
     string ClearClipboardDescription { get; }
     string ClearClipboardAfter { get; }
+    string ClearClipboardAfterDescription { get; }
     string RequirePasswordBeforeExport { get; }
+    string RequirePasswordBeforeExportDescription { get; }
     string Desktop { get; }
+    string DesktopSettingsDescription { get; }
     string MinimizeToTray { get; }
+    string MinimizeToTrayDescription { get; }
     string QuickSearch { get; }
+    string QuickSearchDescription { get; }
     string QuickSearchHotkey { get; }
+    string QuickSearchHotkeyDescription { get; }
     string BrowserIntegration { get; }
+    string BrowserIntegrationDescription { get; }
     string BrowserIntegrationPort { get; }
+    string BrowserIntegrationPortDescription { get; }
     string CompactPasswordList { get; }
+    string CompactPasswordListDescription { get; }
     string SyncSubtitle { get; }
     string WebDav { get; }
     string EnableWebDav { get; }
@@ -134,6 +224,7 @@ public sealed class LocalizationService : ILocalizationService
     public string Totp => Text();
     public string Cards => Text();
     public string Generator => Text();
+    public string RecycleBin => Text();
     public string SyncAndBackup => Text();
     public string Settings => Text();
     public string Folders => Text();
@@ -149,11 +240,76 @@ public sealed class LocalizationService : ILocalizationService
     public string Unlock => Text();
     public string CreateVault => Text();
     public string PasswordManager => Text();
+    public string DeletedPasswords => Text();
     public string Search => Text();
     public string AddPassword => Text();
+    public string EditPassword => Text();
+    public string PasswordDetails => Text();
     public string Favorite => Text();
+    public string Copy => Text();
     public string CopyPassword => Text();
+    public string CopyUsername => Text();
+    public string CopyWebsite => Text();
+    public string BatchFavorite => Text();
+    public string BatchDelete => Text();
     public string MoveToRecycleBin => Text();
+    public string RestorePassword => Text();
+    public string DeletePermanently => Text();
+    public string Save => Text();
+    public string Cancel => Text();
+    public string NoFolder => Text();
+    public string NewPassword => Text();
+    public string PasswordTitleRequired => Text();
+    public string PasswordValueRequired => Text();
+    public string PasswordTitle => Text();
+    public string Website => Text();
+    public string Username => Text();
+    public string Password => Text();
+    public string Category => Text();
+    public string BoundNote => Text();
+    public string SecurityVerification => Text();
+    public string AuthenticatorKey => Text();
+    public string AuthenticatorKeyHint => Text();
+    public string TotpCode => Text();
+    public string RemainingTime => Text();
+    public string Issuer => Text();
+    public string Account => Text();
+    public string TotpSecret => Text();
+    public string AppBinding => Text();
+    public string AppName => Text();
+    public string AppPackageName => Text();
+    public string NoBoundNote => Text();
+    public string Untitled => Text();
+    public string PersonalInfo => Text();
+    public string Email => Text();
+    public string Phone => Text();
+    public string AddressLine => Text();
+    public string City => Text();
+    public string State => Text();
+    public string ZipCode => Text();
+    public string Country => Text();
+    public string CardInfo => Text();
+    public string CreditCardNumber => Text();
+    public string CreditCardHolder => Text();
+    public string CreditCardExpiry => Text();
+    public string CreditCardCvv => Text();
+    public string AdvancedLogin => Text();
+    public string LoginType => Text();
+    public string LoginTypePassword => Text();
+    public string LoginTypeSso => Text();
+    public string LoginTypeWifi => Text();
+    public string LoginTypeSshKey => Text();
+    public string SsoProvider => Text();
+    public string PasskeyBindings => Text();
+    public string WifiMetadata => Text();
+    public string SshKeyData => Text();
+    public string CustomFields => Text();
+    public string CustomFieldsHint => Text();
+    public string Notes => Text();
+    public string SourceMetadata => Text();
+    public string CreatedAt => Text();
+    public string UpdatedAt => Text();
+    public string Close => Text();
     public string TwoStepVerification => Text();
     public string AddAuthenticator => Text();
     public string CopyCode => Text();
@@ -163,32 +319,56 @@ public sealed class LocalizationService : ILocalizationService
     public string DesktopEquivalentsMessage => Text();
     public string CreateMdbxMetadata => Text();
     public string FeatureParityMap => Text();
+    public string FeatureParityMapDescription => Text();
     public string ExportPreview => Text();
     public string PasswordGenerator => Text();
     public string Generate => Text();
     public string SaveAsLogin => Text();
     public string SecureNotesDescription => Text();
     public string CreateSecureItem => Text();
+    public string NewSecureNote => Text();
+    public string NoteTitleWatermark => Text();
+    public string NoteTagsWatermark => Text();
+    public string NoteContentWatermark => Text();
+    public string PlainText => Text();
+    public string Edit => Text();
+    public string Preview => Text();
+    public string SaveNote => Text();
     public string SettingsSubtitle => Text();
     public string General => Text();
+    public string GeneralSettingsDescription => Text();
     public string Language => Text();
+    public string LanguageDescription => Text();
     public string Theme => Text();
+    public string ThemeDescription => Text();
     public string StartupView => Text();
+    public string StartupViewDescription => Text();
     public string Security => Text();
+    public string SecuritySettingsDescription => Text();
     public string AutoLock => Text();
     public string AutoLockDescription => Text();
     public string AutoLockAfter => Text();
+    public string AutoLockAfterDescription => Text();
     public string ClearClipboard => Text();
     public string ClearClipboardDescription => Text();
     public string ClearClipboardAfter => Text();
+    public string ClearClipboardAfterDescription => Text();
     public string RequirePasswordBeforeExport => Text();
+    public string RequirePasswordBeforeExportDescription => Text();
     public string Desktop => Text();
+    public string DesktopSettingsDescription => Text();
     public string MinimizeToTray => Text();
+    public string MinimizeToTrayDescription => Text();
     public string QuickSearch => Text();
+    public string QuickSearchDescription => Text();
     public string QuickSearchHotkey => Text();
+    public string QuickSearchHotkeyDescription => Text();
     public string BrowserIntegration => Text();
+    public string BrowserIntegrationDescription => Text();
     public string BrowserIntegrationPort => Text();
+    public string BrowserIntegrationPortDescription => Text();
     public string CompactPasswordList => Text();
+    public string CompactPasswordListDescription => Text();
     public string SyncSubtitle => Text();
     public string WebDav => Text();
     public string EnableWebDav => Text();
@@ -236,6 +416,7 @@ public sealed class LocalizationService : ILocalizationService
         ["Totp"] = "TOTP",
         ["Cards"] = "Cards",
         ["Generator"] = "Generator",
+        ["RecycleBin"] = "Recycle Bin",
         ["SyncAndBackup"] = "Sync and Backup",
         ["Settings"] = "Settings",
         ["Folders"] = "Folders",
@@ -251,11 +432,76 @@ public sealed class LocalizationService : ILocalizationService
         ["Unlock"] = "Unlock",
         ["CreateVault"] = "Create Vault",
         ["PasswordManager"] = "Password Manager",
+        ["DeletedPasswords"] = "Deleted Passwords",
         ["Search"] = "Search...",
         ["AddPassword"] = "Add Password",
+        ["EditPassword"] = "Edit Password",
+        ["PasswordDetails"] = "Password Details",
         ["Favorite"] = "Favorite",
+        ["Copy"] = "Copy",
         ["CopyPassword"] = "Copy password",
+        ["CopyUsername"] = "Copy username",
+        ["CopyWebsite"] = "Copy website",
+        ["BatchFavorite"] = "Favorite selected",
+        ["BatchDelete"] = "Delete selected",
         ["MoveToRecycleBin"] = "Move to recycle bin",
+        ["RestorePassword"] = "Restore password",
+        ["DeletePermanently"] = "Delete permanently",
+        ["Save"] = "Save",
+        ["Cancel"] = "Cancel",
+        ["NoFolder"] = "No folder",
+        ["NewPassword"] = "New Password",
+        ["PasswordTitleRequired"] = "Enter a title for this password.",
+        ["PasswordValueRequired"] = "Enter a password value.",
+        ["PasswordTitle"] = "Title",
+        ["Website"] = "Website",
+        ["Username"] = "Username",
+        ["Password"] = "Password",
+        ["Category"] = "Category",
+        ["BoundNote"] = "Bound note",
+        ["SecurityVerification"] = "Security verification",
+        ["AuthenticatorKey"] = "Authenticator secret",
+        ["AuthenticatorKeyHint"] = "Optional TOTP secret from the Android authenticator field. QR import and multi-password storage will be layered onto this same model.",
+        ["TotpCode"] = "TOTP code",
+        ["RemainingTime"] = "Remaining time",
+        ["Issuer"] = "Issuer",
+        ["Account"] = "Account",
+        ["TotpSecret"] = "TOTP secret",
+        ["AppBinding"] = "App binding",
+        ["AppName"] = "App name",
+        ["AppPackageName"] = "App package or bundle id",
+        ["NoBoundNote"] = "No bound note",
+        ["Untitled"] = "Untitled",
+        ["PersonalInfo"] = "Personal information",
+        ["Email"] = "Email",
+        ["Phone"] = "Phone",
+        ["AddressLine"] = "Address",
+        ["City"] = "City",
+        ["State"] = "State or province",
+        ["ZipCode"] = "ZIP or postal code",
+        ["Country"] = "Country",
+        ["CardInfo"] = "Card information",
+        ["CreditCardNumber"] = "Card number",
+        ["CreditCardHolder"] = "Cardholder name",
+        ["CreditCardExpiry"] = "Expiry",
+        ["CreditCardCvv"] = "CVV",
+        ["AdvancedLogin"] = "Advanced login",
+        ["LoginType"] = "Login type",
+        ["LoginTypePassword"] = "Password",
+        ["LoginTypeSso"] = "SSO",
+        ["LoginTypeWifi"] = "Wi-Fi",
+        ["LoginTypeSshKey"] = "SSH key",
+        ["SsoProvider"] = "SSO provider",
+        ["PasskeyBindings"] = "Passkey bindings",
+        ["WifiMetadata"] = "Wi-Fi metadata",
+        ["SshKeyData"] = "SSH key data",
+        ["CustomFields"] = "Custom fields",
+        ["CustomFieldsHint"] = "One field per line. Use Title=Value, and prefix the title with ! for protected fields.",
+        ["Notes"] = "Notes",
+        ["SourceMetadata"] = "Source metadata",
+        ["CreatedAt"] = "Created",
+        ["UpdatedAt"] = "Updated",
+        ["Close"] = "Close",
         ["TwoStepVerification"] = "Two-Step Verification",
         ["AddAuthenticator"] = "Add Authenticator",
         ["CopyCode"] = "Copy code",
@@ -271,26 +517,49 @@ public sealed class LocalizationService : ILocalizationService
         ["SaveAsLogin"] = "Save as Login",
         ["SecureNotesDescription"] = "Notes are stored as secure_items with NOTE item type and share the same encryption, folder, KeePass, Bitwarden and MDBX ownership model.",
         ["CreateSecureItem"] = "Create Secure Item",
+        ["NewSecureNote"] = "New Note",
+        ["NoteTitleWatermark"] = "Title",
+        ["NoteTagsWatermark"] = "Tags, separated by commas",
+        ["NoteContentWatermark"] = "Write a private note...",
+        ["PlainText"] = "Plain text",
+        ["Edit"] = "Edit",
+        ["Preview"] = "Preview",
+        ["SaveNote"] = "Save Note",
         ["SettingsSubtitle"] = "Configure Monica desktop behavior, security, appearance and integration options.",
         ["General"] = "General",
+        ["GeneralSettingsDescription"] = "Language, visual theme, and the page shown after unlock.",
         ["Language"] = "Language",
+        ["LanguageDescription"] = "Choose the display language used by Monica desktop.",
         ["Theme"] = "Theme",
+        ["ThemeDescription"] = "Follow the system theme or force a light or dark appearance.",
         ["StartupView"] = "Startup view",
+        ["StartupViewDescription"] = "Choose the first page shown after the vault is unlocked.",
         ["Security"] = "Security",
+        ["SecuritySettingsDescription"] = "Locking, clipboard, and export confirmation controls.",
         ["AutoLock"] = "Auto lock",
         ["AutoLockDescription"] = "Lock the vault after a period of desktop inactivity.",
         ["AutoLockAfter"] = "Auto-lock after",
+        ["AutoLockAfterDescription"] = "Set how long Monica waits before locking an inactive vault.",
         ["ClearClipboard"] = "Clear clipboard",
         ["ClearClipboardDescription"] = "Remove copied passwords and TOTP codes after a timeout.",
         ["ClearClipboardAfter"] = "Clear after",
+        ["ClearClipboardAfterDescription"] = "Set how long copied sensitive values remain on the clipboard.",
         ["RequirePasswordBeforeExport"] = "Require master password before export",
+        ["RequirePasswordBeforeExportDescription"] = "Ask for the master password before preparing export data.",
         ["Desktop"] = "Desktop",
+        ["DesktopSettingsDescription"] = "Desktop-only controls for tray, search, browser bridge, and list density.",
         ["MinimizeToTray"] = "Minimize to tray",
+        ["MinimizeToTrayDescription"] = "Keep Monica available from the system tray when the window is closed or minimized.",
         ["QuickSearch"] = "Quick search overlay",
+        ["QuickSearchDescription"] = "Enable a desktop search entry point for credentials and secure notes.",
         ["QuickSearchHotkey"] = "Quick search hotkey",
+        ["QuickSearchHotkeyDescription"] = "Keyboard shortcut reserved for opening quick search.",
         ["BrowserIntegration"] = "Browser extension bridge",
+        ["BrowserIntegrationDescription"] = "Expose a local bridge endpoint for browser extension integration.",
         ["BrowserIntegrationPort"] = "Local bridge port",
+        ["BrowserIntegrationPortDescription"] = "Local TCP port used by the desktop browser bridge.",
         ["CompactPasswordList"] = "Compact password list",
+        ["CompactPasswordListDescription"] = "Use denser password rows for scanning large vaults.",
         ["SyncSubtitle"] = "Configure remote sync, backup targets and conflict behavior.",
         ["WebDav"] = "WebDAV",
         ["EnableWebDav"] = "Enable WebDAV sync",
@@ -303,6 +572,7 @@ public sealed class LocalizationService : ILocalizationService
         ["OneDrive"] = "OneDrive",
         ["EnableOneDrive"] = "Enable OneDrive boundary",
         ["MdbxLocalCache"] = "Keep MDBX local cache",
+        ["FeatureParityMapDescription"] = "Desktop availability for Android-originated Monica features.",
         ["Available"] = "Available",
         ["DesktopEquivalent"] = "Desktop equivalent",
         ["PlatformLimited"] = "Platform limited",
@@ -362,6 +632,9 @@ public sealed class LocalizationService : ILocalizationService
         ["MinuteFormat"] = "{0} min",
         ["SecondFormat"] = "{0} sec",
         ["PasswordCountFormat"] = "{0} items",
+        ["SelectedPasswordCountFormat"] = "{0} selected",
+        ["DeletedPasswordCountFormat"] = "{0} deleted passwords",
+        ["NoteCountFormat"] = "{0} notes",
         ["TotpCountFormat"] = "{0} authenticators",
         ["WalletCountFormat"] = "{0} cards and documents",
         ["Locked"] = "Locked",
@@ -378,9 +651,21 @@ public sealed class LocalizationService : ILocalizationService
         ["UnlockFailedFormat"] = "Unlock failed: {0}",
         ["VaultLoadFailedFormat"] = "Vault load failed: {0}",
         ["CreatedPasswordFormat"] = "Created {0}",
+        ["UpdatedPasswordFormat"] = "Updated {0}",
+        ["RestoredPasswordFormat"] = "Restored {0}",
+        ["EditingNewSecureNote"] = "Editing a new secure note",
+        ["EditingNoteFormat"] = "Editing {0}",
+        ["NoteRequiresContent"] = "Enter a title or note content.",
+        ["SavedNoteFormat"] = "Saved note {0}",
         ["CopiedPasswordFormat"] = "Copied password for {0}",
+        ["CopiedUsernameFormat"] = "Copied username for {0}",
+        ["CopiedWebsiteFormat"] = "Copied website for {0}",
         ["CopiedTotpFormat"] = "Copied TOTP for {0}",
+        ["CopiedFieldFormat"] = "Copied {0}",
+        ["FavoritedPasswordCountFormat"] = "Favorited {0} passwords",
         ["MovedToRecycleBinFormat"] = "Moved {0} to recycle bin",
+        ["MovedSelectedPasswordsToRecycleBinFormat"] = "Moved {0} selected passwords to recycle bin",
+        ["DeletedPasswordPermanentlyFormat"] = "Permanently deleted {0}",
         ["GeneratedPassword"] = "Generated password",
         ["ExportPrepared"] = "Prepared Monica JSON export preview",
         ["CreatedMdbxMetadata"] = "Created MDBX metadata and local working file path"
@@ -410,9 +695,53 @@ public sealed class LocalizationService : ILocalizationService
         ["PasswordManager"] = "密码管理",
         ["Search"] = "搜索...",
         ["AddPassword"] = "添加密码",
+        ["EditPassword"] = "编辑密码",
         ["Favorite"] = "收藏",
         ["CopyPassword"] = "复制密码",
         ["MoveToRecycleBin"] = "移到回收站",
+        ["Save"] = "保存",
+        ["Cancel"] = "取消",
+        ["NoFolder"] = "无文件夹",
+        ["NewPassword"] = "新建密码",
+        ["PasswordTitleRequired"] = "请输入密码标题。",
+        ["PasswordValueRequired"] = "请输入密码内容。",
+        ["PasswordTitle"] = "标题",
+        ["Website"] = "网站",
+        ["Username"] = "用户名",
+        ["Password"] = "密码",
+        ["SecurityVerification"] = "安全验证",
+        ["AuthenticatorKey"] = "验证器密钥",
+        ["AuthenticatorKeyHint"] = "可选的 TOTP 密钥，对应 Android 端的验证器字段。二维码导入和多密码存储会继续复用这个模型扩展。",
+        ["AppBinding"] = "应用绑定",
+        ["AppName"] = "应用名称",
+        ["AppPackageName"] = "应用包名或 Bundle ID",
+        ["NoBoundNote"] = "不绑定笔记",
+        ["Untitled"] = "未命名",
+        ["PersonalInfo"] = "个人信息",
+        ["Email"] = "邮箱",
+        ["Phone"] = "电话",
+        ["AddressLine"] = "地址",
+        ["City"] = "城市",
+        ["State"] = "省/州",
+        ["ZipCode"] = "邮编",
+        ["Country"] = "国家/地区",
+        ["CardInfo"] = "卡片信息",
+        ["CreditCardNumber"] = "卡号",
+        ["CreditCardHolder"] = "持卡人",
+        ["CreditCardExpiry"] = "有效期",
+        ["CreditCardCvv"] = "CVV",
+        ["AdvancedLogin"] = "高级登录",
+        ["LoginTypePassword"] = "密码",
+        ["LoginTypeSso"] = "SSO",
+        ["LoginTypeWifi"] = "Wi-Fi",
+        ["LoginTypeSshKey"] = "SSH 密钥",
+        ["SsoProvider"] = "SSO 提供商",
+        ["PasskeyBindings"] = "Passkey 绑定",
+        ["WifiMetadata"] = "Wi-Fi 元数据",
+        ["SshKeyData"] = "SSH 密钥数据",
+        ["CustomFields"] = "自定义字段",
+        ["CustomFieldsHint"] = "每行一个字段，格式为 标题=值；标题前加 ! 表示受保护字段。",
+        ["Notes"] = "备注",
         ["TwoStepVerification"] = "两步验证",
         ["AddAuthenticator"] = "添加验证器",
         ["CopyCode"] = "复制验证码",
@@ -535,6 +864,7 @@ public sealed class LocalizationService : ILocalizationService
         ["UnlockFailedFormat"] = "解锁失败：{0}",
         ["VaultLoadFailedFormat"] = "保险库加载失败：{0}",
         ["CreatedPasswordFormat"] = "已创建 {0}",
+        ["UpdatedPasswordFormat"] = "已更新 {0}",
         ["CopiedPasswordFormat"] = "已复制 {0} 的密码",
         ["CopiedTotpFormat"] = "已复制 {0} 的动态口令",
         ["MovedToRecycleBinFormat"] = "已将 {0} 移到回收站",
