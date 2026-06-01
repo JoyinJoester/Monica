@@ -1,0 +1,10 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:styling="using:FluentAvalonia.Styling"
+             x:Class="Monica.App.App"
+             RequestedThemeVariant="Default">
+    <Application.Styles>
+        <styling:FluentAvaloniaTheme PreferSystemTheme="True"
+                                     PreferUserAccentColor="True" />
+    </Application.Styles>
+</Application>

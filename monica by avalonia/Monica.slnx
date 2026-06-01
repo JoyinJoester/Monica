@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Monica.App/Monica.App.csproj" />
+    <Project Path="src/Monica.Core/Monica.Core.csproj" />
+    <Project Path="src/Monica.Data/Monica.Data.csproj" />
+    <Project Path="src/Monica.Platform/Monica.Platform.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Monica.Tests/Monica.Tests.csproj" />
+  </Folder>
+</Solution>

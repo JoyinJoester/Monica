@@ -1,0 +1,175 @@
+name: Monica by Avalonia Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example 1.2.3 or 1.2.3-preview.1"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the GitHub release as a prerelease"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  PROJECT_DIR: "monica by avalonia"
+  APP_PROJECT: "src/Monica.App/Monica.App.csproj"
+
+jobs:
+  validate:
+    name: Validate version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      assembly_version: ${{ steps.version.outputs.assembly_version }}
+    steps:
+      - name: Validate release version
+        id: version
+        shell: bash
+        run: |
+          version="${{ inputs.version }}"
+          version="${version#v}"
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?(\+[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "Release version must be SemVer, for example 1.2.3 or 1.2.3-preview.1" >&2
+            exit 1
+          fi
+
+          core="${version%%[-+]*}"
+          assembly_version="${core}.0"
+          {
+            echo "version=$version"
+            echo "tag=avalonia-v$version"
+            echo "assembly_version=$assembly_version"
+          } >> "$GITHUB_OUTPUT"
+
+  native-aot:
+    name: Native AOT ${{ matrix.rid }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: osx-x64
+            os: macos-15-intel
+          - rid: osx-arm64
+            os: macos-15
+          - rid: linux-x64
+            os: ubuntu-24.04
+          - rid: linux-arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: "monica by avalonia"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore Monica.slnx
+
+      - name: Publish Native AOT
+        run: >
+          dotnet publish ${{ env.APP_PROJECT }}
+          -c Release
+          -r ${{ matrix.rid }}
+          /p:PublishAot=true
+          /p:SelfContained=true
+          /p:Version=${{ needs.validate.outputs.version }}
+          /p:PackageVersion=${{ needs.validate.outputs.version }}
+          /p:InformationalVersion=${{ needs.validate.outputs.version }}
+          /p:AssemblyVersion=${{ needs.validate.outputs.assembly_version }}
+          /p:FileVersion=${{ needs.validate.outputs.assembly_version }}
+          -o artifacts/${{ matrix.rid }}
+
+      - name: Checksums (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem artifacts/${{ matrix.rid }} -Recurse -File |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  $($_.Path.Replace((Resolve-Path artifacts/${{ matrix.rid }}).Path + [IO.Path]::DirectorySeparatorChar, ''))" } |
+            Set-Content artifacts/${{ matrix.rid }}/SHA256SUMS.txt
+
+      - name: Checksums (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd artifacts/${{ matrix.rid }}
+          find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS.txt
+
+      - name: Package release asset (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force packages | Out-Null
+          $package = "packages/Monica-Avalonia-${{ needs.validate.outputs.version }}-${{ matrix.rid }}.zip"
+          Compress-Archive -Path "artifacts/${{ matrix.rid }}/*" -DestinationPath $package -Force
+          $hash = Get-FileHash -Algorithm SHA256 $package
+          "$($hash.Hash)  $([IO.Path]::GetFileName($package))" | Set-Content "$package.sha256"
+
+      - name: Package release asset (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p packages
+          package="packages/Monica-Avalonia-${{ needs.validate.outputs.version }}-${{ matrix.rid }}.tar.gz"
+          tar -C "artifacts/${{ matrix.rid }}" -czf "$package" .
+          shasum -a 256 "$package" | sed 's#packages/##' > "$package.sha256"
+
+      - name: Upload Native AOT artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Monica-Avalonia-${{ needs.validate.outputs.version }}-${{ matrix.rid }}
+          path: ${{ env.PROJECT_DIR }}/artifacts/${{ matrix.rid }}
+          if-no-files-found: error
+
+      - name: Upload release asset artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Monica-Avalonia-release-asset-${{ matrix.rid }}
+          path: ${{ env.PROJECT_DIR }}/packages/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub release
+    needs:
+      - validate
+      - native-aot
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Monica-Avalonia-release-asset-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.tag }}
+          name: Monica by Avalonia ${{ needs.validate.outputs.version }}
+          prerelease: ${{ inputs.prerelease }}
+          files: release-assets/*
+          body: |
+            Monica by Avalonia ${{ needs.validate.outputs.version }}
+
+            Native AOT artifacts are attached for Windows, macOS, and Linux.
+            Each package has a matching SHA256 file.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
