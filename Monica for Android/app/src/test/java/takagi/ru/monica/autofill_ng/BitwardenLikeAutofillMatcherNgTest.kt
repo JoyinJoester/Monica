@@ -129,6 +129,42 @@ class BitwardenLikeAutofillMatcherNgTest {
         assertTrue(result.any { it.id == 2L })
     }
 
+    @Test
+    fun `strict mode should match one of multiple websites`() {
+        val entries = listOf(
+            entry(id = 1, title = "Multi", website = "https://old.example.com, https://accounts.qq.com"),
+            entry(id = 2, title = "Other", website = "https://other.com"),
+        )
+
+        val result = matcher.match(
+            entries = entries,
+            packageName = "com.tencent.mobileqq",
+            webDomain = "accounts.qq.com",
+            config = BitwardenLikeAutofillMatcherNg.Config(strictOnly = true),
+        )
+
+        assertEquals(1, result.size)
+        assertEquals(1L, result.first().id)
+    }
+
+    @Test
+    fun `strict mode should match androidapp package from mixed website bindings`() {
+        val entries = listOf(
+            entry(id = 1, title = "QQ", website = "https://accounts.qq.com, androidapp://com.tencent.mobileqq"),
+            entry(id = 2, title = "Other", website = "https://accounts.qq.com"),
+        )
+
+        val result = matcher.match(
+            entries = entries,
+            packageName = "com.tencent.mobileqq",
+            webDomain = null,
+            config = BitwardenLikeAutofillMatcherNg.Config(strictOnly = true),
+        )
+
+        assertEquals(1, result.size)
+        assertEquals(1L, result.first().id)
+    }
+
     private fun entry(
         id: Long,
         title: String,

@@ -760,7 +760,7 @@ class TotpViewModel(
                     keepassDatabaseId = resolvedKeepassDatabaseId
                 )
 
-                saveTotpItemInternal(
+                val saved = saveTotpItemInternal(
                     id = preferredItem?.first?.id,
                     title = preferredItem?.first?.title ?: title,
                     notes = preferredItem?.first?.notes ?: notes,
@@ -775,6 +775,13 @@ class TotpViewModel(
                     bitwardenFolderId = null,
                     followBoundPasswordStorage = true
                 )
+                if (!saved) {
+                    Log.e(
+                        "TotpViewModel",
+                        "savePasswordBoundTotp failed to persist bound item passwordId=$passwordId totpId=${preferredItem?.first?.id}"
+                    )
+                    return@launch
+                }
 
                 removeOtherBoundTotpsForPassword(
                     keepItemId = preferredItem?.first?.id,
@@ -829,8 +836,11 @@ class TotpViewModel(
                     followBoundPasswordStorage = totpData.boundPasswordId != null
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
-                // TODO: 处理错误
+                Log.e(
+                    "TotpViewModel",
+                    "saveTotpItem failed id=$id categoryId=$categoryId keepassDatabaseId=$keepassDatabaseId mdbxDatabaseId=$mdbxDatabaseId bitwardenVaultId=$bitwardenVaultId error=${e::class.java.simpleName}: ${e.message}",
+                    e
+                )
             }
         }
     }
@@ -848,6 +858,7 @@ class TotpViewModel(
             val saved = try {
                 val distinctTargets = targets.distinctBy(StorageTarget::stableKey)
                 if (distinctTargets.isEmpty()) {
+                    Log.w("TotpViewModel", "saveTotpAcrossTargets blocked because target list is empty id=$id")
                     false
                 } else {
                     val existingItem = id?.let { repository.getItemById(it) }?.takeIf { it.itemType == ItemType.TOTP }
@@ -942,6 +953,10 @@ class TotpViewModel(
 
                     val currentSaved = saveIntoTarget(currentTarget, existingItem?.id)
                     if (!currentSaved) {
+                        Log.e(
+                            "TotpViewModel",
+                            "saveTotpAcrossTargets failed current target=${currentTarget.stableKey} id=$id targets=${distinctTargets.map(StorageTarget::stableKey)}"
+                        )
                         false
                     } else {
                         var allTargetsSaved = true
@@ -968,7 +983,11 @@ class TotpViewModel(
                     }
                 }
             } catch (e: Exception) {
-                Log.e("TotpViewModel", "saveTotpAcrossTargets failed", e)
+                Log.e(
+                    "TotpViewModel",
+                    "saveTotpAcrossTargets crashed id=$id targets=${targets.map(StorageTarget::stableKey)} error=${e::class.java.simpleName}: ${e.message}",
+                    e
+                )
                 false
             }
             onComplete(saved)
@@ -992,6 +1011,10 @@ class TotpViewModel(
         replicaGroupId: String? = null
     ): Boolean {
         val existingItem = if (id != null && id > 0) repository.getItemById(id) else null
+        if (id != null && id > 0 && existingItem == null) {
+            Log.e("TotpViewModel", "saveTotpItemInternal failed because item does not exist id=$id")
+            return false
+        }
         val previousTotpData = existingItem?.let { item ->
             try {
                 Json.decodeFromString<TotpData>(item.itemData)
@@ -1077,7 +1100,13 @@ class TotpViewModel(
                 existingItem?.bitwardenVaultId == resolvedBitwardenVaultId &&
                 !existingItem?.bitwardenCipherId.isNullOrBlank(),
             abortOnQueueFailure = true
-        ) ?: return false
+        ) ?: run {
+            Log.e(
+                "TotpViewModel",
+                "saveTotpItemInternal failed because Bitwarden transition could not be resolved id=$id bitwardenVaultId=$resolvedBitwardenVaultId"
+            )
+            return false
+        }
 
         val item = if (id != null && id > 0) {
             existingItem?.copy(
@@ -1099,7 +1128,13 @@ class TotpViewModel(
                 syncStatus = transition.syncStatus,
                 replicaGroupId = resolvedReplicaGroupId,
                 updatedAt = Date()
-            ) ?: return false
+            ) ?: run {
+                Log.e(
+                    "TotpViewModel",
+                    "saveTotpItemInternal failed while updating missing item id=$id"
+                )
+                return false
+            }
         } else {
             SecureItem(
                 itemType = ItemType.TOTP,
@@ -1155,7 +1190,13 @@ class TotpViewModel(
                 item = item,
                 insertItem = repository::insertItem,
                 rollbackItem = repository::deleteItemById
-            ) ?: return false
+            ) ?: run {
+                Log.e(
+                    "TotpViewModel",
+                    "saveTotpItemInternal failed while creating item keepassDatabaseId=$resolvedKeepassDatabaseId mdbxDatabaseId=$resolvedMdbxDatabaseId bitwardenVaultId=$resolvedBitwardenVaultId"
+                )
+                return false
+            }
             requestBitwardenMutationSync(resolvedBitwardenVaultId)
             OperationLogger.logCreate(
                 itemType = OperationLogItemType.TOTP,

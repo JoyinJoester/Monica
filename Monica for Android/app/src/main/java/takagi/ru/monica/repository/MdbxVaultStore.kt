@@ -40,6 +40,12 @@ import java.util.concurrent.ConcurrentHashMap
 private val UUID_REGEX =
     Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
+private const val MDBX_SCHEMA_FORMAT_VERSION = "MDBX-1"
+private const val MDBX_LEGACY_DRAFT_FORMAT_VERSION = "MDBX-1-DRAFT"
+private const val MDBX_OFFICIAL_RELEASE_LABEL = "MDBX-1.0"
+private const val MDBX_ANDROID_CAPABILITY_FLAGS =
+    "android-official-1.0,sky-portable,tiga-selectable,legacy-test-compatible"
+
 data class MdbxVaultDiagnostics(
     val databaseId: Long,
     val filePath: String?,
@@ -49,6 +55,8 @@ data class MdbxVaultDiagnostics(
     val currentDeviceId: String? = null,
     val unavailableReason: String? = null,
     val formatVersion: String? = null,
+    val releaseLabel: String? = null,
+    val capabilityFlags: String? = null,
     val defaultTigaMode: String? = null,
     val integrityOk: Boolean = false,
     val integrityMessage: String? = null,
@@ -239,6 +247,20 @@ data class MdbxStoredFolderEntry(
     val objectClock: Long
 )
 
+data class MdbxProjectTagSummary(
+    val tag: String,
+    val projectCount: Int
+)
+
+data class MdbxProjectSearchResult(
+    val projectId: String,
+    val title: String,
+    val parentFolderId: String?,
+    val entryTypes: List<String>,
+    val tags: List<String>,
+    val updatedAt: String
+)
+
 data class MdbxApplyResult(
     val appliedObjectCount: Int,
     val keptLocalObjectCount: Int,
@@ -285,6 +307,13 @@ class MdbxVaultStore(
         "branches",
         "tombstones",
         "conflicts"
+    )
+
+    private val minimumReadableTables = listOf(
+        "vault_meta",
+        "folders",
+        "projects",
+        "entries"
     )
 
     private val deviceId: String by lazy {
@@ -479,18 +508,13 @@ class MdbxVaultStore(
             if (integrity != "ok") {
                 throw IllegalArgumentException("MDBX integrity check failed: $integrity")
             }
-            val missingTables = missingRequiredTables(db)
+            val missingTables = missingMinimumReadableTables(db)
             if (missingTables.isNotEmpty()) {
                 throw IllegalArgumentException(
                     "Unsupported MDBX schema, missing tables: ${missingTables.joinToString()}"
                 )
             }
-            val formatVersion = queryString(db, "SELECT format_version FROM vault_meta LIMIT 1")
-            if (formatVersion != "MDBX-1") {
-                throw IllegalArgumentException(
-                    "Unsupported MDBX format version: ${formatVersion ?: "unknown"}"
-                )
-            }
+            requireSupportedVaultFormat(db)
         }
     }
 
@@ -524,17 +548,25 @@ class MdbxVaultStore(
             if (unlockMethod != credential.unlockMethod) {
                 throw IllegalArgumentException("MDBX unlock method does not match selected credentials")
             }
-            val salt = queryBlob(db, "SELECT credential_salt FROM vault_meta LIMIT 1")
-                ?: throw IllegalArgumentException("MDBX credential salt is missing")
-            val verifier = queryBlob(db, "SELECT credential_verifier FROM vault_meta LIMIT 1")
-                ?: throw IllegalArgumentException("MDBX credential verifier is missing")
-            val kdfProfile = queryString(db, "SELECT credential_kdf_profile FROM vault_meta LIMIT 1")
+            val salt = queryVaultMetaBlob(db, "credential_salt")
+            val verifier = queryVaultMetaBlob(db, "credential_verifier")
+            val wrappedEpochKey =
+                if (tableExists(db, "key_epochs")) {
+                    queryBlob(
+                        db,
+                        "SELECT wrapped_epoch_key_ct FROM key_epochs WHERE status = 'active' LIMIT 1"
+                    )
+                } else {
+                    null
+                }
+            if (salt == null || verifier == null || wrappedEpochKey == null) {
+                requireCredentialShape(credential)
+                return@withContext
+            }
+            val kdfProfile = queryVaultMetaString(db, "credential_kdf_profile")
                 ?: queryString(db, "SELECT kdf_profile_id FROM key_epochs WHERE status = 'active' LIMIT 1")
                 ?: "pbkdf2-sha256:210000"
-            val expectedFingerprint = queryString(
-                db,
-                "SELECT key_file_fingerprint FROM vault_meta LIMIT 1"
-            )
+            val expectedFingerprint = queryVaultMetaString(db, "key_file_fingerprint")
             if (credential.requiresKeyFile() &&
                 !expectedFingerprint.isNullOrBlank() &&
                 !credential.keyFileFingerprint.equals(expectedFingerprint, ignoreCase = true)
@@ -551,6 +583,49 @@ class MdbxVaultStore(
             if (!ok) {
                 throw IllegalArgumentException("MDBX credentials are incorrect")
             }
+        }
+    }
+
+    suspend fun prepareVaultForOfficialMdbx1(
+        file: File,
+        credential: MdbxVaultCredential,
+        tigaMode: MdbxTigaMode
+    ): Unit = withContext(Dispatchers.IO) {
+        if (!file.exists()) {
+            throw IllegalArgumentException("MDBX file does not exist: ${file.absolutePath}")
+        }
+        openExistingWritableVault(file, allowSchemaPreparation = true).use { db ->
+            db.beginTransaction()
+            try {
+                ensureSchema(db)
+                requireSupportedVaultFormat(db)
+                ensureDeviceRegistration(db)
+                val now = now()
+                db.execSQL(
+                    """
+                    UPDATE vault_meta
+                    SET release_label = CASE
+                            WHEN release_label IS NULL OR release_label = '' OR release_label = 'MDBX-test-compatible'
+                            THEN ?
+                            ELSE release_label
+                        END,
+                        capability_flags = CASE
+                            WHEN capability_flags IS NULL OR capability_flags = '' OR capability_flags = 'legacy-test-compatible'
+                            THEN ?
+                            ELSE capability_flags
+                        END,
+                        updated_at = ?
+                    """.trimIndent(),
+                    arrayOf(MDBX_OFFICIAL_RELEASE_LABEL, MDBX_ANDROID_CAPABILITY_FLAGS, now)
+                )
+                if (!vaultHasCredentialMaterial(db)) {
+                    installOfficialCredentialMaterial(db, credential, tigaMode, now)
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+            checkpoint(db)
         }
     }
 
@@ -591,7 +666,7 @@ class MdbxVaultStore(
         }
 
         val formatVersion = queryString(db, "SELECT format_version FROM vault_meta LIMIT 1")
-        if (formatVersion != "MDBX-1") {
+        if (!isSupportedVaultFormat(formatVersion)) {
             return unavailableDiagnostics(
                 databaseId = databaseId,
                 file = file,
@@ -655,6 +730,9 @@ class MdbxVaultStore(
             fileSizeBytes = file.length(),
             isReadable = true,
             formatVersion = formatVersion,
+            releaseLabel = queryVaultMetaString(db, "release_label")
+                ?: if (formatVersion == MDBX_SCHEMA_FORMAT_VERSION) MDBX_OFFICIAL_RELEASE_LABEL else "MDBX-test-compatible",
+            capabilityFlags = queryVaultMetaString(db, "capability_flags"),
             defaultTigaMode = queryString(
                 db,
                 "SELECT default_tiga_mode FROM vault_meta LIMIT 1"
@@ -724,7 +802,7 @@ class MdbxVaultStore(
         )
     }
 
-    suspend fun getVaultDiagnostics(databaseId: Long): MdbxVaultDiagnostics =
+    override suspend fun getVaultDiagnostics(databaseId: Long): MdbxVaultDiagnostics =
         withContext(Dispatchers.IO) {
             val dbInfo = databaseDao.getDatabaseById(databaseId)
                 ?: return@withContext unavailableDiagnostics(
@@ -769,7 +847,7 @@ class MdbxVaultStore(
             }
         }
 
-    suspend fun getPendingSyncCount(databaseId: Long): Int = withContext(Dispatchers.IO) {
+    override suspend fun getPendingSyncCount(databaseId: Long): Int = withContext(Dispatchers.IO) {
         val dbInfo = databaseDao.getDatabaseById(databaseId) ?: return@withContext 0
         val status = runCatching { MdbxSyncStatus.valueOf(dbInfo.lastSyncStatus) }.getOrNull()
         if (status == MdbxSyncStatus.LOCAL_ONLY || status == MdbxSyncStatus.IN_SYNC) {
@@ -784,7 +862,169 @@ class MdbxVaultStore(
         }.getOrDefault(1).coerceAtLeast(1)
     }
 
-    suspend fun listDeltaHistory(databaseId: Long): List<MdbxDeltaSummary> =
+    override suspend fun setProjectTags(
+        databaseId: Long,
+        projectId: String,
+        tags: List<String>
+    ) = withContext(Dispatchers.IO) {
+        val dbInfo = databaseDao.getDatabaseById(databaseId)
+            ?: throw IllegalStateException("MDBX vault not found: $databaseId")
+        val file = resolveWritableFile(dbInfo)
+            ?: throw IllegalStateException("MDBX vault has no writable local copy: ${dbInfo.name}")
+        if (!file.exists()) {
+            throw IllegalStateException("MDBX local copy is missing: ${file.absolutePath}")
+        }
+        withVaultWriteLock(file) {
+            openExistingWritableVault(file).use { db ->
+                db.beginTransaction()
+                try {
+                    ensureSchema(db)
+                    val epochKey = requireEpochKey(db, dbInfo)
+                    requireActiveProject(db, projectId)
+                    replaceProjectTags(db, projectId, tags)
+                    val commitId = appendCommit(
+                        db = db,
+                        scope = "project-tags",
+                        objectId = projectId,
+                        epochKey = epochKey,
+                        commitKind = "tag",
+                        changedObjectIds = listOf(projectId)
+                    )
+                    val now = now()
+                    db.execSQL(
+                        """
+                        UPDATE projects
+                        SET object_clock = object_clock + 1,
+                            head_commit_id = ?,
+                            updated_at = ?,
+                            updated_by_device_id = ?
+                        WHERE project_id = ?
+                        """.trimIndent(),
+                        arrayOf(commitId, now, deviceId, projectId)
+                    )
+                    db.execSQL(
+                        """
+                        UPDATE object_index
+                        SET head_commit_id = ?, updated_at = ?
+                        WHERE object_type = 'project' AND object_id = ?
+                        """.trimIndent(),
+                        arrayOf(commitId, now, projectId)
+                    )
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
+            }
+            markWorkingCopyDirtyAndFlushLocked(dbInfo, file)
+        }
+    }
+
+    override suspend fun listProjectTags(databaseId: Long, projectId: String): List<String> =
+        withContext(Dispatchers.IO) {
+            val dbInfo = databaseDao.getDatabaseById(databaseId) ?: return@withContext emptyList()
+            val file = resolveWritableFile(dbInfo) ?: return@withContext emptyList()
+            if (!file.exists()) return@withContext emptyList()
+            openReadOnly(file).use { db ->
+                if (!tableExists(db, "project_tags")) return@withContext emptyList()
+                readProjectTags(db, projectId)
+            }
+        }
+
+    override suspend fun listAllProjectTags(databaseId: Long): List<MdbxProjectTagSummary> =
+        withContext(Dispatchers.IO) {
+            val dbInfo = databaseDao.getDatabaseById(databaseId) ?: return@withContext emptyList()
+            val file = resolveWritableFile(dbInfo) ?: return@withContext emptyList()
+            if (!file.exists()) return@withContext emptyList()
+            openReadOnly(file).use { db ->
+                if (!tableExists(db, "project_tags")) return@withContext emptyList()
+                db.rawQuery(
+                    """
+                    SELECT tag, COUNT(*) AS project_count
+                    FROM project_tags
+                    GROUP BY tag
+                    ORDER BY project_count DESC, tag ASC
+                    """.trimIndent(),
+                    emptyArray()
+                ).use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            add(
+                                MdbxProjectTagSummary(
+                                    tag = cursor.getString(0),
+                                    projectCount = cursor.getInt(1)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+    override suspend fun searchProjects(
+        databaseId: Long,
+        query: String,
+        requiredTags: List<String>
+    ): List<MdbxProjectSearchResult> = withContext(Dispatchers.IO) {
+        val dbInfo = databaseDao.getDatabaseById(databaseId) ?: return@withContext emptyList()
+        val file = resolveWritableFile(dbInfo) ?: return@withContext emptyList()
+        if (!file.exists()) return@withContext emptyList()
+        val normalizedQuery = query.trim().lowercase(Locale.ROOT)
+        val normalizedTags = normalizeProjectTags(requiredTags)
+        val normalizedTagKeys = normalizedTags.map { it.lowercase(Locale.ROOT) }
+        openReadOnly(file).use { db ->
+            if (!tableExists(db, "projects") || !tableExists(db, "object_index")) {
+                return@withContext emptyList()
+            }
+            val epochKey = readEpochKeyOrNull(db, dbInfo)
+            db.rawQuery(
+                """
+                SELECT p.project_id, p.title_ct, oi.parent_id, p.updated_at
+                FROM projects p
+                LEFT JOIN object_index oi
+                  ON oi.object_type = 'project' AND oi.object_id = p.project_id
+                WHERE p.deleted = 0
+                ORDER BY p.updated_at DESC, p.project_id ASC
+                """.trimIndent(),
+                emptyArray()
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val projectId = cursor.getString(0)
+                        val title = decodeVaultText(cursor.getBlob(1), epochKey)
+                        val tags = if (tableExists(db, "project_tags")) {
+                            readProjectTags(db, projectId)
+                        } else {
+                            emptyList()
+                        }
+                        if (normalizedQuery.isNotBlank()) {
+                            val haystack = buildString {
+                                append(title.lowercase(Locale.ROOT))
+                                append(' ')
+                                tags.forEach { append(it.lowercase(Locale.ROOT)).append(' ') }
+                            }
+                            if (!haystack.contains(normalizedQuery)) continue
+                        }
+                        if (normalizedTagKeys.isNotEmpty()) {
+                            val tagKeys = tags.map { it.lowercase(Locale.ROOT) }
+                            if (!tagKeys.containsAll(normalizedTagKeys)) continue
+                        }
+                        add(
+                            MdbxProjectSearchResult(
+                                projectId = projectId,
+                                title = title,
+                                parentFolderId = if (cursor.isNull(2)) null else cursor.getString(2),
+                                entryTypes = readProjectEntryTypes(db, projectId),
+                                tags = tags,
+                                updatedAt = cursor.getString(3)
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    override suspend fun listDeltaHistory(databaseId: Long): List<MdbxDeltaSummary> =
         withContext(Dispatchers.IO) {
             val dbInfo = databaseDao.getDatabaseById(databaseId) ?: return@withContext emptyList()
             val file = resolveWritableFile(dbInfo) ?: return@withContext emptyList()
@@ -831,7 +1071,7 @@ class MdbxVaultStore(
             }.getOrDefault(emptyList())
         }
 
-    suspend fun listCommitDiff(databaseId: Long, commitId: String): List<MdbxCommitDiff> =
+    override suspend fun listCommitDiff(databaseId: Long, commitId: String): List<MdbxCommitDiff> =
         withContext(Dispatchers.IO) {
             val dbInfo = databaseDao.getDatabaseById(databaseId) ?: return@withContext emptyList()
             val file = resolveWritableFile(dbInfo) ?: return@withContext emptyList()
@@ -857,7 +1097,7 @@ class MdbxVaultStore(
             }.getOrDefault(emptyList())
         }
 
-    suspend fun revertCommit(databaseId: Long, commitId: String): Int =
+    override suspend fun revertCommit(databaseId: Long, commitId: String): Int =
         withContext(Dispatchers.IO) {
             val dbInfo = databaseDao.getDatabaseById(databaseId)
                 ?: throw IllegalStateException("MDBX vault not found: $databaseId")
@@ -905,7 +1145,7 @@ class MdbxVaultStore(
             reverted
         }
 
-    suspend fun listSnapshots(databaseId: Long): List<MdbxSnapshotSummary> =
+    override suspend fun listSnapshots(databaseId: Long): List<MdbxSnapshotSummary> =
         withContext(Dispatchers.IO) {
             val dbInfo = databaseDao.getDatabaseById(databaseId) ?: return@withContext emptyList()
             val file = resolveWritableFile(dbInfo) ?: return@withContext emptyList()
@@ -950,11 +1190,11 @@ class MdbxVaultStore(
             }.getOrDefault(emptyList())
         }
 
-    suspend fun createSnapshot(
+    override suspend fun createSnapshot(
         databaseId: Long,
         name: String,
-        fullSnapshot: Boolean = false,
-        autoPrune: Boolean = false
+        fullSnapshot: Boolean,
+        autoPrune: Boolean
     ): MdbxSnapshotSummary = withContext(Dispatchers.IO) {
         val dbInfo = databaseDao.getDatabaseById(databaseId)
             ?: throw IllegalStateException("MDBX vault not found: $databaseId")
@@ -985,7 +1225,7 @@ class MdbxVaultStore(
         }
     }
 
-    suspend fun deleteSnapshot(databaseId: Long, snapshotId: String) = withContext(Dispatchers.IO) {
+    override suspend fun deleteSnapshot(databaseId: Long, snapshotId: String) = withContext(Dispatchers.IO) {
         val dbInfo = databaseDao.getDatabaseById(databaseId)
             ?: throw IllegalStateException("MDBX vault not found: $databaseId")
         val file = resolveWritableFile(dbInfo)
@@ -996,7 +1236,7 @@ class MdbxVaultStore(
         markWorkingCopyDirtyAndFlush(dbInfo, file)
     }
 
-    suspend fun revertToSnapshot(databaseId: Long, snapshotId: String): Int =
+    override suspend fun revertToSnapshot(databaseId: Long, snapshotId: String): Int =
         withContext(Dispatchers.IO) {
             val dbInfo = databaseDao.getDatabaseById(databaseId)
                 ?: throw IllegalStateException("MDBX vault not found: $databaseId")
@@ -1032,7 +1272,7 @@ class MdbxVaultStore(
             restored
         }
 
-    suspend fun getSnapshotStructurePreview(
+    override suspend fun getSnapshotStructurePreview(
         databaseId: Long,
         snapshotId: String
     ): MdbxStructurePreview = withContext(Dispatchers.IO) {
@@ -1044,7 +1284,7 @@ class MdbxVaultStore(
             throw IllegalStateException("MDBX local copy is missing: ${file.absolutePath}")
         }
         openReadOnly(file).use { db ->
-            val missingTables = missingRequiredTables(db)
+            val missingTables = missingMinimumReadableTables(db)
             if (missingTables.isNotEmpty()) {
                 throw IllegalStateException(
                     "Unsupported MDBX schema, missing tables: ${missingTables.joinToString()}"
@@ -1117,9 +1357,9 @@ class MdbxVaultStore(
         deleted
     }
 
-    suspend fun exportSyncBundle(
+    override suspend fun exportSyncBundle(
         databaseId: Long,
-        baseCommitId: String? = null
+        baseCommitId: String?
     ): MdbxSyncBundle = withContext(Dispatchers.IO) {
         val dbInfo = databaseDao.getDatabaseById(databaseId)
             ?: throw IllegalStateException("MDBX vault not found: $databaseId")
@@ -1151,7 +1391,7 @@ class MdbxVaultStore(
         }
     }
 
-    suspend fun importSyncBundle(databaseId: Long, bundle: MdbxSyncBundle): MdbxApplyResult =
+    override suspend fun importSyncBundle(databaseId: Long, bundle: MdbxSyncBundle): MdbxApplyResult =
         withContext(Dispatchers.IO) {
             val dbInfo = databaseDao.getDatabaseById(databaseId)
                 ?: throw IllegalStateException("MDBX vault not found: $databaseId")
@@ -1183,6 +1423,7 @@ class MdbxVaultStore(
                             ApplyDecision.CONFLICT -> conflicts++
                         }
                     }
+                    applied += importBundleProjectTags(db, payload)
                     tombstones = payload.optJSONArray("tombstones")?.length() ?: 0
                     db.execSQL(
                         """
@@ -1217,7 +1458,7 @@ class MdbxVaultStore(
             )
         }
 
-    suspend fun upsertExternalAttachmentRef(
+    override suspend fun upsertExternalAttachmentRef(
         databaseId: Long,
         parentEntryId: String,
         attachment: Attachment,
@@ -1358,7 +1599,7 @@ class MdbxVaultStore(
         result
     }
 
-    suspend fun flushPendingWorkingCopy(databaseId: Long) = withContext(Dispatchers.IO) {
+    override suspend fun flushPendingWorkingCopy(databaseId: Long) = withContext(Dispatchers.IO) {
         val dbInfo = databaseDao.getDatabaseById(databaseId)
             ?: throw IllegalStateException("MDBX vault not found: $databaseId")
         if (dbInfo.lastSyncStatus != MdbxSyncStatus.PENDING_UPLOAD.name) return@withContext
@@ -1370,7 +1611,18 @@ class MdbxVaultStore(
         flushWorkingCopyToSourceIfNeeded(dbInfo, file)
     }
 
-    suspend fun listConflicts(databaseId: Long): List<MdbxConflictSummary> =
+    override suspend fun flushWorkingCopy(databaseId: Long) = withContext(Dispatchers.IO) {
+        val dbInfo = databaseDao.getDatabaseById(databaseId)
+            ?: throw IllegalStateException("MDBX vault not found: $databaseId")
+        val file = resolveWritableFile(dbInfo)
+            ?: throw IllegalStateException("MDBX vault has no writable local copy: ${dbInfo.name}")
+        if (!file.exists()) {
+            throw IllegalStateException("MDBX local copy is missing: ${file.absolutePath}")
+        }
+        flushWorkingCopyToSourceIfNeeded(dbInfo, file)
+    }
+
+    override suspend fun listConflicts(databaseId: Long): List<MdbxConflictSummary> =
         withContext(Dispatchers.IO) {
             val dbInfo = databaseDao.getDatabaseById(databaseId) ?: return@withContext emptyList()
             val file = resolveWritableFile(dbInfo) ?: return@withContext emptyList()
@@ -1419,7 +1671,7 @@ class MdbxVaultStore(
             }.getOrDefault(emptyList())
         }
 
-    suspend fun resolveConflict(
+    override suspend fun resolveConflict(
         databaseId: Long,
         conflictId: String,
         resolution: MdbxConflictResolution
@@ -1511,12 +1763,7 @@ class MdbxVaultStore(
                     "Unsupported incoming MDBX schema, missing tables: ${incomingMissingTables.joinToString()}"
                 )
             }
-            val formatVersion = queryString(incoming, "SELECT format_version FROM vault_meta LIMIT 1")
-            if (formatVersion != "MDBX-1") {
-                throw IllegalArgumentException(
-                    "Unsupported incoming MDBX format version: ${formatVersion ?: "unknown"}"
-                )
-            }
+            requireSupportedVaultFormat(incoming, label = "incoming MDBX")
 
             openExistingWritableVault(localFile).use { local ->
                 var applied = 0
@@ -1757,7 +2004,7 @@ class MdbxVaultStore(
             ItemType.PASSWORD -> "password"
         }
 
-    suspend fun upsertAttachment(
+    override suspend fun upsertAttachment(
         databaseId: Long,
         parentEntryId: String,
         attachment: Attachment
@@ -1853,7 +2100,7 @@ class MdbxVaultStore(
         markWorkingCopyDirtyAndFlush(dbInfo, file)
     }
 
-    suspend fun deleteAttachment(
+    override suspend fun deleteAttachment(
         databaseId: Long,
         parentEntryId: String,
         attachment: Attachment
@@ -1936,19 +2183,21 @@ class MdbxVaultStore(
                 ?: throw IllegalStateException("MDBX vault not found: $databaseId")
             val file = resolveWritableFile(dbInfo)
                 ?: throw IllegalStateException("MDBX vault has no writable local copy: ${dbInfo.name}")
-            openExistingWritableVault(file).use { db ->
-                db.beginTransaction()
-                try {
-                    ensureSchema(db)
-                    ensureDeviceRegistration(db)
-                    val epochKey = requireEpochKey(db, dbInfo)
-                    writeMutations(db, vaultMutations, epochKey)
-                    db.setTransactionSuccessful()
-                } finally {
-                    db.endTransaction()
+            withVaultWriteLock(file) {
+                openExistingWritableVault(file).use { db ->
+                    db.beginTransaction()
+                    try {
+                        ensureSchema(db)
+                        ensureDeviceRegistration(db)
+                        val epochKey = requireEpochKey(db, dbInfo)
+                        writeMutations(db, vaultMutations, epochKey)
+                        db.setTransactionSuccessful()
+                    } finally {
+                        db.endTransaction()
+                    }
                 }
+                markWorkingCopyDirtyAndFlushLocked(dbInfo, file)
             }
-            markWorkingCopyDirtyAndFlush(dbInfo, file)
         }
     }
 
@@ -2469,23 +2718,25 @@ class MdbxVaultStore(
         return lock.withLock { block() }
     }
 
-    private fun openExistingWritableVault(file: File): SQLiteDatabase {
+    private fun openExistingWritableVault(
+        file: File,
+        allowSchemaPreparation: Boolean = false
+    ): SQLiteDatabase {
         if (!file.exists()) {
             throw IllegalStateException("MDBX local copy is missing: ${file.absolutePath}")
         }
         openReadOnly(file).use { db ->
-            val missingTables = missingRequiredTables(db)
+            val missingTables = if (allowSchemaPreparation) {
+                missingMinimumReadableTables(db)
+            } else {
+                missingRequiredTables(db)
+            }
             if (missingTables.isNotEmpty()) {
                 throw IllegalStateException(
                     "Unsupported MDBX schema, missing tables: ${missingTables.joinToString()}"
                 )
             }
-            val formatVersion = queryString(db, "SELECT format_version FROM vault_meta LIMIT 1")
-            if (formatVersion != "MDBX-1") {
-                throw IllegalStateException(
-                    "Unsupported MDBX format version: ${formatVersion ?: "unknown"}"
-                )
-            }
+            requireSupportedVaultFormat(db)
         }
         return open(file)
     }
@@ -2502,7 +2753,7 @@ class MdbxVaultStore(
 
     private fun ensureSchema(db: SQLiteDatabase) {
         listOf(
-            "CREATE TABLE IF NOT EXISTS vault_meta (vault_id TEXT PRIMARY KEY NOT NULL, format_name TEXT NOT NULL DEFAULT 'Monica Database eXtended', format_version TEXT NOT NULL DEFAULT 'MDBX-1', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, default_tiga_mode TEXT NOT NULL DEFAULT 'multi', unlock_methods TEXT NOT NULL DEFAULT 'password', active_key_epoch_id TEXT NOT NULL, compat_flags TEXT NOT NULL DEFAULT '', critical_extensions TEXT NOT NULL DEFAULT '')",
+            "CREATE TABLE IF NOT EXISTS vault_meta (vault_id TEXT PRIMARY KEY NOT NULL, format_name TEXT NOT NULL DEFAULT 'Monica Database eXtended', format_version TEXT NOT NULL DEFAULT '$MDBX_SCHEMA_FORMAT_VERSION', release_label TEXT NOT NULL DEFAULT 'MDBX-test-compatible', capability_flags TEXT NOT NULL DEFAULT 'legacy-test-compatible', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, default_tiga_mode TEXT NOT NULL DEFAULT 'multi', unlock_methods TEXT NOT NULL DEFAULT 'password', active_key_epoch_id TEXT NOT NULL, compat_flags TEXT NOT NULL DEFAULT '', critical_extensions TEXT NOT NULL DEFAULT '')",
             "CREATE TABLE IF NOT EXISTS devices (device_id TEXT PRIMARY KEY NOT NULL, device_name TEXT NOT NULL, client_label TEXT NOT NULL, created_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0)",
             "CREATE TABLE IF NOT EXISTS folders (folder_id TEXT PRIMARY KEY NOT NULL, parent_folder_id TEXT, name_ct BLOB NOT NULL, path_key TEXT NOT NULL, object_clock TEXT NOT NULL, head_commit_id TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, created_by_device_id TEXT NOT NULL, updated_by_device_id TEXT NOT NULL)",
             "CREATE TABLE IF NOT EXISTS projects (project_id TEXT PRIMARY KEY NOT NULL, title_ct BLOB NOT NULL, summary_ct BLOB, group_id TEXT, icon_ref TEXT, favorite INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, tiga_mode_override TEXT, object_clock TEXT NOT NULL, head_commit_id TEXT NOT NULL, attachment_count INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, created_by_device_id TEXT NOT NULL, updated_by_device_id TEXT NOT NULL)",
@@ -2510,6 +2761,7 @@ class MdbxVaultStore(
             "CREATE TABLE IF NOT EXISTS attachments (attachment_id TEXT PRIMARY KEY NOT NULL, project_id TEXT NOT NULL, entry_id TEXT, file_name_ct BLOB NOT NULL, media_type_ct BLOB, storage_mode TEXT NOT NULL, content_hash TEXT NOT NULL, original_size INTEGER NOT NULL, stored_size INTEGER NOT NULL, chunk_count INTEGER NOT NULL DEFAULT 0, head_commit_id TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, created_by_device_id TEXT NOT NULL, updated_by_device_id TEXT NOT NULL)",
             "CREATE TABLE IF NOT EXISTS attachment_chunks (attachment_id TEXT NOT NULL, chunk_index INTEGER NOT NULL, chunk_hash TEXT NOT NULL, chunk_ct BLOB, external_uri_ct BLOB, stored_size INTEGER NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (attachment_id, chunk_index), CHECK (chunk_ct IS NOT NULL OR external_uri_ct IS NOT NULL))",
             "CREATE TABLE IF NOT EXISTS object_index (object_type TEXT NOT NULL, object_id TEXT NOT NULL, parent_id TEXT, title_key TEXT NOT NULL, entry_type TEXT, head_commit_id TEXT NOT NULL, updated_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (object_type, object_id))",
+            "CREATE TABLE IF NOT EXISTS project_tags (project_id TEXT NOT NULL, tag TEXT NOT NULL COLLATE NOCASE, PRIMARY KEY (project_id, tag), FOREIGN KEY (project_id) REFERENCES projects(project_id))",
             "CREATE TABLE IF NOT EXISTS commits (commit_id TEXT PRIMARY KEY NOT NULL, device_id TEXT NOT NULL, local_seq INTEGER NOT NULL, commit_kind TEXT NOT NULL, change_scope TEXT NOT NULL, changed_object_ids_ct BLOB NOT NULL, vector_clock TEXT NOT NULL, message_ct BLOB, created_at TEXT NOT NULL, integrity_tag BLOB NOT NULL)",
             "CREATE TABLE IF NOT EXISTS commit_parents (commit_id TEXT NOT NULL, parent_commit_id TEXT NOT NULL, PRIMARY KEY (commit_id, parent_commit_id))",
             "CREATE TABLE IF NOT EXISTS object_versions (version_seq INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, commit_id TEXT NOT NULL, project_id TEXT, entry_type TEXT, title_ct BLOB, payload_ct BLOB, deleted INTEGER NOT NULL, created_at TEXT NOT NULL, created_by_device_id TEXT NOT NULL)",
@@ -2525,6 +2777,8 @@ class MdbxVaultStore(
             "CREATE TABLE IF NOT EXISTS conflicts (conflict_id TEXT PRIMARY KEY NOT NULL, object_type TEXT NOT NULL, object_id TEXT NOT NULL, base_commit_id TEXT NOT NULL, local_commit_id TEXT NOT NULL, incoming_commit_id TEXT NOT NULL, conflicting_fields TEXT NOT NULL, resolution TEXT NOT NULL DEFAULT 'unresolved', created_at TEXT NOT NULL, resolved_at TEXT)"
         ).forEach(db::execSQL)
         ensureColumn(db, "vault_meta", "format_name", "TEXT NOT NULL DEFAULT 'Monica Database eXtended'")
+        ensureColumn(db, "vault_meta", "release_label", "TEXT NOT NULL DEFAULT 'MDBX-test-compatible'")
+        ensureColumn(db, "vault_meta", "capability_flags", "TEXT NOT NULL DEFAULT 'legacy-test-compatible'")
         ensureColumn(db, "vault_meta", "unlock_methods", "TEXT NOT NULL DEFAULT 'password'")
         ensureColumn(db, "vault_meta", "credential_salt", "BLOB")
         ensureColumn(db, "vault_meta", "credential_verifier", "BLOB")
@@ -2553,6 +2807,7 @@ class MdbxVaultStore(
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_object_index_title ON object_index(title_key)")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_object_index_parent ON object_index(parent_id)")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_object_index_deleted ON object_index(deleted)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_project_tags_tag ON project_tags(tag)")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_attachments_entry_id ON attachments(entry_id)")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_attachments_deleted ON attachments(deleted)")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_commits_created_at ON commits(created_at)")
@@ -2611,14 +2866,18 @@ class MdbxVaultStore(
             db.execSQL(
                 """
                 INSERT INTO vault_meta (
-                    vault_id, format_name, format_version, created_at, updated_at,
+                    vault_id, format_name, format_version, release_label, capability_flags,
+                    created_at, updated_at,
                     default_tiga_mode, unlock_methods, active_key_epoch_id,
                     credential_salt, credential_verifier, credential_kdf_profile,
                     key_file_name, key_file_fingerprint
-                ) VALUES (?, 'Monica Database eXtended', 'MDBX-1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, 'Monica Database eXtended', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.trimIndent(),
                 arrayOf(
                     vaultId,
+                    MDBX_SCHEMA_FORMAT_VERSION,
+                    MDBX_OFFICIAL_RELEASE_LABEL,
+                    MDBX_ANDROID_CAPABILITY_FLAGS,
                     now,
                     now,
                     parsedMode.name.lowercase(),
@@ -2646,6 +2905,70 @@ class MdbxVaultStore(
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
+        }
+    }
+
+    private fun installOfficialCredentialMaterial(
+        db: SQLiteDatabase,
+        credential: MdbxVaultCredential,
+        tigaMode: MdbxTigaMode,
+        now: String
+    ) {
+        requireCredentialShape(credential)
+        val vaultId = queryString(db, "SELECT vault_id FROM vault_meta LIMIT 1")
+            ?: throw IllegalStateException("MDBX vault id is missing")
+        val epochId = queryString(db, "SELECT active_key_epoch_id FROM vault_meta LIMIT 1")
+            ?.takeIf { it.isNotBlank() }
+            ?: UUID.randomUUID().toString()
+        val keyMaterial = MdbxVaultCrypto.buildKeyMaterial(
+            vaultId = vaultId,
+            credential = credential,
+            tigaMode = tigaMode
+        )
+        db.execSQL(
+            """
+            UPDATE vault_meta
+            SET active_key_epoch_id = ?,
+                unlock_methods = ?,
+                default_tiga_mode = ?,
+                credential_salt = ?,
+                credential_verifier = ?,
+                credential_kdf_profile = ?,
+                key_file_name = ?,
+                key_file_fingerprint = ?,
+                updated_at = ?
+            WHERE vault_id = ?
+            """.trimIndent(),
+            arrayOf(
+                epochId,
+                credential.unlockMethod.storedValue,
+                tigaMode.name.lowercase(),
+                keyMaterial.salt,
+                keyMaterial.verifier,
+                keyMaterial.kdfProfile,
+                credential.keyFileName,
+                credential.keyFileFingerprint,
+                now,
+                vaultId
+            )
+        )
+        db.execSQL(
+            """
+            INSERT OR REPLACE INTO key_epochs (
+                key_epoch_id, status, wrapped_epoch_key_ct, kdf_profile_id,
+                created_at, activated_at
+            ) VALUES (?, 'active', ?, ?, ?, ?)
+            """.trimIndent(),
+            arrayOf(epochId, keyMaterial.wrappedEpochKey, keyMaterial.kdfProfile, now, now)
+        )
+    }
+
+    private fun requireCredentialShape(credential: MdbxVaultCredential) {
+        if (credential.requiresPassword() && credential.password.isNullOrEmpty()) {
+            throw IllegalArgumentException("MDBX master password is required")
+        }
+        if (credential.requiresKeyFile() && credential.keyFileBytes == null) {
+            throw IllegalArgumentException("MDBX key file is required")
         }
     }
 
@@ -2809,6 +3132,73 @@ class MdbxVaultStore(
             )
         )
     }
+
+    private fun normalizeProjectTags(tags: List<String>): List<String> =
+        tags.asSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .map { it.replace(Regex("\\s+"), " ") }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+            .sortedWith(String.CASE_INSENSITIVE_ORDER)
+            .take(64)
+            .toList()
+
+    private fun requireActiveProject(db: SQLiteDatabase, projectId: String) {
+        val exists = queryLong(
+            db,
+            "SELECT COUNT(*) FROM projects WHERE project_id = ? AND deleted = 0",
+            arrayOf(projectId)
+        ) > 0L
+        if (!exists) {
+            throw IllegalArgumentException("MDBX project is missing or deleted: $projectId")
+        }
+    }
+
+    private fun replaceProjectTags(
+        db: SQLiteDatabase,
+        projectId: String,
+        tags: List<String>
+    ) {
+        db.execSQL("DELETE FROM project_tags WHERE project_id = ?", arrayOf(projectId))
+        normalizeProjectTags(tags).forEach { tag ->
+            db.execSQL(
+                "INSERT OR IGNORE INTO project_tags (project_id, tag) VALUES (?, ?)",
+                arrayOf(projectId, tag)
+            )
+        }
+    }
+
+    private fun readProjectTags(db: SQLiteDatabase, projectId: String): List<String> {
+        if (!tableExists(db, "project_tags")) return emptyList()
+        return db.rawQuery(
+            """
+            SELECT tag
+            FROM project_tags
+            WHERE project_id = ?
+            ORDER BY tag COLLATE NOCASE ASC
+            """.trimIndent(),
+            arrayOf(projectId)
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getString(0))
+            }
+        }
+    }
+
+    private fun readProjectEntryTypes(db: SQLiteDatabase, projectId: String): List<String> =
+        db.rawQuery(
+            """
+            SELECT DISTINCT entry_type
+            FROM entries
+            WHERE project_id = ? AND deleted = 0
+            ORDER BY entry_type ASC
+            """.trimIndent(),
+            arrayOf(projectId)
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getString(0))
+            }
+        }
 
     private data class ConflictResolutionTarget(
         val objectType: String,
@@ -4147,12 +4537,14 @@ class MdbxVaultStore(
         val localState = readLocalProject(local, incoming.projectId, localEpochKey)
         if (localState == null) {
             upsertIncomingProject(local, incoming)
+            copyIncomingProjectTagsIfPresent(local, incomingDb, incoming.projectId)
             copyIncomingObjectIndex(local, incomingDb, "project", incoming.projectId)
             return ApplyDecision.APPLIED
         }
         val incomingTitle = normalizeVaultBytes(incoming.titleCt, incomingEpochKey)
         if (sameObjectState(localState, incomingTitle, null, incoming.deleted)) {
             upsertIncomingProject(local, incoming)
+            copyIncomingProjectTagsIfPresent(local, incomingDb, incoming.projectId)
             copyIncomingObjectIndex(local, incomingDb, "project", incoming.projectId)
             return ApplyDecision.APPLIED
         }
@@ -4160,6 +4552,7 @@ class MdbxVaultStore(
             isAncestor(incomingDb, localState.headCommitId, incoming.headCommitId)
         ) {
             upsertIncomingProject(local, incoming)
+            copyIncomingProjectTagsIfPresent(local, incomingDb, incoming.projectId)
             copyIncomingObjectIndex(local, incomingDb, "project", incoming.projectId)
             return ApplyDecision.APPLIED
         }
@@ -4600,8 +4993,18 @@ class MdbxVaultStore(
         if (localProjectExists(local, projectId)) return
         readIncomingProject(incomingDb, projectId)?.let {
             upsertIncomingProject(local, it)
+            copyIncomingProjectTagsIfPresent(local, incomingDb, projectId)
             copyIncomingObjectIndex(local, incomingDb, "project", projectId)
         }
+    }
+
+    private fun copyIncomingProjectTagsIfPresent(
+        local: SQLiteDatabase,
+        incoming: SQLiteDatabase,
+        projectId: String
+    ) {
+        if (!tableExists(incoming, "project_tags")) return
+        replaceProjectTags(local, projectId, readProjectTags(incoming, projectId))
     }
 
     private fun localProjectExists(db: SQLiteDatabase, projectId: String): Boolean =
@@ -5253,6 +5656,28 @@ class MdbxVaultStore(
                 }
             )
             .put(
+                "project_tags",
+                if (tableExists(db, "project_tags")) {
+                    queryJsonArray(
+                        db,
+                        """
+                        SELECT p.project_id, pt.tag
+                        FROM project_tags pt
+                        JOIN projects p ON p.project_id = pt.project_id
+                        WHERE p.deleted = 0
+                        ORDER BY p.project_id ASC, pt.tag ASC
+                        """.trimIndent(),
+                        emptyArray()
+                    ) { cursor ->
+                        JSONObject()
+                            .put("project_id", cursor.getString(0))
+                            .put("tag", cursor.getString(1))
+                    }
+                } else {
+                    JSONArray()
+                }
+            )
+            .put(
                 "tombstones",
                 queryJsonArray(
                     db,
@@ -5501,6 +5926,29 @@ class MdbxVaultStore(
         return appliedFolders
     }
 
+    private fun importBundleProjectTags(db: SQLiteDatabase, payload: JSONObject): Int {
+        val tagsArray = payload.optJSONArray("project_tags") ?: return 0
+        val tagsByProject = linkedMapOf<String, MutableList<String>>()
+        tagsArray.forEachObject { item ->
+            val projectId = item.optNullableString("project_id") ?: return@forEachObject
+            val tag = item.optNullableString("tag") ?: return@forEachObject
+            tagsByProject.getOrPut(projectId) { mutableListOf() }.add(tag)
+        }
+        var applied = 0
+        tagsByProject.forEach { (projectId, tags) ->
+            if (queryLong(
+                    db,
+                    "SELECT COUNT(*) FROM projects WHERE project_id = ? AND deleted = 0",
+                    arrayOf(projectId)
+                ) > 0L
+            ) {
+                replaceProjectTags(db, projectId, tags)
+                applied++
+            }
+        }
+        return applied
+    }
+
     private fun latestBundleEntryVersions(payload: JSONObject): List<BundleEntryVersion> {
         val latest = linkedMapOf<String, BundleEntryVersion>()
         payload.optJSONArray("object_versions")?.forEachObject { item ->
@@ -5714,6 +6162,20 @@ class MdbxVaultStore(
             if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getBlob(0) else null
         }
 
+    private fun queryVaultMetaString(db: SQLiteDatabase, columnName: String): String? =
+        if (tableExists(db, "vault_meta") && columnExists(db, "vault_meta", columnName)) {
+            queryString(db, "SELECT $columnName FROM vault_meta LIMIT 1")
+        } else {
+            null
+        }
+
+    private fun queryVaultMetaBlob(db: SQLiteDatabase, columnName: String): ByteArray? =
+        if (tableExists(db, "vault_meta") && columnExists(db, "vault_meta", columnName)) {
+            queryBlob(db, "SELECT $columnName FROM vault_meta LIMIT 1")
+        } else {
+            null
+        }
+
     private fun queryJsonArray(
         db: SQLiteDatabase,
         sql: String,
@@ -5777,6 +6239,25 @@ class MdbxVaultStore(
     private fun missingRequiredTables(db: SQLiteDatabase): List<String> =
         requiredCoreTables.filterNot { tableExists(db, it) }
 
+    private fun missingMinimumReadableTables(db: SQLiteDatabase): List<String> =
+        minimumReadableTables.filterNot { tableExists(db, it) }
+
+    private fun isSupportedVaultFormat(formatVersion: String?): Boolean =
+        formatVersion == MDBX_SCHEMA_FORMAT_VERSION ||
+            formatVersion == MDBX_LEGACY_DRAFT_FORMAT_VERSION
+
+    private fun requireSupportedVaultFormat(
+        db: SQLiteDatabase,
+        label: String = "MDBX"
+    ) {
+        val formatVersion = queryString(db, "SELECT format_version FROM vault_meta LIMIT 1")
+        if (!isSupportedVaultFormat(formatVersion)) {
+            throw IllegalArgumentException(
+                "Unsupported $label format version: ${formatVersion ?: "unknown"}"
+            )
+        }
+    }
+
     private fun queryLongIfTableExists(
         db: SQLiteDatabase,
         tableName: String,
@@ -5839,8 +6320,9 @@ class MdbxVaultStore(
     }
 
     private fun vaultHasCredentialMaterial(db: SQLiteDatabase): Boolean =
-        queryBlob(db, "SELECT credential_salt FROM vault_meta LIMIT 1") != null &&
-            queryBlob(db, "SELECT credential_verifier FROM vault_meta LIMIT 1") != null &&
+        queryVaultMetaBlob(db, "credential_salt") != null &&
+            queryVaultMetaBlob(db, "credential_verifier") != null &&
+            tableExists(db, "key_epochs") &&
             queryBlob(
                 db,
                 "SELECT wrapped_epoch_key_ct FROM key_epochs WHERE status = 'active' LIMIT 1"

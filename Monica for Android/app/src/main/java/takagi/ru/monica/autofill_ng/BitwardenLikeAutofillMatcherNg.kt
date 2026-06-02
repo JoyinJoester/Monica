@@ -102,10 +102,12 @@ class BitwardenLikeAutofillMatcherNg {
 
         val entryPackages = linkedSetOf<String>().apply {
             extractNormalizedPackages(entry.appPackageName).forEach(::add)
-            extractAndroidAppPackage(entry.website)?.let(::add)
+            extractWebsiteTokens(entry.website)
+                .mapNotNull(::extractAndroidAppPackage)
+                .forEach(::add)
         }
-        val entryHost = normalizeHost(entry.website)
-        val entryRoot = entryHost?.let(::extractBaseDomain)
+        val entryHosts = extractNormalizedHosts(entry.website)
+        val entryRoots = entryHosts.map(::extractBaseDomain).toSet()
 
         if (!preferDomainSignals &&
             !targetPackage.isNullOrBlank() &&
@@ -137,10 +139,11 @@ class BitwardenLikeAutofillMatcherNg {
             }
         }
 
-        if (!targetHost.isNullOrBlank() && !entryHost.isNullOrBlank()) {
-            val hasSubdomainRelation = isSubdomainRelation(entryHost, targetHost)
+        if (!targetHost.isNullOrBlank() && entryHosts.isNotEmpty()) {
+            val hasExactDomain = entryHosts.any { it == targetHost }
+            val hasSubdomainRelation = entryHosts.any { isSubdomainRelation(it, targetHost) }
             when {
-                entryHost == targetHost -> {
+                hasExactDomain -> {
                     score += 140
                     reasons += Reason.EXACT_DOMAIN
                 }
@@ -155,11 +158,11 @@ class BitwardenLikeAutofillMatcherNg {
                     // to base-domain scoring for strict parent/child host pairs.
                 }
 
-                !entryRoot.isNullOrBlank() &&
+                entryRoots.isNotEmpty() &&
                     !targetRoot.isNullOrBlank() &&
                     !config.exactDomainOnly &&
                     config.allowBaseDomainMatch &&
-                    entryRoot == targetRoot -> {
+                    targetRoot in entryRoots -> {
                     score += 100
                     reasons += Reason.BASE_DOMAIN
                 }
@@ -256,6 +259,14 @@ class BitwardenLikeAutofillMatcherNg {
             .toCollection(linkedSetOf())
     }
 
+    private fun extractWebsiteTokens(value: String?): List<String> {
+        if (value.isNullOrBlank()) return emptyList()
+        return value
+            .split(',', ';', '|', '\n', '\r', '\t')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+    }
+
     private fun extractAndroidAppPackage(value: String?): String? {
         if (value.isNullOrBlank()) return null
         val raw = value.trim().lowercase(Locale.ROOT)
@@ -264,6 +275,11 @@ class BitwardenLikeAutofillMatcherNg {
         }
         return normalizePackageName(raw)
     }
+
+    private fun extractNormalizedHosts(value: String?): Set<String> =
+        extractWebsiteTokens(value)
+            .mapNotNull(::normalizeHost)
+            .toCollection(linkedSetOf())
 
     private fun normalizeHost(value: String?): String? {
         if (value.isNullOrBlank()) return null

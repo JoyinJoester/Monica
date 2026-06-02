@@ -26,8 +26,10 @@ docs/.vitepress/cache/
 
 # Android build caches
 .gradle-user-home/
+.gradle-user-home-codeql/
 .android-user-home/
 Monica for Android/.gradle-user-home/
+Monica for Android/.gradle-user-home-codeql/
 Monica for Android/.android-user-home/
 Monica for Android/.kotlin/
 Monica for Android/.gradle/
@@ -100,4 +102,18 @@ CLI-WeChat-Bridge-main/
 .env
 .env.*
 !.env.example
+
+# HarmonyOS signing and release secrets - never commit
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.csr
+*.cer
+*.profile
+*.provisionprofile
+**/signing/
+**/cert/
+**/certs/
+**/release-signing/
 

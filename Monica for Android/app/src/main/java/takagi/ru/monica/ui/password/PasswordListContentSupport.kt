@@ -19,17 +19,27 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.bitwarden.BitwardenFolder
+import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.data.model.PasskeyBindingCodec
+import takagi.ru.monica.data.model.isSshKeyEntry
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.ui.password.PasswordAggregateCardStyle
 import takagi.ru.monica.ui.password.PasswordAggregateListItemUi
 import takagi.ru.monica.ui.password.PasswordListAggregateConfig
@@ -50,6 +60,7 @@ import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
+import takagi.ru.monica.utils.KeePassGroupInfo
 
 private const val FAST_SCROLL_LOG_TAG = "PasswordFastScroll"
 private const val PASSWORD_SCROLL_LOG_TAG = "PasswordScrollDebug"
@@ -111,6 +122,375 @@ internal data class PasswordListInitialRenderState(
     val isPasswordPageListModelReady: Boolean,
     val shouldGateInitialContent: Boolean
 )
+
+internal data class PasswordListQuickFolderUiState(
+    val nodes: List<PasswordQuickFolderNode>,
+    val nodeByPath: Map<String, PasswordQuickFolderNode>,
+    val currentPath: String?,
+    val rootFilter: CategoryFilter,
+    val systemBackTarget: CategoryFilter?,
+    val shortcuts: List<PasswordQuickFolderShortcut>,
+    val categoryMenuShortcuts: List<PasswordQuickFolderShortcut>,
+    val breadcrumbs: List<PasswordQuickFolderBreadcrumb>
+)
+
+@Composable
+internal fun <T> rememberAsyncComputed(
+    vararg keys: Any?,
+    initialValue: T,
+    compute: suspend () -> T
+): T {
+    val state = remember { mutableStateOf(initialValue) }
+    val latestCompute by rememberUpdatedState(compute)
+
+    LaunchedEffect(*keys) {
+        state.value = withContext(Dispatchers.Default) {
+            latestCompute()
+        }
+    }
+
+    return state.value
+}
+
+@Composable
+internal fun rememberPasswordListQuickFolderUiState(
+    context: Context,
+    appSettings: AppSettings,
+    currentFilter: CategoryFilter,
+    categories: List<Category>,
+    searchQuery: String,
+    passwordEntries: List<PasswordEntry>,
+    allPasswords: List<PasswordEntry>,
+    keepassDatabases: List<LocalKeePassDatabase>,
+    keepassGroupsForSelectedDb: List<KeePassGroupInfo>,
+    bitwardenVaults: List<BitwardenVault>,
+    selectedBitwardenFolders: List<BitwardenFolder>,
+    mdbxDatabases: List<LocalMdbxDatabase>,
+    selectedMdbxFolders: List<MdbxStoredFolderEntry>,
+    quickFolderRootKey: String,
+    quickFoldersEnabledForCurrentFilter: Boolean,
+    quickFolderPathBannerEnabledForCurrentFilter: Boolean
+): PasswordListQuickFolderUiState {
+    val quickFolderStyle = appSettings.passwordListQuickFolderStyle
+    val quickFolderNodes = remember(categories) {
+        buildPasswordQuickFolderNodes(categories)
+    }
+    val quickFolderNodeByPath = remember(quickFolderNodes) {
+        quickFolderNodes.associateBy { it.path }
+    }
+    val quickFolderCurrentPath = remember(currentFilter, quickFolderNodes) {
+        when (val filter = currentFilter) {
+            is CategoryFilter.Custom -> quickFolderNodes
+                .firstOrNull { it.category.id == filter.categoryId }
+                ?.path
+
+            else -> null
+        }
+    }
+    val quickFolderRootFilter = remember(quickFolderRootKey) {
+        quickFolderRootKey.toQuickFolderRootFilter()
+    }
+    val quickFolderSystemBackTarget =
+        if (!appSettings.passwordListSystemBackToParentFolderEnabled) {
+            null
+        } else {
+            when (val filter = currentFilter) {
+                is CategoryFilter.Custom -> {
+                    val currentPath = quickFolderCurrentPath
+                    if (currentPath == null) {
+                        null
+                    } else {
+                        val parentPath = passwordQuickFolderParentPath(currentPath)
+                        if (parentPath == null) {
+                            quickFolderRootFilter
+                        } else {
+                            quickFolderNodeByPath[parentPath]?.category?.let { parentNode ->
+                                CategoryFilter.Custom(parentNode.id)
+                            } ?: quickFolderRootFilter
+                        }
+                    }
+                }
+
+                is CategoryFilter.KeePassGroupFilter -> {
+                    val currentPath = filter.groupPath.trim('/').trim()
+                    if (currentPath.isBlank()) {
+                        null
+                    } else {
+                        val parentPath = currentPath.substringBeforeLast('/', missingDelimiterValue = "")
+                        if (parentPath.isBlank()) {
+                            CategoryFilter.KeePassDatabase(filter.databaseId)
+                        } else {
+                            CategoryFilter.KeePassGroupFilter(filter.databaseId, parentPath)
+                        }
+                    }
+                }
+
+                is CategoryFilter.BitwardenFolderFilter -> {
+                    CategoryFilter.BitwardenVault(filter.vaultId)
+                }
+
+                else -> null
+            }
+        }
+    val quickFolderSourceEntries = remember(searchQuery, passwordEntries, allPasswords) {
+        if (searchQuery.isNotBlank()) {
+            passwordEntries
+        } else {
+            allPasswords
+        }
+    }
+    val baseQuickFolderPasswordCountByCategoryId = rememberAsyncComputed(
+        quickFolderSourceEntries,
+        categories,
+        initialValue = emptyMap()
+    ) {
+        buildLocalQuickFolderPasswordCountByCategoryId(
+            entries = quickFolderSourceEntries,
+            categories = categories
+        )
+    }
+    val quickFolderPasswordCountByCategoryId = remember(
+        baseQuickFolderPasswordCountByCategoryId,
+        quickFoldersEnabledForCurrentFilter,
+        currentFilter
+    ) {
+        if (!quickFoldersEnabledForCurrentFilter || !currentFilter.supportsQuickFolders()) {
+            emptyMap()
+        } else {
+            baseQuickFolderPasswordCountByCategoryId
+        }
+    }
+    val categoryMenuQuickFolderPasswordCountByCategoryId = remember(
+        baseQuickFolderPasswordCountByCategoryId,
+        currentFilter
+    ) {
+        if (!currentFilter.supportsQuickFolders()) {
+            emptyMap()
+        } else {
+            baseQuickFolderPasswordCountByCategoryId
+        }
+    }
+    val quickFolderShortcuts = rememberAsyncComputed(
+        appSettings.passwordListQuickFoldersEnabled,
+        quickFolderStyle,
+        currentFilter,
+        quickFolderCurrentPath,
+        quickFolderNodes,
+        quickFolderNodeByPath,
+        quickFolderRootFilter,
+        quickFolderPasswordCountByCategoryId,
+        allPasswords,
+        passwordEntries,
+        searchQuery,
+        keepassDatabases,
+        keepassGroupsForSelectedDb,
+        bitwardenVaults,
+        selectedBitwardenFolders,
+        selectedMdbxFolders,
+        categories,
+        initialValue = emptyList()
+    ) {
+        buildQuickFolderShortcuts(
+            context = context,
+            quickFoldersEnabledForCurrentFilter = quickFoldersEnabledForCurrentFilter,
+            includeBackNavigation = false,
+            currentFilter = currentFilter,
+            quickFolderStyle = quickFolderStyle,
+            quickFolderCurrentPath = quickFolderCurrentPath,
+            quickFolderNodes = quickFolderNodes,
+            quickFolderNodeByPath = quickFolderNodeByPath,
+            quickFolderRootFilter = quickFolderRootFilter,
+            quickFolderPasswordCountByCategoryId = quickFolderPasswordCountByCategoryId,
+            allPasswords = allPasswords,
+            searchScopedPasswords = passwordEntries,
+            isSearchActive = searchQuery.isNotBlank(),
+            keepassDatabases = keepassDatabases,
+            keepassGroupsForSelectedDb = keepassGroupsForSelectedDb,
+            bitwardenVaults = bitwardenVaults,
+            selectedBitwardenFolders = selectedBitwardenFolders,
+            selectedMdbxFolders = selectedMdbxFolders,
+            categories = categories
+        )
+    }
+    val categoryMenuQuickFolderShortcuts = rememberAsyncComputed(
+        currentFilter,
+        quickFolderCurrentPath,
+        quickFolderNodes,
+        quickFolderNodeByPath,
+        categoryMenuQuickFolderPasswordCountByCategoryId,
+        allPasswords,
+        passwordEntries,
+        searchQuery,
+        keepassDatabases,
+        keepassGroupsForSelectedDb,
+        bitwardenVaults,
+        selectedBitwardenFolders,
+        selectedMdbxFolders,
+        categories,
+        initialValue = emptyList()
+    ) {
+        buildCategoryMenuFolderShortcuts(
+            context = context,
+            currentFilter = currentFilter,
+            quickFolderCurrentPath = quickFolderCurrentPath,
+            quickFolderNodes = quickFolderNodes,
+            quickFolderNodeByPath = quickFolderNodeByPath,
+            quickFolderPasswordCountByCategoryId = categoryMenuQuickFolderPasswordCountByCategoryId,
+            allPasswords = allPasswords,
+            searchScopedPasswords = passwordEntries,
+            isSearchActive = searchQuery.isNotBlank(),
+            keepassDatabases = keepassDatabases,
+            keepassGroupsForSelectedDb = keepassGroupsForSelectedDb,
+            bitwardenVaults = bitwardenVaults,
+            selectedBitwardenFolders = selectedBitwardenFolders,
+            selectedMdbxFolders = selectedMdbxFolders,
+            categories = categories
+        )
+    }
+    val quickFolderBreadcrumbs = rememberAsyncComputed(
+        appSettings.passwordListQuickFolderPathBannerEnabled,
+        currentFilter,
+        quickFolderCurrentPath,
+        quickFolderNodeByPath,
+        quickFolderRootFilter,
+        keepassDatabases,
+        mdbxDatabases,
+        bitwardenVaults,
+        selectedBitwardenFolders,
+        selectedMdbxFolders,
+        categories,
+        initialValue = emptyList()
+    ) {
+        buildQuickFolderBreadcrumbs(
+            context = context,
+            quickFolderPathBannerEnabledForCurrentFilter = quickFolderPathBannerEnabledForCurrentFilter,
+            currentFilter = currentFilter,
+            quickFolderCurrentPath = quickFolderCurrentPath,
+            quickFolderNodeByPath = quickFolderNodeByPath,
+            quickFolderRootFilter = quickFolderRootFilter,
+            keepassDatabases = keepassDatabases,
+            mdbxDatabases = mdbxDatabases,
+            selectedMdbxFolders = selectedMdbxFolders,
+            bitwardenVaults = bitwardenVaults,
+            selectedBitwardenFolders = selectedBitwardenFolders,
+            categories = categories
+        )
+    }
+
+    return PasswordListQuickFolderUiState(
+        nodes = quickFolderNodes,
+        nodeByPath = quickFolderNodeByPath,
+        currentPath = quickFolderCurrentPath,
+        rootFilter = quickFolderRootFilter,
+        systemBackTarget = quickFolderSystemBackTarget,
+        shortcuts = quickFolderShortcuts,
+        categoryMenuShortcuts = categoryMenuQuickFolderShortcuts,
+        breadcrumbs = quickFolderBreadcrumbs
+    )
+}
+
+private fun PasswordEntry.hasBoundAuthenticator(): Boolean = authenticatorKey.isNotBlank()
+
+private fun PasswordEntry.hasBoundPasskey(): Boolean =
+    PasskeyBindingCodec.decodeList(passkeyBindings).isNotEmpty()
+
+private fun PasswordEntry.hasBoundNote(): Boolean = boundNoteId != null
+
+private fun PasswordEntry.matchesLinkedAggregateContentTypes(
+    selectedTypes: Set<PasswordPageContentType>
+): Boolean {
+    val includeAuthenticator =
+        PasswordPageContentType.AUTHENTICATOR in selectedTypes && hasBoundAuthenticator()
+    val includePasskey =
+        PasswordPageContentType.PASSKEY in selectedTypes && hasBoundPasskey()
+    val includeNote =
+        PasswordPageContentType.NOTE in selectedTypes && hasBoundNote()
+    return includeAuthenticator || includePasskey || includeNote
+}
+
+internal fun filterPreStackPasswordEntries(
+    passwordEntries: List<PasswordEntry>,
+    deletedItemIds: Set<Long>,
+    quickFoldersEnabledForCurrentFilter: Boolean,
+    currentFilter: CategoryFilter,
+    configuredQuickFilterItems: Collection<PasswordListQuickFilterItem>,
+    quickFilterFavorite: Boolean,
+    quickFilter2fa: Boolean,
+    quickFilterNotes: Boolean,
+    quickFilterPasskey: Boolean,
+    quickFilterBoundNote: Boolean,
+    quickFilterAttachments: Boolean,
+    activeAttachmentParentIds: Set<Long>,
+    quickFilterUncategorized: Boolean,
+    quickFilterLocalOnly: Boolean,
+    quickFilterNeverStack: Boolean,
+    quickFilterWifi: Boolean,
+    quickFilterSshKey: Boolean,
+    effectiveNoStackEntryIds: Set<Long>,
+    hasActiveContentTypeFilter: Boolean,
+    contentTypeFilterTypes: Set<PasswordPageContentType>
+): List<PasswordEntry> {
+    var filtered = passwordEntries.filter { it.id !in deletedItemIds }
+
+    if (quickFoldersEnabledForCurrentFilter) {
+        filtered = applyQuickFolderRootVisibility(
+            entries = filtered,
+            currentFilter = currentFilter
+        )
+    }
+
+    if (quickFilterFavorite && PasswordListQuickFilterItem.FAVORITE in configuredQuickFilterItems) {
+        filtered = filtered.filter { it.isFavorite }
+    }
+    if (quickFilter2fa && PasswordListQuickFilterItem.TWO_FA in configuredQuickFilterItems) {
+        filtered = filtered.filter { it.hasBoundAuthenticator() }
+    }
+    if (quickFilterNotes && PasswordListQuickFilterItem.NOTES in configuredQuickFilterItems) {
+        filtered = filtered.filter { it.notes.isNotBlank() }
+    }
+    if (quickFilterPasskey && PasswordListQuickFilterItem.PASSKEY in configuredQuickFilterItems) {
+        filtered = filtered.filter { it.hasBoundPasskey() }
+    }
+    if (quickFilterBoundNote && PasswordListQuickFilterItem.NOTE in configuredQuickFilterItems) {
+        filtered = filtered.filter { it.hasBoundNote() }
+    }
+    if (quickFilterAttachments && PasswordListQuickFilterItem.ATTACHMENTS in configuredQuickFilterItems) {
+        filtered = filtered.filter { it.id in activeAttachmentParentIds }
+    }
+    if (quickFilterWifi) {
+        filtered = filtered.filter { it.isWifiEntry() }
+    }
+    if (quickFilterSshKey) {
+        filtered = filtered.filter { it.isSshKeyEntry() }
+    }
+    if (quickFilterUncategorized && PasswordListQuickFilterItem.UNCATEGORIZED in configuredQuickFilterItems) {
+        filtered = filtered.filter { entry ->
+            when (val filter = currentFilter) {
+                is CategoryFilter.KeePassDatabase ->
+                    entry.keepassDatabaseId == filter.databaseId &&
+                        entry.keepassGroupPath?.trim().isNullOrBlank()
+                is CategoryFilter.BitwardenVault ->
+                    entry.bitwardenVaultId == filter.vaultId &&
+                        entry.bitwardenFolderId?.trim().isNullOrBlank()
+                else -> entry.categoryId == null
+            }
+        }
+    }
+    if (quickFilterLocalOnly && PasswordListQuickFilterItem.LOCAL_ONLY in configuredQuickFilterItems) {
+        filtered = filtered.filter {
+            it.isLocalOnlyEntry()
+        }
+    }
+    if (quickFilterNeverStack && PasswordListQuickFilterItem.NEVER_STACK in configuredQuickFilterItems) {
+        filtered = filtered.filter { it.id in effectiveNoStackEntryIds }
+    }
+    if (hasActiveContentTypeFilter) {
+        filtered = filtered.filter { entry ->
+            entry.matchesLinkedAggregateContentTypes(contentTypeFilterTypes)
+        }
+    }
+    return filtered
+}
 
 // Keeps aggregate-card state assembly outside the main password list composable.
 @Composable

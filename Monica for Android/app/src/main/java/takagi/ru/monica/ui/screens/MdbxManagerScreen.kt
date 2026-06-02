@@ -621,7 +621,7 @@ private fun parseMdbxManagerSourceOrNull(raw: String): MdbxManagerSource? =
     raw.takeIf { it.isNotBlank() }?.let { runCatching { MdbxManagerSource.valueOf(it) }.getOrNull() }
 
 private fun MdbxManagerPage.title(database: LocalMdbxDatabase?): String = when (this) {
-    MdbxManagerPage.Hub -> "MDBX（测试）"
+    MdbxManagerPage.Hub -> "MDBX 1.0"
     is MdbxManagerPage.Source -> when (source) {
         MdbxManagerSource.LOCAL -> "本地 MDBX 管理"
         MdbxManagerSource.WEBDAV -> "WebDAV MDBX 管理"
@@ -651,7 +651,7 @@ private fun MdbxManagerHubPage(
     ) {
         item {
             Text(
-                "MDBX（测试）",
+                "MDBX 1.0",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
@@ -1026,11 +1026,7 @@ private fun MdbxVaultDetailPage(
                         DiagnosticLine(
                             icon = Icons.Default.Security,
                             label = stringResource(R.string.mdbx_compatibility_label),
-                            value = stringResource(
-                                R.string.mdbx_format_tiga_value,
-                                diagnostic.formatVersion ?: "MDBX-?",
-                                diagnostic.defaultTigaMode ?: database.tigaMode
-                            )
+                            value = mdbxCompatibilityValue(diagnostic, database)
                         )
                         DiagnosticLine(
                             icon = Icons.Default.Sync,
@@ -1672,7 +1668,7 @@ private fun MdbxMaintenancePage(
             }
             item {
                 MdbxDiagnosticSection(title = "高级细节") {
-                    DiagnosticLine(Icons.Default.Security, "格式 / Tiga", "${diagnostic.formatVersion ?: "MDBX-?"} · ${diagnostic.defaultTigaMode ?: database.tigaMode}")
+                    DiagnosticLine(Icons.Default.Security, "格式 / Tiga", mdbxCompatibilityValue(diagnostic, database))
                     DiagnosticLine(Icons.Default.Storage, "分支 / 设备", "${diagnostic.branchCount} / ${diagnostic.deviceCount}")
                     DiagnosticLine(Icons.Default.Delete, "删除标记", diagnostic.tombstoneCount.toString())
                     DiagnosticLine(Icons.Default.Storage, "索引对象", diagnostic.indexedObjectCount.toString())
@@ -2315,11 +2311,7 @@ private fun MdbxVaultDetailBottomSheet(
                     DiagnosticLine(
                         icon = Icons.Default.Security,
                         label = stringResource(R.string.mdbx_compatibility_label),
-                        value = stringResource(
-                            R.string.mdbx_format_tiga_value,
-                            diagnostic.formatVersion ?: "MDBX-?",
-                            diagnostic.defaultTigaMode ?: database.tigaMode
-                        )
+                        value = mdbxCompatibilityValue(diagnostic, database)
                     )
                     DiagnosticLine(
                         icon = Icons.Default.Sync,
@@ -3854,6 +3846,20 @@ private fun Context.displayNameForUri(uri: Uri): String? =
             if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
         }
     }.getOrNull()
+
+private fun mdbxCompatibilityValue(
+    diagnostic: MdbxVaultDiagnostics,
+    database: LocalMdbxDatabase
+): String =
+    listOf(
+        diagnostic.releaseLabel?.takeIf { it.isNotBlank() }
+            ?: diagnostic.formatVersion
+            ?: "MDBX-?",
+        diagnostic.formatVersion?.takeIf { format ->
+            format.isNotBlank() && format != diagnostic.releaseLabel
+        },
+        diagnostic.defaultTigaMode?.takeIf { it.isNotBlank() } ?: database.tigaMode
+    ).filterNotNull().joinToString(" · ")
 
 private fun formatBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"

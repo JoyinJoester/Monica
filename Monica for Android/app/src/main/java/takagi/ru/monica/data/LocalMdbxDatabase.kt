@@ -168,7 +168,12 @@ data class LocalMdbxDatabase(
     val unlockMethodEnum: MdbxUnlockMethod get() = MdbxUnlockMethod.fromStoredValue(unlockMethod)
 }
 
-fun LocalMdbxDatabase.isRemoteSource(): Boolean = sourceTypeEnum == MdbxSourceType.REMOTE_WEBDAV
+fun LocalMdbxDatabase.isRemoteSource(): Boolean = when (sourceTypeEnum) {
+    MdbxSourceType.REMOTE_WEBDAV,
+    MdbxSourceType.REMOTE_ONEDRIVE -> true
+    MdbxSourceType.LOCAL_INTERNAL,
+    MdbxSourceType.LOCAL_EXTERNAL -> false
+}
 
 fun LocalMdbxDatabase.resolvedActiveFilePath(): String =
     workingCopyPath?.takeIf { it.isNotBlank() } ?: filePath

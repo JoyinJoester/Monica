@@ -3437,18 +3437,22 @@ class PasswordViewModel(
         onComplete: (firstPasswordId: Long?) -> Unit = {}
     ) {
         viewModelScope.launch {
-            val firstId = withContext(Dispatchers.IO) {
-                val distinctTargets = targets.distinctBy(StorageTarget::stableKey)
-                if (distinctTargets.isEmpty()) {
-                    return@withContext null
-                }
-                if (!canWriteKeePassTargets(distinctTargets)) {
-                    Log.w(
-                        "PasswordViewModel",
-                        "savePasswordsAcrossTargets blocked because a KeePass target is unavailable"
-                    )
-                    return@withContext null
-                }
+            val requestedTargetKeys = targets.distinctBy(StorageTarget::stableKey)
+                .map(StorageTarget::stableKey)
+            val firstId = try {
+                withContext(Dispatchers.IO) {
+                    val distinctTargets = targets.distinctBy(StorageTarget::stableKey)
+                    if (distinctTargets.isEmpty()) {
+                        Log.w("PasswordViewModel", "savePasswordsAcrossTargets blocked because target list is empty")
+                        return@withContext null
+                    }
+                    if (!canWriteKeePassTargets(distinctTargets)) {
+                        Log.w(
+                            "PasswordViewModel",
+                            "savePasswordsAcrossTargets blocked because a KeePass target is unavailable targets=$requestedTargetKeys"
+                        )
+                        return@withContext null
+                    }
 
                 val currentEntry = originalIds.firstOrNull()?.let { repository.getPasswordEntryById(it) }
                 val replicaGroupId = currentEntry?.replicaGroupId
@@ -3504,9 +3508,13 @@ class PasswordViewModel(
                     skipCategoryBinding = true
                 )
 
-                if (initialId == null) {
-                    return@withContext null
-                }
+                    if (initialId == null) {
+                        Log.e(
+                            "PasswordViewModel",
+                            "savePasswordsAcrossTargets failed current target=${currentTarget.stableKey} originalIds=$originalIds targets=$requestedTargetKeys"
+                        )
+                        return@withContext null
+                    }
 
                 distinctTargets
                     .filter { target ->
@@ -3554,7 +3562,15 @@ class PasswordViewModel(
                     )
                 }
 
-                initialId
+                    initialId
+                }
+            } catch (e: Exception) {
+                Log.e(
+                    "PasswordViewModel",
+                    "savePasswordsAcrossTargets crashed originalIds=$originalIds targets=$requestedTargetKeys error=${e::class.java.simpleName}: ${e.message}",
+                    e
+                )
+                null
             }
 
             onComplete(firstId)
@@ -3657,7 +3673,14 @@ class PasswordViewModel(
                     customIconValue = draftEntry.customIconValue,
                     customIconUpdatedAt = draftEntry.customIconUpdatedAt
                 ) ?: draftEntry
-                updatePasswordEntryInternal(updatedEntry)
+                val updated = updatePasswordEntryInternal(updatedEntry)
+                if (!updated) {
+                    Log.e(
+                        "PasswordViewModel",
+                        "saveGroupedPasswords aborted due to password update failure entryId=$id target=${draftEntry.toStorageTarget().stableKey}"
+                    )
+                    return null
+                }
             } else {
                 val newEntry = boundCommonEntry.copy(
                     id = 0,

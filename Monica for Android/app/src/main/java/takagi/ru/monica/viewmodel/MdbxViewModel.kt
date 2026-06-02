@@ -452,6 +452,7 @@ class MdbxViewModel(
                     val detectedUnlockMethod = vaultStore.readUnlockMethodFromVaultFile(workingCopy)
                     val credential = buildCredential(detectedUnlockMethod, masterPassword, keyFile)
                     vaultStore.validateVaultCredentialFile(workingCopy, credential)
+                    vaultStore.prepareVaultForOfficialMdbx1(workingCopy, credential, detectedMode)
 
                     val encryptedMasterPassword =
                         masterPassword.takeIf { credential.requiresPassword() }
@@ -478,6 +479,7 @@ class MdbxViewModel(
                             lastSyncStatus = MdbxSyncStatus.IN_SYNC.name
                         )
                     ).also { databaseId ->
+                        vaultStore.flushWorkingCopy(databaseId)
                         importEntriesFromVault(databaseId)
                     }
                 }
@@ -638,6 +640,7 @@ class MdbxViewModel(
                     val detectedUnlockMethod = vaultStore.readUnlockMethodFromVaultFile(localFile)
                     val credential = buildCredential(detectedUnlockMethod, masterPassword, keyFile)
                     vaultStore.validateVaultCredentialFile(localFile, credential)
+                    vaultStore.prepareVaultForOfficialMdbx1(localFile, credential, detectedMode)
 
                     val remoteParentPath = WebDavKeePassFileSource.parentPathOf(remoteFilePath)
 
@@ -680,6 +683,7 @@ class MdbxViewModel(
                             lastSyncStatus = MdbxSyncStatus.IN_SYNC.name
                         )
                     ).also { databaseId ->
+                        vaultStore.flushWorkingCopy(databaseId)
                         importEntriesFromVault(databaseId)
                     }
                 }
@@ -854,6 +858,7 @@ class MdbxViewModel(
                     val detectedUnlockMethod = vaultStore.readUnlockMethodFromVaultFile(localFile)
                     val credential = buildCredential(detectedUnlockMethod, masterPassword, keyFile)
                     vaultStore.validateVaultCredentialFile(localFile, credential)
+                    vaultStore.prepareVaultForOfficialMdbx1(localFile, credential, detectedMode)
 
                     val remoteParentPath = OneDriveKeePassFileSource.parentPathOf(remoteFilePath)
 
@@ -899,6 +904,7 @@ class MdbxViewModel(
                             lastSyncStatus = MdbxSyncStatus.IN_SYNC.name
                         )
                     ).also { databaseId ->
+                        vaultStore.flushWorkingCopy(databaseId)
                         importEntriesFromVault(databaseId)
                     }
                 }

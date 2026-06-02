@@ -1195,8 +1195,8 @@
     <string name="smooth_progress_bar_description">启用平滑动画，消除进度条的停顿感</string>
     <string name="validator_settings_section">验证器设置</string>
     <string name="experimental_features_section">实验功能</string>
-    <string name="mdbx_format_title">MDBX 格式</string>
-    <string name="mdbx_format_description">新型本地优先加密密码数据库格式，同步性能更优</string>
+    <string name="mdbx_format_title">MDBX 1.0 格式</string>
+    <string name="mdbx_format_description">正式版本地优先加密数据库格式，兼容旧测试版数据库</string>
     <string name="mdbx_create_vault_title">创建 MDBX Vault</string>
     <string name="mdbx_storage_section">存储配置</string>
     <string name="mdbx_storage_local_create">本地新建 Vault</string>

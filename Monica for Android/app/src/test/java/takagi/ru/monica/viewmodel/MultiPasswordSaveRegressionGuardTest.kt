@@ -2158,6 +2158,55 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
+    fun saveFailuresAreReportedWithNonSecretDiagnostics() {
+        val passwordViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"
+        ).readText()
+        val totpViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/TotpViewModel.kt"
+        ).readText()
+        val savePasswordsAcrossTargetsBody = passwordViewModelSource
+            .substringAfter("fun savePasswordsAcrossTargets(")
+            .substringBefore("private suspend fun canWriteKeePassTargets")
+        val saveGroupedBody = passwordViewModelSource
+            .substringAfter("private suspend fun saveGroupedPasswordsInternal(")
+            .substringBefore("private fun PasswordEntry.isPureMdbxCreateTarget()")
+        val saveTotpItemBody = totpViewModelSource
+            .substringAfter("fun saveTotpItem(")
+            .substringBefore("fun saveTotpAcrossTargets(")
+        val saveTotpAcrossTargetsBody = totpViewModelSource
+            .substringAfter("fun saveTotpAcrossTargets(")
+            .substringBefore("private suspend fun saveTotpItemInternal(")
+
+        assertTrue(
+            "Password saves must catch storage-layer exceptions, log target/id diagnostics, and still invoke the UI callback with null.",
+            savePasswordsAcrossTargetsBody.contains("requestedTargetKeys") &&
+                savePasswordsAcrossTargetsBody.contains("catch (e: Exception)") &&
+                savePasswordsAcrossTargetsBody.contains("savePasswordsAcrossTargets crashed") &&
+                savePasswordsAcrossTargetsBody.contains("onComplete(firstId)")
+        )
+        assertTrue(
+            "Grouped password updates must not silently report success when an existing row update is rejected.",
+            saveGroupedBody.contains("val updated = updatePasswordEntryInternal(updatedEntry)") &&
+                saveGroupedBody.contains("saveGroupedPasswords aborted due to password update failure") &&
+                saveGroupedBody.contains("return null")
+        )
+        assertTrue(
+            "Legacy TOTP saves must use Log.e diagnostics instead of printStackTrace so rare user logs identify the failed storage target.",
+            saveTotpItemBody.contains("Log.e(") &&
+                saveTotpItemBody.contains("saveTotpItem failed id=") &&
+                !saveTotpItemBody.contains("printStackTrace()")
+        )
+        assertTrue(
+            "Multi-target TOTP saves must log empty targets, current target failures, and caught exceptions without logging TOTP secrets.",
+            saveTotpAcrossTargetsBody.contains("target list is empty") &&
+                saveTotpAcrossTargetsBody.contains("failed current target=") &&
+                saveTotpAcrossTargetsBody.contains("saveTotpAcrossTargets crashed") &&
+                !saveTotpAcrossTargetsBody.contains("secret=")
+        )
+    }
+
+    @Test
     fun mdbxPasswordCopiesToMonicaLocalDoNotKeepMdbxIdentity() {
         val viewModelSource = projectFile(
             "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"

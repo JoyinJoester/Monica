@@ -59,6 +59,7 @@ import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalMdbxDatabase
+import takagi.ru.monica.data.MdbxSourceType
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.repository.MdbxStoredFolderEntry
@@ -225,9 +226,12 @@ fun UnifiedMoveToCategoryBottomSheet(
                     keepassUnavailableFormat.format(keepassReasonLabel(availability.reason))
                 }
             }
-            is MovePickerSource.MdbxDatabase -> source.database.storageLocation
-                .lowercase()
-                .replace('_', ' ')
+            is MovePickerSource.MdbxDatabase -> when (source.database.sourceTypeEnum) {
+                MdbxSourceType.LOCAL_INTERNAL -> internalStorageLabel
+                MdbxSourceType.LOCAL_EXTERNAL -> externalStorageLabel
+                MdbxSourceType.REMOTE_WEBDAV -> "WebDAV"
+                MdbxSourceType.REMOTE_ONEDRIVE -> "OneDrive"
+            }
             is MovePickerSource.BitwardenVaultSource -> if (source.vault.isDefault) defaultLabel else source.vault.email
         }
     }

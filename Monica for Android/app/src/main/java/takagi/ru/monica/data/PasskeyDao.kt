@@ -416,6 +416,7 @@ interface PasskeyDao {
         """
         UPDATE passkeys
         SET mdbx_database_id = :databaseId,
+            mdbx_folder_id = :folderId,
             keepass_database_id = NULL,
             keepass_group_path = NULL,
             bitwarden_vault_id = NULL,
@@ -425,7 +426,7 @@ interface PasskeyDao {
         WHERE id IN (:recordIds)
         """
     )
-    suspend fun updateMdbxDatabaseForPasskeys(recordIds: List<Long>, databaseId: Long?)
+    suspend fun updateMdbxDatabaseForPasskeys(recordIds: List<Long>, databaseId: Long?, folderId: String?)
     
     /**
      * 获取待上传到 Bitwarden 的 Passkeys

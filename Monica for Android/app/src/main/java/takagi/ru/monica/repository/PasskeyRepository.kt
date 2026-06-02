@@ -162,13 +162,18 @@ class PasskeyRepository(
         passkeyDao.update(normalized)
     }
 
-    suspend fun updateMdbxDatabaseForPasskeys(recordIds: List<Long>, databaseId: Long?) {
+    suspend fun updateMdbxDatabaseForPasskeys(
+        recordIds: List<Long>,
+        databaseId: Long?,
+        folderId: String? = null
+    ) {
         if (recordIds.isEmpty()) return
         val existingPasskeys = recordIds.mapNotNull { passkeyDao.getPasskeyByRecordId(it) }
         if (databaseId != null) {
             val passkeysForMdbx = existingPasskeys.map { passkey ->
                 passkey.copy(
                     mdbxDatabaseId = databaseId,
+                    mdbxFolderId = folderId,
                     keepassDatabaseId = null,
                     keepassGroupPath = null,
                     bitwardenVaultId = null,
@@ -182,7 +187,7 @@ class PasskeyRepository(
         mdbxRepository?.deletePasskeys(
             existingPasskeys.filter { it.mdbxDatabaseId != null && it.mdbxDatabaseId != databaseId }
         )
-        passkeyDao.updateMdbxDatabaseForPasskeys(recordIds, databaseId)
+        passkeyDao.updateMdbxDatabaseForPasskeys(recordIds, databaseId, folderId.takeIf { databaseId != null })
     }
 
     suspend fun syncKeePassPasskeys(
