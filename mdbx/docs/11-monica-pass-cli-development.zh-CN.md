@@ -1,15 +1,3 @@
----
-title: Monica Pass CLI 开发文档
-date: 2026-05-30 10:40:00
-permalink: /reference/monica-pass-cli-development
-categories:
-  - 技术规范
-  - MDBX
-tags:
-  - CLI
-  - Rust
-  - MDBX
----
 # Monica Pass CLI 开发文档
 
 版本：`2026-05-24`
@@ -388,7 +376,7 @@ CLI 阶段 1 必须选择一个兼容策略：
 2. `Android compatibility mode`：读写 Android 当前 MDBX 文件。
 3. `Dual mode`：打开时检测 schema，走不同 adapter。
 
-生产目标要求“正确接入项目根目录下的 mdbx workspace 和 mdbx/docs 规范目录作为主要数据库”，因此最终必须做 `Dual mode`。实现顺序建议：
+生产目标要求正确接入仓库根目录下的 Rust workspace 和 `docs/` 规范目录，因此最终必须做 `Dual mode`。实现顺序建议：
 
 - 先保留 Rust native mode。
 - 增加 schema detector。

@@ -17,9 +17,9 @@
 	</a>
 </p>
 
-[![Release](https://img.shields.io/github/v/release/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
-[![Downloads](https://img.shields.io/github/downloads/JoyinJoester/Monica/total?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
-[![Last Commit](https://img.shields.io/github/last-commit/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/commits)
+[![Release](https://img.shields.io/github/v/release/Monica-Pass/Monica-for-Android?style=flat-square)](https://github.com/Monica-Pass/Monica-for-Android/releases)
+[![Downloads](https://img.shields.io/github/downloads/Monica-Pass/Monica-for-Android/total?style=flat-square)](https://github.com/Monica-Pass/Monica-for-Android/releases)
+[![Last Commit](https://img.shields.io/github/last-commit/Monica-Pass/Monica-for-Android?style=flat-square)](https://github.com/Monica-Pass/Monica-for-Android/commits)
 [![QQ Group](https://img.shields.io/badge/QQ%20Group-1087865010-12B7F5?style=flat-square&logo=tencentqq&logoColor=white)](https://qm.qq.com/q/2vTdTkHV3u)
 
 [![Afdian](https://img.shields.io/badge/Afdian-JoyinJoester-ea4aaa?style=flat-square)](https://afdian.com/a/JoyinJoester)
@@ -60,12 +60,12 @@ Monica — это локальное хранилище паролей, кото
 ### Локальный формат базы данных MDBX
 MDBX — это разрабатываемый Monica локально-ориентированный зашифрованный формат vault. Это не просто таблица паролей: формат проектируется вокруг вложенных папок, вложений, истории commit, обнаружения конфликтов, удаления через tombstone, восстановления из snapshot и режимов безопасности Tiga.
 
-Если вы хотите подключить MDBX в другом клиенте, начните с [MDBX workspace README](mdbx/README.md) и [MDBX client integration guide](mdbx/CLIENT_INTEGRATION_GUIDE.md). Полная спецификация формата находится в [mdbx-doc](mdbx-doc/README.md).
+Если вы хотите подключить MDBX в другом клиенте, начните с [MDBX workspace README](mdbx/README.en.md) и [MDBX client integration guide](mdbx/CLIENT_INTEGRATION_GUIDE.md). Полная спецификация формата находится в [mdbx/docs](mdbx/docs/README.md).
 
 ### Быстрая установка
 
 Android:
-1. Скачайте последний APK из [Releases](https://github.com/JoyinJoester/Monica/releases).
+1. Скачайте последний APK из [Releases](https://github.com/Monica-Pass/Monica-for-Android/releases).
 2. Установите на Android 8.0+ и задайте мастер‑пароль.
 
 Расширение браузера (Chrome / Edge):
@@ -167,7 +167,7 @@ Android:
 
 ## История звезд
 
-[![Star History Chart](https://api.star-history.com/svg?repos=JoyinJoester/Monica&type=Date)](https://star-history.com/#JoyinJoester/Monica&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Monica-Pass/Monica-for-Android&type=Date)](https://star-history.com/#Monica-Pass/Monica-for-Android&Date)
 
 ---
 

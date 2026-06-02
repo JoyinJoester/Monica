@@ -17,9 +17,9 @@
 	</a>
 </p>
 
-[![Release](https://img.shields.io/github/v/release/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
-[![Downloads](https://img.shields.io/github/downloads/JoyinJoester/Monica/total?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
-[![Last Commit](https://img.shields.io/github/last-commit/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/commits)
+[![Release](https://img.shields.io/github/v/release/Monica-Pass/Monica-for-Android?style=flat-square)](https://github.com/Monica-Pass/Monica-for-Android/releases)
+[![Downloads](https://img.shields.io/github/downloads/Monica-Pass/Monica-for-Android/total?style=flat-square)](https://github.com/Monica-Pass/Monica-for-Android/releases)
+[![Last Commit](https://img.shields.io/github/last-commit/Monica-Pass/Monica-for-Android?style=flat-square)](https://github.com/Monica-Pass/Monica-for-Android/commits)
 [![QQ Group](https://img.shields.io/badge/QQ%20Group-1087865010-12B7F5?style=flat-square&logo=tencentqq&logoColor=white)](https://qm.qq.com/q/2vTdTkHV3u)
 
 [![Afdian](https://img.shields.io/badge/Afdian-JoyinJoester-ea4aaa?style=flat-square)](https://afdian.com/a/JoyinJoester)
@@ -60,12 +60,12 @@ Trang web: https://joyinjoester.github.io/Monica/
 ### Dinh dang co so du lieu local MDBX
 MDBX la dinh dang vault ma hoa, uu tien local dang duoc Monica phat trien. No khong chi la mot bang mat khau; MDBX duoc thiet ke xoay quanh thu muc long nhau, tep dinh kem, lich su commit, phat hien xung dot, chuoi xoa tombstone, khoi phuc snapshot va cac che do bao mat Tiga.
 
-Neu ban muon tich hop MDBX vao client khac, hay bat dau voi [MDBX workspace README](mdbx/README.md) va [MDBX client integration guide](mdbx/CLIENT_INTEGRATION_GUIDE.md). Dac ta dinh dang day du nam trong [mdbx-doc](mdbx-doc/README.md).
+Neu ban muon tich hop MDBX vao client khac, hay bat dau voi [MDBX workspace README](mdbx/README.en.md) va [MDBX client integration guide](mdbx/CLIENT_INTEGRATION_GUIDE.md). Dac ta dinh dang day du nam trong [mdbx/docs](mdbx/docs/README.md).
 
 ### Cai dat nhanh
 
 Android:
-1. Tai APK moi nhat tai [Releases](https://github.com/JoyinJoester/Monica/releases).
+1. Tai APK moi nhat tai [Releases](https://github.com/Monica-Pass/Monica-for-Android/releases).
 2. Cai dat tren Android 8.0+ va khoi tao master password.
 
 Tien ich trinh duyet (Chrome / Edge):
@@ -167,7 +167,7 @@ Thiet ke, kha nang tuong thich va mot so dinh huong tinh nang cua Monica da nhan
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=JoyinJoester/Monica&type=Date)](https://star-history.com/#JoyinJoester/Monica&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Monica-Pass/Monica-for-Android&type=Date)](https://star-history.com/#Monica-Pass/Monica-for-Android&Date)
 
 ---
 

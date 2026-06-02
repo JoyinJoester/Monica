@@ -17,9 +17,9 @@
 	</a>
 </p>
 
-[![Release](https://img.shields.io/github/v/release/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
-[![Downloads](https://img.shields.io/github/downloads/JoyinJoester/Monica/total?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
-[![Last Commit](https://img.shields.io/github/last-commit/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/commits)
+[![Release](https://img.shields.io/github/v/release/Monica-Pass/Monica-for-Android?style=flat-square)](https://github.com/Monica-Pass/Monica-for-Android/releases)
+[![Downloads](https://img.shields.io/github/downloads/Monica-Pass/Monica-for-Android/total?style=flat-square)](https://github.com/Monica-Pass/Monica-for-Android/releases)
+[![Last Commit](https://img.shields.io/github/last-commit/Monica-Pass/Monica-for-Android?style=flat-square)](https://github.com/Monica-Pass/Monica-for-Android/commits)
 [![QQ Group](https://img.shields.io/badge/QQ%20Group-1087865010-12B7F5?style=flat-square&logo=tencentqq&logoColor=white)](https://qm.qq.com/q/2vTdTkHV3u)
 
 [![Afdian](https://img.shields.io/badge/Afdian-JoyinJoester-ea4aaa?style=flat-square)](https://afdian.com/a/JoyinJoester)
@@ -60,12 +60,12 @@ Website: https://joyinjoester.github.io/Monica/
 ### MDBX local database format
 MDBX is Monica's local-first encrypted vault format in progress. It is not just a password table; it is designed around nested folders, attachments, commit history, conflict detection, tombstone-based deletion, snapshot recovery, and Tiga security modes.
 
-If you want to integrate MDBX in another client, start with the [MDBX workspace README](mdbx/README.md) and the [MDBX client integration guide](mdbx/CLIENT_INTEGRATION_GUIDE.md). The full format specification lives in [mdbx-doc](mdbx-doc/README.md).
+If you want to integrate MDBX in another client, start with the [MDBX workspace README](mdbx/README.en.md) and the [MDBX client integration guide](mdbx/CLIENT_INTEGRATION_GUIDE.md). The full format specification lives in [mdbx/docs](mdbx/docs/README.md).
 
 ### Quick install
 
 Android:
-1. Download the latest APK from [Releases](https://github.com/JoyinJoester/Monica/releases).
+1. Download the latest APK from [Releases](https://github.com/Monica-Pass/Monica-for-Android/releases).
 2. Install on Android 8.0+ and initialize your master password.
 
 Browser extension (Chrome / Edge):
@@ -167,7 +167,7 @@ Monica's design, compatibility work, and several feature directions have been in
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=JoyinJoester/Monica&type=Date)](https://star-history.com/#JoyinJoester/Monica&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Monica-Pass/Monica-for-Android&type=Date)](https://star-history.com/#Monica-Pass/Monica-for-Android&Date)
 
 ---
 

@@ -1,15 +1,3 @@
----
-title: MDBX 路线图与验收规范
-date: 2026-05-30 10:20:00
-permalink: /reference/mdbx-roadmap-acceptance
-categories:
-  - 技术规范
-  - MDBX
-tags:
-  - MDBX
-  - 路线图
-  - 验收
----
 # MDBX 路线图与验收规范
 
 版本：`MDBX-1-DRAFT`
@@ -86,7 +74,7 @@ MVP 必须包含：
 
 ### Inputs
 
-列出本任务必须遵循的 `mdbx/docs/` 规范文件。
+列出本任务必须遵循的 `docs/` 规范文件。
 
 ### Constraints
 
