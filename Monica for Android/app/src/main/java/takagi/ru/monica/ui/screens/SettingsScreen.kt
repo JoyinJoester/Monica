@@ -194,26 +194,41 @@ fun SettingsScreen(
                 val outputDir = File(context.cacheDir, "update_apk")
                 UpdateChecker.downloadApk(downloadUrl, outputDir, apkName)
                     .onSuccess { apkFile ->
-                        val apkUri = FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.fileprovider",
-                            apkFile
-                        )
-                        val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(apkUri, "application/vnd.android.package-archive")
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        runCatching {
-                            context.startActivity(installIntent)
-                            showUpdateCheckDialog = false
-                        }.onFailure {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.update_install_open_failed),
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
+                        UpdateChecker.validateDownloadedApk(context, apkFile)
+                            .onSuccess {
+                                val apkUri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    apkFile
+                                )
+                                val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(apkUri, "application/vnd.android.package-archive")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                runCatching {
+                                    context.startActivity(installIntent)
+                                    showUpdateCheckDialog = false
+                                }.onFailure {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.update_install_open_failed),
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                            .onFailure { error ->
+                                apkFile.delete()
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        R.string.update_download_failed,
+                                        error.localizedMessage
+                                            ?: context.getString(R.string.update_check_failed_unknown)
+                                    ),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                     }
                     .onFailure { error ->
                         Toast.makeText(
@@ -1300,7 +1315,7 @@ fun SettingsScreen(
             title = { Text(stringResource(R.string.version_info_dialog_title)) },
             text = {
                 Column {
-                    val githubUrl = "https://github.com/Monica-Pass/Monica-for-Android"
+                    val githubUrl = "https://github.com/Monica-Pass/Monica"
                     val websiteUrl = "https://joyinjoester.github.io/Monica/"
                     val iconSourceUrl = "https://github.com/stratumauth/app/tree/v1.4.0/icons"
                     val iconReleaseUrl = "https://github.com/stratumauth/app/releases/tag/v1.4.0"

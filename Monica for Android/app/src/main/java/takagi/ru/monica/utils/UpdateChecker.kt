@@ -1,5 +1,10 @@
 package takagi.ru.monica.utils
 
+import android.content.Context
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.Signature
+import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -9,6 +14,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
 import java.io.File
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 data class UpdateCheckResult(
@@ -112,6 +118,31 @@ object UpdateChecker {
             }
         }
 
+    fun validateDownloadedApk(context: Context, apkFile: File): Result<Unit> =
+        runCatching {
+            val packageManager = context.packageManager
+            val downloadedPackage = packageManager.getArchivePackageInfo(apkFile)
+                ?: throw IOException("Downloaded APK package info is unreadable")
+            val installedPackage = packageManager.getInstalledPackageInfo(context.packageName)
+
+            if (downloadedPackage.packageName != context.packageName) {
+                throw IOException("Downloaded APK package name does not match Monica")
+            }
+
+            val downloadedDigests = downloadedPackage.signingCertificateDigests()
+            val installedDigests = installedPackage.signingCertificateDigests()
+            if (downloadedDigests.isEmpty() || installedDigests.isEmpty()) {
+                throw IOException("Downloaded APK signing certificate is unreadable")
+            }
+
+            val hasMatchingSigner = downloadedDigests.any { downloaded ->
+                installedDigests.any { installed -> downloaded.contentEquals(installed) }
+            }
+            if (!hasMatchingSigner) {
+                throw IOException("Downloaded APK signature does not match installed Monica")
+            }
+        }
+
     fun compareVersionTags(candidate: String, current: String): Int {
         val candidateParts = candidate.semanticVersionParts()
         val currentParts = current.semanticVersionParts()
@@ -142,6 +173,40 @@ object UpdateChecker {
             .mapNotNull { it.value.toIntOrNull() }
             .toList()
     }
+
+    @Suppress("DEPRECATION")
+    private fun PackageManager.getArchivePackageInfo(apkFile: File): PackageInfo? =
+        getPackageArchiveInfo(apkFile.absolutePath, signatureQueryFlags())
+
+    @Suppress("DEPRECATION")
+    private fun PackageManager.getInstalledPackageInfo(packageName: String): PackageInfo =
+        getPackageInfo(packageName, signatureQueryFlags())
+
+    private fun signatureQueryFlags(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            @Suppress("DEPRECATION")
+            PackageManager.GET_SIGNATURES
+        }
+
+    private fun PackageInfo.signingCertificateDigests(): List<ByteArray> =
+        signaturesForVerification().map { signature ->
+            MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
+        }
+
+    private fun PackageInfo.signaturesForVerification(): Array<Signature> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val info = signingInfo ?: return emptyArray()
+            if (info.hasMultipleSigners()) {
+                info.apkContentsSigners ?: emptyArray()
+            } else {
+                info.signingCertificateHistory ?: info.apkContentsSigners ?: emptyArray()
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            signatures ?: emptyArray()
+        }
 }
 
 @Serializable

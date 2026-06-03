@@ -16,6 +16,12 @@ class UpdateCheckerTest {
     }
 
     @Test
+    fun compareVersionTags_ignoresReleaseLetterSuffix() {
+        assertEquals(0, UpdateChecker.compareVersionTags("V1.0.288c", "1.0.288"))
+        assertEquals(0, UpdateChecker.compareVersionTags("V1.0.288c", "V1.0.288b"))
+    }
+
+    @Test
     fun compareVersionTags_detectsOlderRelease() {
         assertTrue(UpdateChecker.compareVersionTags("1.0.287", "1.0.288") < 0)
     }
