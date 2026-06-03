@@ -37,7 +37,10 @@ import android.app.Activity
 import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.BuildConfig
 import takagi.ru.monica.R
@@ -54,6 +57,8 @@ import takagi.ru.monica.ui.password.PasswordBatchDeleteProgressTracker
 import takagi.ru.monica.ui.password.PasswordBatchTransferGlobalProgressState
 import takagi.ru.monica.ui.password.PasswordBatchTransferProgressTracker
 import takagi.ru.monica.utils.BiometricAuthHelper
+import takagi.ru.monica.utils.UpdateCheckResult
+import takagi.ru.monica.utils.UpdateChecker
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -69,6 +74,7 @@ import takagi.ru.monica.data.SecureItem
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import takagi.ru.monica.ui.components.OutlinedTextField
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -122,12 +128,108 @@ fun SettingsScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showVersionInfoDialog by remember { mutableStateOf(false) }
+    var showUpdateCheckDialog by remember { mutableStateOf(false) }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var isDownloadingUpdate by remember { mutableStateOf(false) }
+    var updateCheckResult by remember { mutableStateOf<UpdateCheckResult?>(null) }
+    var updateCheckError by remember { mutableStateOf<String?>(null) }
     var showDeveloperVerifyDialog by remember { mutableStateOf(false) }
     var previewFeaturesExpanded by remember { mutableStateOf(false) }
     var developerPasswordInput by remember { mutableStateOf("") }
     var developerPasswordError by remember { mutableStateOf(false) }
     var showWeakBiometricWarning by remember { mutableStateOf(false) }
     var settingsSearchQuery by rememberSaveable { mutableStateOf("") }
+
+    val startUpdateCheck: () -> Unit = {
+        if (!isCheckingUpdate) {
+            isCheckingUpdate = true
+            updateCheckResult = null
+            updateCheckError = null
+            coroutineScope.launch {
+                val currentVersion = BuildConfig.VERSION_NAME.ifBlank { BuildConfig.FULL_VERSION_NAME }
+                UpdateChecker.checkLatestRelease(currentVersion)
+                    .onSuccess { result ->
+                        updateCheckResult = result
+                        showUpdateCheckDialog = true
+                    }
+                    .onFailure { error ->
+                        updateCheckError = error.localizedMessage
+                            ?: context.getString(R.string.update_check_failed_unknown)
+                        showUpdateCheckDialog = true
+                    }
+                isCheckingUpdate = false
+            }
+        }
+    }
+
+    val startUpdateDownload: (UpdateCheckResult) -> Unit = download@ { result ->
+        val downloadUrl = result.apkDownloadUrl
+        if (downloadUrl.isNullOrBlank()) {
+            openExternalLink(result.releaseUrl)
+            return@download
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !context.packageManager.canRequestPackageInstalls()
+        ) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.update_install_permission_required),
+                Toast.LENGTH_LONG
+            ).show()
+            runCatching {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${context.packageName}")
+                )
+                context.startActivity(intent)
+            }
+            return@download
+        }
+
+        if (!isDownloadingUpdate) {
+            isDownloadingUpdate = true
+            coroutineScope.launch {
+                val apkName = result.apkAssetName ?: "Monica-${result.latestVersion}.apk"
+                val outputDir = File(context.cacheDir, "update_apk")
+                UpdateChecker.downloadApk(downloadUrl, outputDir, apkName)
+                    .onSuccess { apkFile ->
+                        val apkUri = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            apkFile
+                        )
+                        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(apkUri, "application/vnd.android.package-archive")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        runCatching {
+                            context.startActivity(installIntent)
+                            showUpdateCheckDialog = false
+                        }.onFailure {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.update_install_open_failed),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                    .onFailure { error ->
+                        Toast.makeText(
+                            context,
+                            context.getString(
+                                R.string.update_download_failed,
+                                error.localizedMessage
+                                    ?: context.getString(R.string.update_check_failed_unknown)
+                            ),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                isDownloadingUpdate = false
+            }
+        }
+    }
     
     // 生物识别帮助类
     val biometricHelper = remember(context) { BiometricAuthHelper(context) }
@@ -565,6 +667,12 @@ fun SettingsScreen(
         context.getString(R.string.version),
         context.getString(R.string.settings_version_number)
     )
+    val showUpdateCheckItem = matchesSettingsItem(
+        aboutTitle,
+        context.getString(R.string.update_check_title),
+        context.getString(R.string.update_check_subtitle),
+        context.getString(R.string.update_check_latest_release)
+    )
     val showPreviewFeaturesItem = matchesSettingsItem(
         developerTitle,
         context.getString(R.string.preview_features_title),
@@ -583,6 +691,7 @@ fun SettingsScreen(
         showDataManagementSection,
         showAppearanceSection,
         showVersionItem,
+        showUpdateCheckItem,
         showPreviewFeaturesItem,
         showDeveloperSettingsItem
     ).any { it }
@@ -852,14 +961,43 @@ fun SettingsScreen(
                 }
             }
 
-            if (showVersionItem) {
+            if (showVersionItem || showUpdateCheckItem) {
                 SettingsSection(title = aboutTitle) {
-                    SettingsItem(
-                        icon = Icons.Default.Info,
-                        title = context.getString(R.string.version),
-                        subtitle = context.getString(R.string.settings_version_number),
-                        onClick = { showVersionInfoDialog = true }
-                    )
+                    if (showVersionItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Info,
+                            title = context.getString(R.string.version),
+                            subtitle = context.getString(R.string.settings_version_number),
+                            onClick = { showVersionInfoDialog = true }
+                        )
+                    }
+
+                    if (showUpdateCheckItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Update,
+                            title = context.getString(R.string.update_check_title),
+                            subtitle = if (isCheckingUpdate) {
+                                context.getString(R.string.update_check_checking)
+                            } else {
+                                context.getString(R.string.update_check_subtitle)
+                            },
+                            onClick = startUpdateCheck,
+                            trailingContent = {
+                                if (isCheckingUpdate) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.ChevronRight,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        )
+                    }
                 }
             }
             
@@ -1238,6 +1376,121 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = { showVersionInfoDialog = false }) {
                     Text(stringResource(R.string.close))
+                }
+            }
+        )
+    }
+
+    if (showUpdateCheckDialog) {
+        val result = updateCheckResult
+        AlertDialog(
+            onDismissRequest = { showUpdateCheckDialog = false },
+            icon = {
+                Icon(
+                    imageVector = if (result?.isUpdateAvailable == true) {
+                        Icons.Default.Update
+                    } else {
+                        Icons.Default.Info
+                    },
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text(
+                    when {
+                        updateCheckError != null -> stringResource(R.string.update_check_failed_title)
+                        result?.isUpdateAvailable == true -> stringResource(R.string.update_check_update_available_title)
+                        else -> stringResource(R.string.update_check_no_update_title)
+                    }
+                )
+            },
+            text = {
+                Column {
+                    when {
+                        updateCheckError != null -> {
+                            Text(
+                                text = stringResource(
+                                    R.string.update_check_failed_message,
+                                    updateCheckError.orEmpty()
+                                ),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        result != null -> {
+                            Text(
+                                text = if (result.isUpdateAvailable) {
+                                    stringResource(R.string.update_check_update_available_message)
+                                } else {
+                                    stringResource(R.string.update_check_no_update_message)
+                                },
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = stringResource(
+                                    R.string.update_check_current_version,
+                                    result.currentVersion
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.update_check_latest_version,
+                                    result.latestVersion
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            result.releaseName?.let { releaseName ->
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = releaseName,
+                                    style = MaterialTheme.typography.titleSmall
+                                )
+                            }
+                            result.releaseNotes?.let { notes ->
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = notes.take(700) + if (notes.length > 700) "..." else "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (result?.isUpdateAvailable == true) {
+                    TextButton(
+                        enabled = !isDownloadingUpdate,
+                        onClick = {
+                            startUpdateDownload(result)
+                        }
+                    ) {
+                        Text(
+                            if (isDownloadingUpdate) {
+                                stringResource(R.string.update_download_downloading)
+                            } else if (result.apkDownloadUrl.isNullOrBlank()) {
+                                stringResource(R.string.update_check_open_release)
+                            } else {
+                                stringResource(R.string.update_download_and_install)
+                            }
+                        )
+                    }
+                } else {
+                    TextButton(onClick = { showUpdateCheckDialog = false }) {
+                        Text(stringResource(R.string.ok))
+                    }
+                }
+            },
+            dismissButton = {
+                if (result?.isUpdateAvailable == true) {
+                    TextButton(onClick = { showUpdateCheckDialog = false }) {
+                        Text(stringResource(R.string.close))
+                    }
                 }
             }
         )
