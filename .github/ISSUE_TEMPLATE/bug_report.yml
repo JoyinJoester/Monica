@@ -1,0 +1,64 @@
+name: "Bug 报告 (Bug Report)"
+description: "提交你在使用 Monica 过程中遇到的程序崩溃、异常或错误"
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你花时间提交 Bug 报告！请尽可能详细地填写以下信息，以便我们快速定位问题。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "错误描述 (Description)"
+      description: "请清晰且简短地描述这个 Bug 是什么，在什么操作下触发的。"
+      placeholder: "例如：使用 Monica 连接自托管 Vaultwarden 时，如果账户 KDF 设置为 Argon2id 且内存参数较高，应用会在登录/解锁/同步前后直接崩溃。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: "环境与配置信息 (Environment)"
+      description: "请提供你的客户端版本、服务端配置或运行环境（如自托管服务版本、KDF 算法参数等）。"
+      placeholder: |
+        - 客户端版本/进程：
+        - 自托管服务端 (如有)：Vaultwarden / Bitwarden
+        - 关键配置 (如 KDF 参数)：Algorithm: Argon2id, Memory: 512 MB, Iterations: 10, Parallelism: 8
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "崩溃日志或堆栈信息 (Crash Logs / Stack Trace)"
+      description: "请粘贴相关的 Logcat 崩溃日志、错误堆栈或其他报错文本（请使用代码块包裹）。"
+      render: text
+      placeholder: |
+        AndroidRuntime: FATAL EXCEPTION: main
+        java.lang.OutOfMemoryError: Failed to allocate a 1040 byte allocation ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: analysis
+    attributes:
+      label: "初步分析与线索 (Analysis / Context)"
+      description: "如果你对这个问题有初步的排查（如内存限制、特定代码位置、与其他客户端的对比等），请写在这里。"
+      placeholder: "例如：对比了官方 Bitwarden 客户端，发现其使用了 Native Rust SDK，而我们目前使用的是 BouncyCastle JVM 实现，导致在 Android JVM 堆内分配大内存引发 OOM..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: suggestions
+    attributes:
+      label: "期望行为与修复建议 (Expected Behavior & Suggestions)"
+      description: "你期望程序如何处理？或者你有什么长短期的修改建议？"
+      placeholder: |
+        期望：应用不应该直接崩溃。
+        建议：
+        - 短期：在执行前检测 KDF 内存，过大则弹出友好提示。
+        - 长期：将相关计算迁移到 Native 层或接入官方 SDK。
+    validations:
+      required: false
