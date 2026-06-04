@@ -109,6 +109,7 @@ fun AddEditWifiScreen(
     onScanQrCode: (() -> Unit)? = null,
     onNavigateBack: () -> Unit,
     onNavigateToPassword: () -> Unit,
+    onNavigateToBarcode: () -> Unit = onNavigateToPassword,
     onNavigateToSshKey: (() -> Unit)? = null,
     onSaveCompleted: ((Long?) -> Unit)? = null,
 ) {
@@ -325,6 +326,7 @@ fun AddEditWifiScreen(
                                 EntryTypeChipOption.PASSWORD -> onNavigateToPassword()
                                 EntryTypeChipOption.SSH_KEY -> onNavigateToSshKey?.invoke()
                                 EntryTypeChipOption.WIFI -> Unit
+                                EntryTypeChipOption.BARCODE -> onNavigateToBarcode()
                             }
                         },
                         enabled = !isEditing

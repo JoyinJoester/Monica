@@ -200,7 +200,21 @@ private fun QrCodeScanner(
                         scannerView.findViewById<View>(statusViewId)?.visibility = View.GONE
                     }
 
-                    val formats = listOf(BarcodeFormat.QR_CODE)
+                    val formats = listOf(
+                        BarcodeFormat.QR_CODE,
+                        BarcodeFormat.CODE_128,
+                        BarcodeFormat.CODE_39,
+                        BarcodeFormat.CODE_93,
+                        BarcodeFormat.EAN_13,
+                        BarcodeFormat.EAN_8,
+                        BarcodeFormat.UPC_A,
+                        BarcodeFormat.UPC_E,
+                        BarcodeFormat.ITF,
+                        BarcodeFormat.CODABAR,
+                        BarcodeFormat.DATA_MATRIX,
+                        BarcodeFormat.AZTEC,
+                        BarcodeFormat.PDF_417
+                    )
                     val decodeHints = mapOf(
                         DecodeHintType.TRY_HARDER to true,
                         DecodeHintType.CHARACTER_SET to "UTF-8"
@@ -548,7 +562,21 @@ private fun decodeQrFromBitmap(bitmap: Bitmap): String? {
 
     val baseSource = RGBLuminanceSource(bitmap.width, bitmap.height, pixels)
     val hints = mapOf(
-        DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
+        DecodeHintType.POSSIBLE_FORMATS to listOf(
+            BarcodeFormat.QR_CODE,
+            BarcodeFormat.CODE_128,
+            BarcodeFormat.CODE_39,
+            BarcodeFormat.CODE_93,
+            BarcodeFormat.EAN_13,
+            BarcodeFormat.EAN_8,
+            BarcodeFormat.UPC_A,
+            BarcodeFormat.UPC_E,
+            BarcodeFormat.ITF,
+            BarcodeFormat.CODABAR,
+            BarcodeFormat.DATA_MATRIX,
+            BarcodeFormat.AZTEC,
+            BarcodeFormat.PDF_417
+        ),
         DecodeHintType.TRY_HARDER to true,
         DecodeHintType.CHARACTER_SET to "UTF-8"
     )

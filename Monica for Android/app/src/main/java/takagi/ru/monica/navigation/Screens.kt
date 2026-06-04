@@ -40,12 +40,18 @@ sealed class Screen(val route: String) {
             return "add_edit_send"
         }
     }
-    object AddEditPassword : Screen("add_edit_password/{passwordId}") {
-        fun createRoute(passwordId: Long? = null): String {
-            return if (passwordId != null) {
+    object AddEditPassword : Screen("add_edit_password/{passwordId}?initialType={initialType}") {
+        fun createRoute(passwordId: Long? = null, initialType: String? = null): String {
+            val baseRoute = if (passwordId != null) {
                 "add_edit_password/$passwordId"
             } else {
                 "add_edit_password/-1"
+            }
+            val trimmedInitialType = initialType?.trim().orEmpty()
+            return if (trimmedInitialType.isBlank()) {
+                baseRoute
+            } else {
+                "$baseRoute?initialType=${Uri.encode(trimmedInitialType)}"
             }
         }
     }
@@ -75,6 +81,11 @@ sealed class Screen(val route: String) {
     object SshKeyDetail : Screen("ssh_key_detail/{passwordId}") {
         fun createRoute(passwordId: Long): String {
             return "ssh_key_detail/$passwordId"
+        }
+    }
+    object BarcodeDetail : Screen("barcode_detail/{passwordId}") {
+        fun createRoute(passwordId: Long): String {
+            return "barcode_detail/$passwordId"
         }
     }
     object AddEditTotp : Screen("add_edit_totp/{totpId}") {

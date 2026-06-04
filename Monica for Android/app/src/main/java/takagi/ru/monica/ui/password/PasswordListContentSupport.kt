@@ -38,6 +38,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.model.isSshKeyEntry
+import takagi.ru.monica.data.model.isBarcodeEntry
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.ui.password.PasswordAggregateCardStyle
@@ -426,6 +427,7 @@ internal fun filterPreStackPasswordEntries(
     quickFilterNeverStack: Boolean,
     quickFilterWifi: Boolean,
     quickFilterSshKey: Boolean,
+    quickFilterBarcode: Boolean,
     effectiveNoStackEntryIds: Set<Long>,
     hasActiveContentTypeFilter: Boolean,
     contentTypeFilterTypes: Set<PasswordPageContentType>
@@ -462,6 +464,9 @@ internal fun filterPreStackPasswordEntries(
     }
     if (quickFilterSshKey) {
         filtered = filtered.filter { it.isSshKeyEntry() }
+    }
+    if (quickFilterBarcode) {
+        filtered = filtered.filter { it.isBarcodeEntry() }
     }
     if (quickFilterUncategorized && PasswordListQuickFilterItem.UNCATEGORIZED in configuredQuickFilterItems) {
         filtered = filtered.filter { entry ->

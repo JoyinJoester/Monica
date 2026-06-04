@@ -149,6 +149,7 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.TimelinePasswordLocationState
 import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.data.model.isSshKeyEntry
+import takagi.ru.monica.data.model.isBarcodeEntry
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.FieldChange
@@ -734,6 +735,13 @@ fun PasswordListContent(
     LaunchedEffect(hasAnySshKeyEntry) {
         if (!hasAnySshKeyEntry) quickFilterSshKey = false
     }
+    var quickFilterBarcode by rememberSaveable { mutableStateOf(false) }
+    val hasAnyBarcodeEntry = remember(passwordEntries) {
+        passwordEntries.any { it.isBarcodeEntry() }
+    }
+    LaunchedEffect(hasAnyBarcodeEntry) {
+        if (!hasAnyBarcodeEntry) quickFilterBarcode = false
+    }
     var manualStackGroupByEntryId by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
     var noStackEntryIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var lastCustomFieldEntryIds by remember { mutableStateOf<List<Long>>(emptyList()) }
@@ -907,6 +915,7 @@ fun PasswordListContent(
         quickFilterNeverStack,
         quickFilterWifi,
         quickFilterSshKey,
+        quickFilterBarcode,
         effectiveNoStackEntryIds,
         aggregateUiState.hasActiveContentTypeFilter,
         aggregateUiState.contentTypeFilterTypes
@@ -929,6 +938,7 @@ fun PasswordListContent(
             quickFilterNeverStack = quickFilterNeverStack,
             quickFilterWifi = quickFilterWifi,
             quickFilterSshKey = quickFilterSshKey,
+            quickFilterBarcode = quickFilterBarcode,
             effectiveNoStackEntryIds = effectiveNoStackEntryIds,
             hasActiveContentTypeFilter = aggregateUiState.hasActiveContentTypeFilter,
             contentTypeFilterTypes = aggregateUiState.contentTypeFilterTypes
@@ -943,6 +953,9 @@ fun PasswordListContent(
         quickFilterNotes,
         quickFilterUncategorized,
         quickFilterLocalOnly,
+        quickFilterWifi,
+        quickFilterSshKey,
+        quickFilterBarcode,
         quickFilterNeverStack,
         currentFilter,
         effectiveStackCardMode
@@ -956,6 +969,9 @@ fun PasswordListContent(
             quickFilterNotes = quickFilterNotes,
             quickFilterUncategorized = quickFilterUncategorized,
             quickFilterLocalOnly = quickFilterLocalOnly,
+            quickFilterWifi = quickFilterWifi,
+            quickFilterSshKey = quickFilterSshKey,
+            quickFilterBarcode = quickFilterBarcode,
             quickFilterManualStackOnly = false,
             quickFilterNeverStack = quickFilterNeverStack,
             quickFilterUnstacked = false,
@@ -1005,6 +1021,9 @@ fun PasswordListContent(
         configuredQuickFilterItems,
         quickFilterManualStackOnly,
         quickFilterUnstacked,
+        quickFilterWifi,
+        quickFilterSshKey,
+        quickFilterBarcode,
         effectiveStackCardMode,
         validAggregateStackedItemKeys
     ) {
@@ -1017,6 +1036,9 @@ fun PasswordListContent(
             quickFilterNotes = false,
             quickFilterUncategorized = false,
             quickFilterLocalOnly = false,
+            quickFilterWifi = quickFilterWifi,
+            quickFilterSshKey = quickFilterSshKey,
+            quickFilterBarcode = quickFilterBarcode,
             quickFilterManualStackOnly = quickFilterManualStackOnly,
             quickFilterNeverStack = false,
             quickFilterUnstacked = quickFilterUnstacked,
@@ -1283,7 +1305,8 @@ fun PasswordListContent(
         aggregateUiState.visibleContentTypes,
         shouldGateInitialPasswordFirstFrame,
         hasAnyWifiEntry,
-        hasAnySshKeyEntry
+        hasAnySshKeyEntry,
+        hasAnyBarcodeEntry
     ) {
         if (shouldGateInitialPasswordFirstFrame) return@remember false
         val hasConfiguredChips = appSettings.passwordListQuickFiltersEnabled &&
@@ -1291,7 +1314,7 @@ fun PasswordListContent(
                 shouldShowQuickFilterItem(item, aggregateUiState.visibleContentTypes)
             }
         // WIFI / SSH chip 无需 quickFilters 设置开关——"有数据就冒出来"语义。
-        hasConfiguredChips || hasAnyWifiEntry || hasAnySshKeyEntry
+        hasConfiguredChips || hasAnyWifiEntry || hasAnySshKeyEntry || hasAnyBarcodeEntry
     }
     val hasVisibleCategoryQuickFilters = remember(
         effectiveCategoryQuickFilterShortcuts
@@ -1614,6 +1637,9 @@ fun PasswordListContent(
         quickFilterSshKey = quickFilterSshKey,
         onQuickFilterSshKeyChange = { quickFilterSshKey = it },
         sshKeyQuickFilterVisible = hasAnySshKeyEntry,
+        quickFilterBarcode = quickFilterBarcode,
+        onQuickFilterBarcodeChange = { quickFilterBarcode = it },
+        barcodeQuickFilterVisible = hasAnyBarcodeEntry,
         onToggleAggregateType = aggregateConfig?.onToggleContentType,
         categoryQuickFilterShortcuts = effectiveCategoryQuickFilterShortcuts,
         quickFolderShortcuts = effectiveQuickFolderCardShortcuts,
@@ -1848,6 +1874,9 @@ private fun PasswordListMainPaneHost(
     quickFilterSshKey: Boolean,
     onQuickFilterSshKeyChange: (Boolean) -> Unit,
     sshKeyQuickFilterVisible: Boolean,
+    quickFilterBarcode: Boolean,
+    onQuickFilterBarcodeChange: (Boolean) -> Unit,
+    barcodeQuickFilterVisible: Boolean,
     onToggleAggregateType: ((PasswordPageContentType) -> Unit)?,
     categoryQuickFilterShortcuts: List<PasswordQuickFolderShortcut>,
     quickFolderShortcuts: List<PasswordQuickFolderShortcut>,
@@ -1944,6 +1973,9 @@ private fun PasswordListMainPaneHost(
         quickFilterSshKey = quickFilterSshKey,
         onQuickFilterSshKeyChange = onQuickFilterSshKeyChange,
         sshKeyQuickFilterVisible = sshKeyQuickFilterVisible,
+        quickFilterBarcode = quickFilterBarcode,
+        onQuickFilterBarcodeChange = onQuickFilterBarcodeChange,
+        barcodeQuickFilterVisible = barcodeQuickFilterVisible,
         onToggleAggregateType = onToggleAggregateType,
         categoryQuickFilterShortcuts = categoryQuickFilterShortcuts,
         quickFolderShortcuts = quickFolderShortcuts,

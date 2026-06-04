@@ -256,12 +256,15 @@
     <!-- Add/Edit Password Screen -->
     <string name="add_password_title">添加密码</string>
     <string name="edit_password_title">编辑密码</string>
+    <string name="add_barcode_title">添加二维码</string>
+    <string name="edit_barcode_title">编辑二维码</string>
 
     <!-- 条目类型切换 chip -->
     <string name="entry_type_chip_content_description">切换条目类型</string>
     <string name="entry_type_password">密码</string>
     <string name="entry_type_wifi">WIFI</string>
     <string name="entry_type_ssh_key">SSH 密钥</string>
+    <string name="entry_type_barcode">二维码</string>
 
     <!-- SSH 密钥生成器 / 添加编辑页 -->
     <string name="generator_ssh_key">SSH 密钥</string>
@@ -289,6 +292,13 @@
     <string name="ssh_key_reveal_private">显示私钥</string>
     <string name="ssh_key_hide_private">隐藏私钥</string>
     <string name="password_list_quick_filter_ssh_key">SSH 密钥</string>
+    <string name="password_list_quick_filter_barcode">QRCode</string>
+    <string name="barcode_payload_label">码内容</string>
+    <string name="barcode_detail_title">二维码详情</string>
+    <string name="barcode_detail_subtitle">已保存的扫码内容</string>
+    <string name="barcode_render_qr">二维码</string>
+    <string name="barcode_render_barcode">条形码</string>
+    <string name="barcode_render_failed">当前内容无法渲染为所选码类型。</string>
 
     <!-- 添加/编辑 WIFI 页面 -->
     <string name="add_wifi_title">添加WIFI</string>

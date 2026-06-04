@@ -87,6 +87,8 @@ import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.isEmpty
+import takagi.ru.monica.data.model.LOGIN_TYPE_BARCODE
+import takagi.ru.monica.data.model.isBarcodeEntry
 import takagi.ru.monica.data.model.isSshKeyEntry
 import takagi.ru.monica.attachments.facade.AttachmentFacade
 import takagi.ru.monica.ui.components.AppSelectorDialog
@@ -195,6 +197,7 @@ fun AddEditPasswordScreen(
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     pendingQrResult: String? = null,
+    initialLoginType: String? = null,
     onConsumePendingQrResult: () -> Unit = {},
     onScanAuthenticatorQrCode: (() -> Unit)? = null,
     onSaveCompleted: ((Long?) -> Unit)? = null,
@@ -344,9 +347,18 @@ fun AddEditPasswordScreen(
     var showStorageTargetSheet by remember { mutableStateOf(false) }
     
     // SSO 登录方式字段
-    var loginType by rememberSaveable { mutableStateOf("PASSWORD") }
+    val defaultLoginType = if (
+        passwordId == null &&
+        initialLoginType.equals(LOGIN_TYPE_BARCODE, ignoreCase = true)
+    ) {
+        LOGIN_TYPE_BARCODE
+    } else {
+        "PASSWORD"
+    }
+    var loginType by rememberSaveable { mutableStateOf(defaultLoginType) }
     var ssoProvider by rememberSaveable { mutableStateOf("") }
     var ssoRefEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var barcodePayload by rememberSaveable { mutableStateOf("") }
     
     // 获取所有密码条目用于SSO关联选择
     val allPasswordsForRef by viewModel.allPasswords.collectAsState(initial = emptyList())
@@ -467,6 +479,7 @@ fun AddEditPasswordScreen(
     val fieldEmailLabel = stringResource(R.string.field_email)
     val fieldPhoneLabel = stringResource(R.string.field_phone)
     var authenticatorTypeExpanded by remember { mutableStateOf(false) }
+    val isBarcodeMode = loginType.equals(LOGIN_TYPE_BARCODE, ignoreCase = true)
 
     fun applyAuthenticatorInput(rawValue: String) {
         val trimmed = rawValue.trim()
@@ -543,7 +556,14 @@ fun AddEditPasswordScreen(
 
     LaunchedEffect(pendingQrResult) {
         pendingQrResult?.let { qrValue ->
-            applyScannedAuthenticator(qrValue)
+            if (isBarcodeMode) {
+                barcodePayload = qrValue
+                if (title.isBlank()) {
+                    title = context.getString(R.string.entry_type_barcode)
+                }
+            } else {
+                applyScannedAuthenticator(qrValue)
+            }
             onConsumePendingQrResult()
         }
     }
@@ -924,22 +944,26 @@ fun AddEditPasswordScreen(
     }
     
     // 判断字段是否应该显示：设置开启 或 条目已有该字段数据
-    fun shouldShowSecurityVerification() = fieldVisibility.securityVerification || authenticatorSecret.isNotEmpty()
+    fun shouldShowSecurityVerification() =
+        !isBarcodeMode && (fieldVisibility.securityVerification || authenticatorSecret.isNotEmpty())
     fun shouldShowCategoryAndNotes() =
         fieldVisibility.categoryAndNotes ||
             notes.isNotEmpty() ||
             boundNoteId != null ||
             noteViewModel != null
-    fun shouldShowPersonalInfo() = fieldVisibility.personalInfo ||
-        emails.any { it.isNotEmpty() } || phones.any { it.isNotEmpty() }
+    fun shouldShowPersonalInfo() =
+        !isBarcodeMode && (fieldVisibility.personalInfo ||
+            emails.any { it.isNotEmpty() } || phones.any { it.isNotEmpty() })
     // 地址信息仅看开关 + 当前条目已有数据；
     // 不再因为「常用账号」里存过账单地址而强制展示，否则用户关了开关仍会看到面板。
-    fun shouldShowAddressInfo() = fieldVisibility.addressInfo ||
-        addressLine.isNotEmpty() || city.isNotEmpty() || state.isNotEmpty() ||
-        zipCode.isNotEmpty() || country.isNotEmpty()
-    fun shouldShowPaymentInfo() = fieldVisibility.paymentInfo || 
-        creditCardNumber.isNotEmpty() || creditCardHolder.isNotEmpty() || 
-        creditCardExpiry.isNotEmpty() || creditCardCVV.isNotEmpty()
+    fun shouldShowAddressInfo() =
+        !isBarcodeMode && (fieldVisibility.addressInfo ||
+            addressLine.isNotEmpty() || city.isNotEmpty() || state.isNotEmpty() ||
+            zipCode.isNotEmpty() || country.isNotEmpty())
+    fun shouldShowPaymentInfo() =
+        !isBarcodeMode && (fieldVisibility.paymentInfo ||
+            creditCardNumber.isNotEmpty() || creditCardHolder.isNotEmpty() ||
+            creditCardExpiry.isNotEmpty() || creditCardCVV.isNotEmpty())
     
     // 新建条目时的自动填充标记（只执行一次）
     var hasAutoFilled by rememberSaveable { mutableStateOf(false) }
@@ -1117,11 +1141,12 @@ fun AddEditPasswordScreen(
                     existingSshKeyData = entry.sshKeyData
                     
                     // 加载SSO登录方式字段
-                    loginType = if (entry.loginType.equals("SSO", ignoreCase = true)) {
-                        "SSO"
-                    } else {
-                        "PASSWORD"
+                    loginType = when {
+                        entry.isBarcodeEntry() -> LOGIN_TYPE_BARCODE
+                        entry.loginType.equals("SSO", ignoreCase = true) -> "SSO"
+                        else -> "PASSWORD"
                     }
+                    barcodePayload = if (entry.isBarcodeEntry()) entry.password else ""
                     ssoProvider = entry.ssoProvider
                     ssoRefEntryId = entry.ssoRefEntryId
                     customIconType = entry.customIconType
@@ -1291,7 +1316,10 @@ fun AddEditPasswordScreen(
         }
     }
 
-    val canSave = title.isNotEmpty() && !isSaving && !hasOwnershipConflict
+    val canSave = title.isNotEmpty() &&
+        (!isBarcodeMode || barcodePayload.isNotBlank()) &&
+        !isSaving &&
+        !hasOwnershipConflict
     fun findBlockedKeePassOperation(): KeePassOperationBlockUiState? {
         selectedStorageTargets.forEach { target ->
             val keepassTarget = target as? StorageTarget.KeePass ?: return@forEach
@@ -1328,7 +1356,11 @@ fun AddEditPasswordScreen(
                 return@handleSave
             }
             isSaving = true // 防止重复点击
-            val normalizedPasswords = passwords.map { it.trim() }
+            val normalizedPasswords = if (isBarcodeMode) {
+                listOf(barcodePayload)
+            } else {
+                passwords.map { it.trim() }
+            }
             // Capture values before async call
             val currentAuthKey = authenticatorKey
             val currentTitle = title
@@ -1343,8 +1375,8 @@ fun AddEditPasswordScreen(
             val commonEntry = PasswordEntry(
                 id = 0, // Will be ignored by saveGroupedPasswords logic for new items
                 title = title,
-                website = website,
-                username = username,
+                website = if (isBarcodeMode) "" else website,
+                username = if (isBarcodeMode) "" else username,
                 password = "", // Placeholder
                 notes = notes,
                 isFavorite = isFavorite,
@@ -1369,12 +1401,12 @@ fun AddEditPasswordScreen(
                 mdbxFolderId = mdbxFolderId,
                 bitwardenVaultId = bitwardenVaultId,  // ✅ 保存到 Bitwarden Vault
                 bitwardenFolderId = bitwardenFolderId,
-                authenticatorKey = currentAuthKey,  // ✅ 保存验证器密钥
-                passkeyBindings = passkeyBindings,
+                authenticatorKey = if (isBarcodeMode) "" else currentAuthKey,  // ✅ 保存验证器密钥
+                passkeyBindings = if (isBarcodeMode) "" else passkeyBindings,
                 sshKeyData = existingSshKeyData,
-                loginType = loginType,
-                ssoProvider = ssoProvider,
-                ssoRefEntryId = ssoRefEntryId,
+                loginType = if (isBarcodeMode) LOGIN_TYPE_BARCODE else loginType,
+                ssoProvider = if (isBarcodeMode) "" else ssoProvider,
+                ssoRefEntryId = if (isBarcodeMode) null else ssoRefEntryId,
                 customIconType = customIconType,
                 customIconValue = normalizedIconFileName(customIconValue),
                 customIconUpdatedAt = customIconUpdatedAt
@@ -1571,7 +1603,14 @@ fun AddEditPasswordScreen(
             TopAppBar(
                 title = {
                     Text(
-                        stringResource(if (isEditing) R.string.edit_password_title else R.string.add_password_title),
+                        stringResource(
+                            when {
+                                isBarcodeMode && isEditing -> R.string.edit_barcode_title
+                                isBarcodeMode -> R.string.add_barcode_title
+                                isEditing -> R.string.edit_password_title
+                                else -> R.string.add_password_title
+                            }
+                        ),
                         style = MaterialTheme.typography.titleLarge,
                         maxLines = 1
                     )
@@ -1584,14 +1623,23 @@ fun AddEditPasswordScreen(
                 actions = {
                     if (onSwitchToWifi != null) {
                         takagi.ru.monica.ui.components.EntryTypeChip(
-                            current = takagi.ru.monica.ui.components.EntryTypeChipOption.PASSWORD,
+                            current = if (isBarcodeMode) {
+                                takagi.ru.monica.ui.components.EntryTypeChipOption.BARCODE
+                            } else {
+                                takagi.ru.monica.ui.components.EntryTypeChipOption.PASSWORD
+                            },
                             onSelect = { option ->
                                 when (option) {
                                     takagi.ru.monica.ui.components.EntryTypeChipOption.WIFI ->
                                         onSwitchToWifi(if (isEditing) passwordId else null)
                                     takagi.ru.monica.ui.components.EntryTypeChipOption.SSH_KEY ->
                                         onSwitchToSshKey?.invoke(if (isEditing) passwordId else null)
-                                    takagi.ru.monica.ui.components.EntryTypeChipOption.PASSWORD -> Unit
+                                    takagi.ru.monica.ui.components.EntryTypeChipOption.BARCODE -> {
+                                        loginType = LOGIN_TYPE_BARCODE
+                                    }
+                                    takagi.ru.monica.ui.components.EntryTypeChipOption.PASSWORD -> {
+                                        loginType = "PASSWORD"
+                                    }
                                 }
                             },
                             enabled = !isEditing
@@ -1699,7 +1747,11 @@ fun AddEditPasswordScreen(
             
             // Credentials Card
             item {
-                InfoCard(title = stringResource(R.string.section_credentials)) {
+                InfoCard(
+                    title = stringResource(
+                        if (isBarcodeMode) R.string.entry_type_barcode else R.string.section_credentials
+                    )
+                ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         // Title
                         if (settings.iconCardsEnabled) {
@@ -1779,9 +1831,86 @@ fun AddEditPasswordScreen(
                             )
                         }
 
-                        // Website URLs + App Binding (inline)
-                        var showAppSelectorFromWebsite by remember { mutableStateOf(false) }
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (isBarcodeMode) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                if (barcodePayload.isBlank()) {
+                                    FilledTonalButton(
+                                        onClick = { onScanAuthenticatorQrCode?.invoke() },
+                                        enabled = onScanAuthenticatorQrCode != null,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(72.dp),
+                                        shape = RoundedCornerShape(18.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.QrCodeScanner,
+                                            contentDescription = null
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(stringResource(R.string.scan_qr_code))
+                                    }
+                                } else {
+                                    ElevatedCard(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.elevatedCardColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(14.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.QrCode2,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = stringResource(R.string.barcode_payload_label),
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                    )
+                                                    Text(
+                                                        text = barcodePayload,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f),
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                FilledTonalButton(
+                                                    onClick = { onScanAuthenticatorQrCode?.invoke() },
+                                                    enabled = onScanAuthenticatorQrCode != null
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.QrCodeScanner,
+                                                        contentDescription = null
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(stringResource(R.string.scan_qr_code))
+                                                }
+                                                TextButton(onClick = { barcodePayload = "" }) {
+                                                    Text(stringResource(R.string.clear))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Website URLs + App Binding (inline)
+                            var showAppSelectorFromWebsite by remember { mutableStateOf(false) }
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             websiteUrls.forEachIndexed { index, url ->
                                 key("website_url_$index") {
                                     var urlMenuExpanded by remember { mutableStateOf(false) }
@@ -2146,7 +2275,7 @@ fun AddEditPasswordScreen(
 
                         // Passwords (仅在账号密码模式下显示)
                         AnimatedVisibility(
-                            visible = loginType.equals("PASSWORD", ignoreCase = true),
+                            visible = loginType.equals("PASSWORD", ignoreCase = true) && !isBarcodeMode,
                             enter = EnterTransition.None,
                             exit = ExitTransition.None
                         ) {
@@ -2289,6 +2418,7 @@ fun AddEditPasswordScreen(
                                     Text(stringResource(R.string.add_password))
                                 }
                             }
+                        }
                         }
                     }
                 }
@@ -2521,61 +2651,63 @@ fun AddEditPasswordScreen(
                 }
             }  // 分类与备注 if 结束
             
-            // 自定义字段区域标题 (带添加按钮)
-            item {
-                CustomFieldSectionHeader(
-                    onAddClick = {
-                        customFields.add(CustomFieldDraft(
-                            id = CustomFieldDraft.nextTempId(),
-                            title = "",
-                            value = "",
-                            isProtected = false
-                        ))
-                    }
-                )
-            }
-            
-            // 自定义字段编辑卡片 (独立卡片样式)
-            items(customFields.size) { index ->
-                val field = customFields[index]
-                CustomFieldEditCard(
-                    index = index,
-                    field = field,
-                    onFieldChange = { updated ->
-                        customFields[index] = updated
-                    },
-                    onDelete = {
-                        customFields.removeAt(index)
-                    }
-                )
-            }
-
-            // 附件区块：编辑模式直接操作附件表；新建阶段使用草稿 list，在保存后统一 flush
-            item {
-                val editKeePassContext = if (
-                    isEditing &&
-                    keepassDatabaseId != null
-                ) {
-                    editingKeePassEntryUuid?.takeIf { it.isNotBlank() }?.let { entryUuid ->
-                        AttachmentFacade.KeePassContext(
-                            databaseId = keepassDatabaseId!!,
-                            entryUuid = entryUuid
-                        )
-                    }
-                } else {
-                    null
+            if (!isBarcodeMode) {
+                // 自定义字段区域标题 (带添加按钮)
+                item {
+                    CustomFieldSectionHeader(
+                        onAddClick = {
+                            customFields.add(CustomFieldDraft(
+                                id = CustomFieldDraft.nextTempId(),
+                                title = "",
+                                value = "",
+                                isProtected = false
+                            ))
+                        }
+                    )
                 }
-                takagi.ru.monica.attachments.ui.AttachmentsEditSection(
-                    passwordId = passwordId ?: -1L,
-                    isPlusActivated = settings.isPlusActivated,
-                    attachmentSource = if (editKeePassContext != null) {
-                        takagi.ru.monica.attachments.model.AttachmentSource.KEEPASS
+
+                // 自定义字段编辑卡片 (独立卡片样式)
+                items(customFields.size) { index ->
+                    val field = customFields[index]
+                    CustomFieldEditCard(
+                        index = index,
+                        field = field,
+                        onFieldChange = { updated ->
+                            customFields[index] = updated
+                        },
+                        onDelete = {
+                            customFields.removeAt(index)
+                        }
+                    )
+                }
+
+                // 附件区块：编辑模式直接操作附件表；新建阶段使用草稿 list，在保存后统一 flush
+                item {
+                    val editKeePassContext = if (
+                        isEditing &&
+                        keepassDatabaseId != null
+                    ) {
+                        editingKeePassEntryUuid?.takeIf { it.isNotBlank() }?.let { entryUuid ->
+                            AttachmentFacade.KeePassContext(
+                                databaseId = keepassDatabaseId!!,
+                                entryUuid = entryUuid
+                            )
+                        }
                     } else {
-                        takagi.ru.monica.attachments.model.AttachmentSource.LOCAL
-                    },
-                    keepassContext = editKeePassContext,
-                    pendingDrafts = if (isEditing) null else pendingAttachmentDrafts
-                )
+                        null
+                    }
+                    takagi.ru.monica.attachments.ui.AttachmentsEditSection(
+                        passwordId = passwordId ?: -1L,
+                        isPlusActivated = settings.isPlusActivated,
+                        attachmentSource = if (editKeePassContext != null) {
+                            takagi.ru.monica.attachments.model.AttachmentSource.KEEPASS
+                        } else {
+                            takagi.ru.monica.attachments.model.AttachmentSource.LOCAL
+                        },
+                        keepassContext = editKeePassContext,
+                        pendingDrafts = if (isEditing) null else pendingAttachmentDrafts
+                    )
+                }
             }
 
             // Collapsible: Personal Info - 根据设置和数据决定是否显示

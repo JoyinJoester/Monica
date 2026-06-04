@@ -114,6 +114,7 @@ fun AddEditSshKeyScreen(
     initialBitwardenFolderId: String? = null,
     onNavigateBack: () -> Unit,
     onNavigateToPassword: () -> Unit,
+    onNavigateToBarcode: () -> Unit = onNavigateToPassword,
     onNavigateToWifi: () -> Unit,
     onSaveCompleted: ((Long?) -> Unit)? = null,
 ) {
@@ -350,6 +351,7 @@ fun AddEditSshKeyScreen(
                                 EntryTypeChipOption.PASSWORD -> onNavigateToPassword()
                                 EntryTypeChipOption.WIFI -> onNavigateToWifi()
                                 EntryTypeChipOption.SSH_KEY -> Unit
+                                EntryTypeChipOption.BARCODE -> onNavigateToBarcode()
                             }
                         },
                         enabled = !isEditing

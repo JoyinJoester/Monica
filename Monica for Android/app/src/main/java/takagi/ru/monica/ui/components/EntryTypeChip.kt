@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Password
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -47,7 +48,7 @@ import takagi.ru.monica.R
  * Material 3 Expressive 风格：去掉 AssistChip 的描边，换成小圆角的 tonal pill，
  * 点击弹出 DropdownMenu 选类型。禁用时只做透明度淡出，保持形状一致。
  */
-enum class EntryTypeChipOption { PASSWORD, WIFI, SSH_KEY }
+enum class EntryTypeChipOption { PASSWORD, WIFI, SSH_KEY, BARCODE }
 
 @Composable
 fun EntryTypeChip(
@@ -177,12 +178,14 @@ private fun EntryTypeChipOption.labelRes() = when (this) {
     EntryTypeChipOption.PASSWORD -> R.string.entry_type_password
     EntryTypeChipOption.WIFI -> R.string.entry_type_wifi
     EntryTypeChipOption.SSH_KEY -> R.string.entry_type_ssh_key
+    EntryTypeChipOption.BARCODE -> R.string.entry_type_barcode
 }
 
 private fun EntryTypeChipOption.icon(): ImageVector = when (this) {
     EntryTypeChipOption.PASSWORD -> Icons.Default.Password
     EntryTypeChipOption.WIFI -> Icons.Default.Wifi
     EntryTypeChipOption.SSH_KEY -> Icons.Default.Key
+    EntryTypeChipOption.BARCODE -> Icons.Default.QrCode2
 }
 
 /** 保留 import 不造成未使用警告。 */

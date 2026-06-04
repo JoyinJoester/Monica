@@ -122,6 +122,9 @@ internal fun filterPasswordAggregateItemsByQuickFilters(
     quickFilterNotes: Boolean,
     quickFilterUncategorized: Boolean,
     quickFilterLocalOnly: Boolean,
+    quickFilterWifi: Boolean = false,
+    quickFilterSshKey: Boolean = false,
+    quickFilterBarcode: Boolean = false,
     quickFilterManualStackOnly: Boolean,
     quickFilterNeverStack: Boolean,
     quickFilterUnstacked: Boolean,
@@ -156,6 +159,9 @@ internal fun filterPasswordAggregateItemsByQuickFilters(
     }
     if (quickFilterLocalOnly && PasswordListQuickFilterItem.LOCAL_ONLY in configuredQuickFilterItems) {
         filtered = filtered.filter { it.entry.isLocalOnlyEntry() }
+    }
+    if (quickFilterWifi || quickFilterSshKey || quickFilterBarcode) {
+        filtered = emptyList()
     }
     if (quickFilterManualStackOnly && PasswordListQuickFilterItem.MANUAL_STACK_ONLY in configuredQuickFilterItems) {
         filtered = filtered.filter { it.key in manualStackedKeys }

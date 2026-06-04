@@ -242,6 +242,8 @@
     <!-- Add/Edit Password Screen -->
     <string name="add_password_title">Add Password</string>
     <string name="edit_password_title">Edit Password</string>
+    <string name="add_barcode_title">Add QR Code</string>
+    <string name="edit_barcode_title">Edit QR Code</string>
     <string name="title_required">Title *</string>
     <string name="website_url">Website/URL</string>
 
@@ -250,6 +252,7 @@
     <string name="entry_type_password">Password</string>
     <string name="entry_type_wifi">WIFI</string>
     <string name="entry_type_ssh_key">SSH key</string>
+    <string name="entry_type_barcode">QR Code</string>
 
     <!-- SSH key generator / add-edit screens -->
     <string name="generator_ssh_key">SSH key</string>
@@ -277,6 +280,13 @@
     <string name="ssh_key_reveal_private">Show private key</string>
     <string name="ssh_key_hide_private">Hide private key</string>
     <string name="password_list_quick_filter_ssh_key">SSH keys</string>
+    <string name="password_list_quick_filter_barcode">QR Code</string>
+    <string name="barcode_payload_label">Code content</string>
+    <string name="barcode_detail_title">QR Code details</string>
+    <string name="barcode_detail_subtitle">Stored code payload</string>
+    <string name="barcode_render_qr">QR Code</string>
+    <string name="barcode_render_barcode">Barcode</string>
+    <string name="barcode_render_failed">This content cannot be rendered as the selected code type.</string>
 
     <!-- Add/Edit WIFI Screen -->
     <string name="add_wifi_title">Add WIFI</string>

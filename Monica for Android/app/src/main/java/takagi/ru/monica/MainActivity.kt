@@ -75,6 +75,8 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.data.model.LOGIN_TYPE_BARCODE
+import takagi.ru.monica.data.model.isBarcodeEntry
 import takagi.ru.monica.data.model.isSshKeyEntry
 import takagi.ru.monica.navigation.Screen
 import takagi.ru.monica.data.dedup.DedupEngine
@@ -1171,12 +1173,23 @@ fun MonicaContent(
 
         composable(
             route = Screen.AddEditPassword.route,
+            arguments = listOf(
+                navArgument("passwordId") {
+                    type = NavType.StringType
+                },
+                navArgument("initialType") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            ),
             enterTransition = { easyNotesScreenEnter() },
             exitTransition = { easyNotesScreenExit() },
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
             val passwordId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
+            val initialType = backStackEntry.arguments?.getString("initialType")
             val pendingStorageDefaults = remember(backStackEntry, passwordId) {
                 if (passwordId > 0) {
                     navController.previousBackStackEntry?.savedStateHandle?.clearPendingAddStorageDefaults()
@@ -1225,6 +1238,7 @@ fun MonicaContent(
                 initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                 initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
                 pendingQrResult = qrResult,
+                initialLoginType = initialType,
                 onConsumePendingQrResult = {
                     navController.currentBackStackEntry
                         ?.savedStateHandle
@@ -1294,6 +1308,12 @@ fun MonicaContent(
                 onNavigateBack = navigateBack,
                 onNavigateToPassword = {
                     navController.navigate(Screen.AddEditPassword.createRoute(null)) {
+                        popUpTo(Screen.AddEditWifi.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onNavigateToBarcode = {
+                    navController.navigate(Screen.AddEditPassword.createRoute(null, LOGIN_TYPE_BARCODE)) {
                         popUpTo(Screen.AddEditWifi.route) { inclusive = true }
                         launchSingleTop = true
                     }
@@ -1392,6 +1412,12 @@ fun MonicaContent(
                         launchSingleTop = true
                     }
                 },
+                onNavigateToBarcode = {
+                    navController.navigate(Screen.AddEditPassword.createRoute(null, LOGIN_TYPE_BARCODE)) {
+                        popUpTo(Screen.AddEditSshKey.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateToWifi = {
                     navController.navigate(Screen.AddEditWifi.createRoute(null)) {
                         popUpTo(Screen.AddEditSshKey.route) { inclusive = true }
@@ -1438,6 +1464,37 @@ fun MonicaContent(
                                 )
                             )
                         navController.navigate(Screen.AddEditSend.createRoute()) {
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
+        }
+
+        composable(
+            route = Screen.BarcodeDetail.route,
+            enterTransition = { easyNotesScreenEnter() },
+            exitTransition = { easyNotesScreenExit() },
+            popEnterTransition = { easyNotesScreenEnter() },
+            popExitTransition = { easyNotesScreenExit() }
+        ) { backStackEntry ->
+            val barcodeId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
+            if (barcodeId > 0) {
+                val navigateBack = {
+                    val popped = navController.popBackStack()
+                    if (!popped) {
+                        navController.navigate(Screen.Main.createRoute()) {
+                            popUpTo(0) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
+                }
+                takagi.ru.monica.ui.screens.BarcodeDetailScreen(
+                    viewModel = viewModel,
+                    passwordId = barcodeId,
+                    onNavigateBack = navigateBack,
+                    onEdit = { id ->
+                        navController.navigate(Screen.AddEditPassword.createRoute(id)) {
                             launchSingleTop = true
                         }
                     }
@@ -1989,6 +2046,13 @@ fun MonicaContent(
                         entry?.isSshKeyEntry() == true -> {
                             redirectedToSpecialized = true
                             navController.navigate(Screen.SshKeyDetail.createRoute(passwordId)) {
+                                popUpTo(Screen.PasswordDetail.route) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
+                        entry?.isBarcodeEntry() == true -> {
+                            redirectedToSpecialized = true
+                            navController.navigate(Screen.BarcodeDetail.createRoute(passwordId)) {
                                 popUpTo(Screen.PasswordDetail.route) { inclusive = true }
                                 launchSingleTop = true
                             }
