@@ -32,6 +32,22 @@ class TotpDataResolverTest {
     }
 
     @Test
+    fun yandexOtpPreservesEightDigitConfiguration() {
+        val generated = TotpGenerator.generateOtp(
+            TotpData(
+                secret = "JBSWY3DPEHPK3PXP",
+                issuer = "Yandex",
+                otpType = OtpType.YANDEX,
+                digits = 8
+            ),
+            currentSeconds = 1_700_000_000L
+        )
+
+        assertEquals(8, generated.length)
+        assertTrue(generated.all { it.isDigit() })
+    }
+
+    @Test
     fun steamGuardDataSyncsBackToBitwardenSteamUri() {
         val rawSteamSharedSecret = "QUJDREVGR0hJSktMTU5PUFFSU1Q="
 

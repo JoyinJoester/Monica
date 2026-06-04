@@ -26,6 +26,7 @@ import takagi.ru.monica.utils.PasswordImportDuplicateResolver
 import takagi.ru.monica.util.DataExportImportManager
 import takagi.ru.monica.util.TotpUriParser
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.utils.BackupContentScope
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.steam.service.SteamLoginImportService
@@ -952,7 +953,8 @@ class DataExportImportViewModel(
             val result = webDavHelper.createBackupZip(
                 passwords = exportedPasswords,
                 secureItems = secureItems,
-                preferences = preferences
+                preferences = preferences,
+                contentScope = BackupContentScope.ALL_OFFLINE
             )
             
             result.fold(

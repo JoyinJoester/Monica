@@ -3314,6 +3314,8 @@
     <string name="authenticator_card_display_content_title">Содержимое карточки</string>
     <string name="authenticator_card_display_field_desc">Название всегда отображается. Можно настроить до 2 дополнительных строк.</string>
     <string name="authenticator_card_field_limit_hint">На карточках показываются только первые 2 выбранных поля.</string>
+    <string name="authenticator_card_hide_code_title">Скрывать коды по умолчанию</string>
+    <string name="authenticator_card_hide_code_description">Показывать звёздочки на карточках аутентификатора до нажатия.</string>
     <string name="password_quick_access_title">Недавние и частые</string>
     <string name="password_quick_access_desc">Быстрый доступ к часто используемым паролям.</string>
     <string name="password_quick_access_recent">Недавние</string>

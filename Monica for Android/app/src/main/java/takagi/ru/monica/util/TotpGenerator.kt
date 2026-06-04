@@ -51,7 +51,11 @@ object TotpGenerator {
             OtpType.YANDEX -> generateYandexCode(
                 secret = resolvedTotpData.secret,
                 pin = resolvedTotpData.pin,
-                timeSeconds = nowSeconds
+                timeSeconds = nowSeconds,
+                period = resolvedTotpData.period,
+                digits = resolvedTotpData.digits,
+                algorithm = resolvedTotpData.algorithm,
+                timeOffset = timeOffset
             )
             OtpType.MOTP -> generateMobileOtp(
                 secret = resolvedTotpData.secret,
@@ -79,6 +83,7 @@ object TotpGenerator {
         algorithm: String = "SHA1",
         timeOffset: Int = 0
     ): String {
+        val safeDigits = digits.coerceIn(1, 10)
         try {
             // 应用时间偏移校正
             val correctedTime = timeSeconds + timeOffset
@@ -93,10 +98,10 @@ object TotpGenerator {
             val hmac = generateHmac(key, timeStep, algorithm)
             
             // 截断HMAC生成验证码
-            return truncateHmac(hmac, digits)
+            return truncateHmac(hmac, safeDigits)
         } catch (e: Exception) {
             e.printStackTrace()
-            return "000000"
+            return zeroCode(safeDigits)
         }
     }
     
@@ -145,6 +150,7 @@ object TotpGenerator {
      * 截断HMAC生成验证码
      */
     private fun truncateHmac(hmac: ByteArray, digits: Int): String {
+        val safeDigits = digits.coerceIn(1, 10)
         // 动态截断
         val offset = (hmac[hmac.size - 1].toInt() and 0x0F)
         
@@ -153,10 +159,14 @@ object TotpGenerator {
                 ((hmac[offset + 2].toInt() and 0xFF) shl 8) or
                 (hmac[offset + 3].toInt() and 0xFF)
         
-        val otp = binary % 10.0.pow(digits).toInt()
+        val otp = binary.toLong() % 10.0.pow(safeDigits).toLong()
         
         // 格式化为指定位数的字符串（前导零）
-        return String.format("%0${digits}d", otp)
+        return String.format("%0${safeDigits}d", otp)
+    }
+
+    private fun zeroCode(digits: Int): String {
+        return "0".repeat(digits.coerceIn(1, 10))
     }
     
     /**
@@ -231,6 +241,7 @@ object TotpGenerator {
         digits: Int = 6,
         algorithm: String = "SHA1"
     ): String {
+        val safeDigits = digits.coerceIn(1, 10)
         return try {
             // 解码Base32密钥
             val key = decodeBase32(secret)
@@ -239,10 +250,10 @@ object TotpGenerator {
             val hmac = generateHmac(key, counter, algorithm)
             
             // 截断HMAC生成验证码
-            truncateHmac(hmac, digits)
+            truncateHmac(hmac, safeDigits)
         } catch (e: Exception) {
             e.printStackTrace()
-            "000000"
+            zeroCode(safeDigits)
         }
     }
     
@@ -303,15 +314,20 @@ object TotpGenerator {
     fun generateYandexCode(
         secret: String,
         pin: String = "",
-        timeSeconds: Long = System.currentTimeMillis() / 1000
+        timeSeconds: Long = System.currentTimeMillis() / 1000,
+        period: Int = 30,
+        digits: Int = 6,
+        algorithm: String = "SHA1",
+        timeOffset: Int = 0
     ): String {
         // Yandex使用标准TOTP算法
         return generateTotp(
             secret = secret,
             timeSeconds = timeSeconds,
-            period = 30,
-            digits = 6,
-            algorithm = "SHA1"
+            period = period,
+            digits = digits,
+            algorithm = algorithm,
+            timeOffset = timeOffset
         )
     }
     

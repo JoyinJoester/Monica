@@ -23,7 +23,6 @@ import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.BackupPreferences
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasskeyEntry
-import takagi.ru.monica.data.SecureItemOwnership
 import takagi.ru.monica.data.BackupReport
 import takagi.ru.monica.data.RestoreReport
 import takagi.ru.monica.data.ItemCounts
@@ -388,6 +387,7 @@ private data class PageAdjustmentSettingsBackupEntry(
     val passwordGroupMode: String = "smart",
     val passwordWebsiteStackMatchMode: String = "strict",
     val authenticatorCardDisplayFields: List<String> = emptyList(),
+    val authenticatorCardHideCodeByDefault: Boolean = false,
     val validatorProgressBarStyle: String = "LINEAR",
     val validatorUnifiedProgressBar: String = "ENABLED",
     val validatorSmoothProgress: Boolean = true,
@@ -517,60 +517,6 @@ class WebDavHelper(
     init {
         // 
         loadConfig()
-    }
-
-    private fun isLikelyDetachedKeePassPassword(entry: PasswordEntry): Boolean {
-        if (entry.keepassDatabaseId == null) return false
-        if (entry.bitwardenVaultId != null || !entry.bitwardenCipherId.isNullOrBlank()) return false
-        val hasLocalCategory = entry.categoryId != null
-        val missingKeePassIdentity =
-            entry.keepassEntryUuid.isNullOrBlank() && entry.keepassGroupUuid.isNullOrBlank()
-        return hasLocalCategory || missingKeePassIdentity
-    }
-
-    private fun shouldIncludePasswordInMonicaBackup(entry: PasswordEntry): Boolean {
-        return entry.isLocalOnlyEntry() || isLikelyDetachedKeePassPassword(entry)
-    }
-
-    private fun sanitizePasswordForMonicaBackup(entry: PasswordEntry): PasswordEntry {
-        return entry.copy(
-            keepassDatabaseId = null,
-            keepassGroupPath = null,
-            keepassEntryUuid = null,
-            keepassGroupUuid = null,
-            bitwardenVaultId = null,
-            bitwardenCipherId = null,
-            bitwardenFolderId = null,
-            bitwardenRevisionDate = null,
-            bitwardenLocalModified = false
-        )
-    }
-
-    private fun isLikelyDetachedKeePassSecureItem(item: SecureItem): Boolean {
-        if (item.resolveOwnership() !is SecureItemOwnership.KeePass) return false
-        val hasLocalCategory = item.categoryId != null
-        val missingKeePassIdentity =
-            item.keepassEntryUuid.isNullOrBlank() && item.keepassGroupUuid.isNullOrBlank()
-        return hasLocalCategory || missingKeePassIdentity
-    }
-
-    private fun shouldIncludeSecureItemInMonicaBackup(item: SecureItem): Boolean {
-        return item.isLocalOnlyItem() || isLikelyDetachedKeePassSecureItem(item)
-    }
-
-    private fun sanitizeSecureItemForMonicaBackup(item: SecureItem): SecureItem {
-        return item.copy(
-            keepassDatabaseId = null,
-            keepassGroupPath = null,
-            keepassEntryUuid = null,
-            keepassGroupUuid = null,
-            bitwardenVaultId = null,
-            bitwardenCipherId = null,
-            bitwardenFolderId = null,
-            bitwardenRevisionDate = null,
-            bitwardenLocalModified = false,
-            syncStatus = "NONE"
-        )
     }
 
     private fun sanitizeSecureExportItemForMonicaRestore(
@@ -1041,7 +987,8 @@ class WebDavHelper(
         
         passwords: List<PasswordEntry>,
         secureItems: List<SecureItem>,
-        preferences: BackupPreferences = getBackupPreferences()
+        preferences: BackupPreferences = getBackupPreferences(),
+        contentScope: BackupContentScope = BackupContentScope.MONICA_LOCAL_ONLY
     ): Result<Pair<File, BackupReport>> = withContext(Dispatchers.IO) {
         try {
             // 验证：检查是否至少启用了一种内容类型
@@ -1050,8 +997,11 @@ class WebDavHelper(
                 return@withContext Result.failure(Exception("请至少选择一种备份内容"))
             }
 
-            // 记录备份偏好设置
-            android.util.Log.d("WebDavHelper", "Creating backup zip with preferences: $preferences")
+            android.util.Log.d(
+                "WebDavHelper",
+                "Creating backup zip: scope=$contentScope, preferences=$preferences, " +
+                    "inputPasswords=${passwords.size}, inputSecureItems=${secureItems.size}"
+            )
 
             // P0修复：错误跟踪
             val failedItems = mutableListOf<FailedItem>()
@@ -1081,16 +1031,22 @@ class WebDavHelper(
                 // 2. 根据偏好设置过滤密码数据
                 val backupPasswordCandidates = if (preferences.includePasswords) passwords else emptyList()
                 val filteredPasswords = backupPasswordCandidates
-                    .filter(::shouldIncludePasswordInMonicaBackup)
-                    .map(::sanitizePasswordForMonicaBackup)
+                    .filter { BackupContentPolicy.shouldIncludePassword(it, contentScope) }
+                    .map(BackupContentPolicy::sanitizePasswordForMonicaBackup)
                 val skippedExternalPasswordCount = backupPasswordCandidates.size - filteredPasswords.size
-                val repairedDetachedPasswordCount = backupPasswordCandidates.count(::isLikelyDetachedKeePassPassword)
+                val repairedDetachedPasswordCount =
+                    backupPasswordCandidates.count(BackupContentPolicy::isLikelyDetachedKeePassPassword)
                 if (skippedExternalPasswordCount > 0) {
                     warnings.add("已跳过 $skippedExternalPasswordCount 条非 Monica 本地密码")
                 }
                 if (repairedDetachedPasswordCount > 0) {
                     warnings.add("已按 Monica 本地修复 $repairedDetachedPasswordCount 条遗留 KeePass 标记的密码")
                 }
+                android.util.Log.d(
+                    "WebDavHelper",
+                    "Backup password selection: scope=$contentScope, candidates=${backupPasswordCandidates.size}, " +
+                        "included=${filteredPasswords.size}, skipped=$skippedExternalPasswordCount"
+                )
                 
                 // 3. 根据偏好设置过滤安全项目
                 val backupSecureItemCandidates = secureItems.filter { item ->
@@ -1103,18 +1059,23 @@ class WebDavHelper(
                     }
                 }
                 val filteredSecureItems = backupSecureItemCandidates
-                    .filter(::shouldIncludeSecureItemInMonicaBackup)
-                    .map(::sanitizeSecureItemForMonicaBackup)
+                    .filter { BackupContentPolicy.shouldIncludeSecureItem(it, contentScope) }
+                    .map(BackupContentPolicy::sanitizeSecureItemForMonicaBackup)
                 val skippedExternalSecureItemCount =
                     backupSecureItemCandidates.size - filteredSecureItems.size
                 val repairedDetachedSecureItemCount =
-                    backupSecureItemCandidates.count(::isLikelyDetachedKeePassSecureItem)
+                    backupSecureItemCandidates.count(BackupContentPolicy::isLikelyDetachedKeePassSecureItem)
                 if (skippedExternalSecureItemCount > 0) {
                     warnings.add("已跳过 $skippedExternalSecureItemCount 条非 Monica 本地安全项")
                 }
                 if (repairedDetachedSecureItemCount > 0) {
                     warnings.add("已按 Monica 本地修复 $repairedDetachedSecureItemCount 条遗留 KeePass 标记的安全项")
                 }
+                android.util.Log.d(
+                    "WebDavHelper",
+                    "Backup secure item selection: scope=$contentScope, candidates=${backupSecureItemCandidates.size}, " +
+                        "included=${filteredSecureItems.size}, skipped=$skippedExternalSecureItemCount"
+                )
 
                 // 分类过滤后的项目
                 val totpItems = filteredSecureItems.filter { it.itemType == ItemType.TOTP }
@@ -1863,6 +1824,8 @@ class WebDavHelper(
                                     pageAdjustmentSettingsSnapshot.passwordWebsiteStackMatchMode,
                                 authenticatorCardDisplayFields =
                                     pageAdjustmentSettingsSnapshot.authenticatorCardDisplayFields,
+                                authenticatorCardHideCodeByDefault =
+                                    pageAdjustmentSettingsSnapshot.authenticatorCardHideCodeByDefault,
                                 validatorProgressBarStyle =
                                     pageAdjustmentSettingsSnapshot.validatorProgressBarStyle,
                                 validatorUnifiedProgressBar =
@@ -2178,7 +2141,7 @@ class WebDavHelper(
                 // 生成报告
                 val totalImageCount = if (preferences.includeImages) extractAllImageFileNames(filteredSecureItems).size else 0
                 val totalCounts = ItemCounts(
-                    passwords = if (preferences.includePasswords) passwords.size else 0,
+                    passwords = backupPasswordCandidates.size,
                     notes = noteItems.size,
                     totp = totpItems.size,
                     bankCards = cardsDocsItems.count { it.itemType == ItemType.BANK_CARD },
@@ -2186,7 +2149,7 @@ class WebDavHelper(
                     images = totalImageCount
                 )
                 val successCounts = ItemCounts(
-                    passwords = if (preferences.includePasswords) passwords.size else 0,
+                    passwords = successPasswordCount,
                     notes = successNoteCount,
                     totp = totpItems.size,
                     bankCards = cardsDocsItems.count { it.itemType == ItemType.BANK_CARD },
@@ -2199,6 +2162,13 @@ class WebDavHelper(
                     successItems = successCounts,
                     failedItems = failedItems,
                     warnings = warnings
+                )
+                android.util.Log.d(
+                    "WebDavHelper",
+                    "Backup zip created: scope=$contentScope, " +
+                        "passwords=${successCounts.passwords}/${totalCounts.passwords}, " +
+                        "totp=${successCounts.totp}/${totalCounts.totp}, " +
+                        "notes=${successCounts.notes}/${totalCounts.notes}, warnings=${warnings.size}, failures=${failedItems.size}"
                 )
 
                 Result.success(Pair(finalFile, report))
@@ -2258,24 +2228,21 @@ class WebDavHelper(
                     
                     // 记录 WebDAV 上传操作到时间线
                     val uploadDetails = mutableListOf<FieldChange>()
-                    if (passwords.isNotEmpty()) {
-                        uploadDetails.add(FieldChange("密码", "", "${passwords.size}项"))
+                    val backedUpCounts = report.successItems
+                    if (backedUpCounts.passwords > 0) {
+                        uploadDetails.add(FieldChange("密码", "", "${backedUpCounts.passwords}项"))
                     }
-                    val totpCount = secureItems.count { it.itemType == takagi.ru.monica.data.ItemType.TOTP }
-                    if (totpCount > 0) {
-                        uploadDetails.add(FieldChange("验证器", "", "${totpCount}项"))
+                    if (backedUpCounts.totp > 0) {
+                        uploadDetails.add(FieldChange("验证器", "", "${backedUpCounts.totp}项"))
                     }
-                    val cardCount = secureItems.count { it.itemType == takagi.ru.monica.data.ItemType.BANK_CARD }
-                    if (cardCount > 0) {
-                        uploadDetails.add(FieldChange("卡片", "", "${cardCount}项"))
+                    if (backedUpCounts.bankCards > 0) {
+                        uploadDetails.add(FieldChange("卡片", "", "${backedUpCounts.bankCards}项"))
                     }
-                    val noteCount = secureItems.count { it.itemType == takagi.ru.monica.data.ItemType.NOTE }
-                    if (noteCount > 0) {
-                        uploadDetails.add(FieldChange("笔记", "", "${noteCount}项"))
+                    if (backedUpCounts.notes > 0) {
+                        uploadDetails.add(FieldChange("笔记", "", "${backedUpCounts.notes}项"))
                     }
-                    val docCount = secureItems.count { it.itemType == takagi.ru.monica.data.ItemType.DOCUMENT }
-                    if (docCount > 0) {
-                        uploadDetails.add(FieldChange("证件", "", "${docCount}项"))
+                    if (backedUpCounts.documents > 0) {
+                        uploadDetails.add(FieldChange("证件", "", "${backedUpCounts.documents}项"))
                     }
                     OperationLogger.logWebDavUpload(
                         isAutomatic = !isManualTrigger,
@@ -3254,6 +3221,8 @@ class WebDavHelper(
                                                     pageAdjustmentBackup.passwordWebsiteStackMatchMode,
                                                 authenticatorCardDisplayFields =
                                                     pageAdjustmentBackup.authenticatorCardDisplayFields,
+                                                authenticatorCardHideCodeByDefault =
+                                                    pageAdjustmentBackup.authenticatorCardHideCodeByDefault,
                                                 validatorProgressBarStyle =
                                                     pageAdjustmentBackup.validatorProgressBarStyle,
                                                 validatorUnifiedProgressBar =
@@ -4768,17 +4737,20 @@ class WebDavHelper(
             val backups = result.getOrNull() ?: emptyList()
             var deletedCount = 0
 
-            val sixtyDaysAgo = System.currentTimeMillis() - (60L * 24 * 60 * 60 * 1000)
+            val expiredBackups = BackupRetentionPolicy.expiredTemporaryBackupsToDelete(backups)
+            android.util.Log.i(
+                "WebDavHelper",
+                "Cleanup scan: total=${backups.size}, " +
+                    "temporary=${backups.count { !it.isPermanent }}, candidates=${expiredBackups.size}"
+            )
 
-            backups.forEach { backup ->
-                if (!backup.isPermanent && backup.modified.time < sixtyDaysAgo) {
-                    android.util.Log.d("WebDavHelper", "Deleting expired backup: ${backup.name}")
-                    try {
-                        deleteBackup(backup)
-                        deletedCount++
-                    } catch (e: Exception) {
-                        android.util.Log.w("WebDavHelper", "Failed to delete expired backup ${backup.name}: ${e.message}")
-                    }
+            expiredBackups.forEach { backup ->
+                android.util.Log.d("WebDavHelper", "Deleting expired backup: ${backup.name}")
+                try {
+                    deleteBackup(backup)
+                    deletedCount++
+                } catch (e: Exception) {
+                    android.util.Log.w("WebDavHelper", "Failed to delete expired backup ${backup.name}: ${e.message}")
                 }
             }
 

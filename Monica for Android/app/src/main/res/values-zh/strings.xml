@@ -3376,6 +3376,8 @@
     <string name="authenticator_card_display_content_title">卡片显示内容</string>
     <string name="authenticator_card_display_field_desc">标题固定显示，可自定义附加信息并排序，最多展示 2 行。</string>
     <string name="authenticator_card_field_limit_hint">卡片上只会显示已选字段中的前 2 项。</string>
+    <string name="authenticator_card_hide_code_title">默认隐藏验证码</string>
+    <string name="authenticator_card_hide_code_description">验证器卡片默认以星号显示，点击后显示验证码。</string>
     <string name="password_quick_access_title">最近打开与常用</string>
     <string name="password_quick_access_desc">无需搜索，快速打开最近使用和高频使用的密码。</string>
     <string name="password_quick_access_recent">最近打开</string>

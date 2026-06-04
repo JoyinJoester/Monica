@@ -378,6 +378,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateAuthenticatorCardHideCodeByDefault(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateAuthenticatorCardHideCodeByDefault(enabled)
+        }
+    }
+
     fun updatePasswordListQuickFiltersEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updatePasswordListQuickFiltersEnabled(enabled)

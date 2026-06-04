@@ -532,6 +532,7 @@ data class AppSettings(
     val passwordCardShowAuthenticator: Boolean = true, // 密码卡片显示绑定验证器（默认开启）
     val passwordCardHideOtherContentWhenAuthenticator: Boolean = true, // 显示验证器时隐藏其他卡片内容（默认开启）
     val authenticatorCardDisplayFields: List<AuthenticatorCardDisplayField> = AuthenticatorCardDisplayField.DEFAULT_ORDER, // 验证器卡片显示字段（顺序即展示顺序）
+    val authenticatorCardHideCodeByDefault: Boolean = false, // 验证器卡片默认隐藏验证码
     val passwordListQuickFiltersEnabled: Boolean = true, // 密码列表快捷筛选开关（默认开启）
     val passwordListQuickFilterItems: List<PasswordListQuickFilterItem> = PasswordListQuickFilterItem.DEFAULT_ORDER, // 密码列表快捷筛选显示内容
     val passwordListCategoryQuickFiltersEnabled: Boolean = true, // 密码列表分类快捷筛选开关（默认开启）

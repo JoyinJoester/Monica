@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Update
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Waves
@@ -2000,6 +2001,35 @@ fun AuthenticatorCardAdjustmentScreen(
                     Text(
                         text = stringResource(R.string.validator_settings_section),
                         style = MaterialTheme.typography.titleMedium
+                    )
+
+                    ListItem(
+                        headlineContent = {
+                            Text(text = stringResource(R.string.authenticator_card_hide_code_title))
+                        },
+                        supportingContent = {
+                            Text(text = stringResource(R.string.authenticator_card_hide_code_description))
+                        },
+                        leadingContent = {
+                            Icon(imageVector = Icons.Default.VisibilityOff, contentDescription = null)
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = settings.authenticatorCardHideCodeByDefault,
+                                onCheckedChange = viewModel::updateAuthenticatorCardHideCodeByDefault
+                            )
+                        },
+                        modifier = Modifier.clickable {
+                            viewModel.updateAuthenticatorCardHideCodeByDefault(
+                                !settings.authenticatorCardHideCodeByDefault
+                            )
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
                     )
 
                     ListItem(

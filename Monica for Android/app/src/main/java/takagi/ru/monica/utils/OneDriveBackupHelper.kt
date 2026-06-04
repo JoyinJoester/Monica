@@ -1,6 +1,7 @@
 package takagi.ru.monica.utils
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -71,7 +72,7 @@ class OneDriveBackupHelper(context: Context) {
     suspend fun listBackups(): Result<List<BackupFile>> = withContext(Dispatchers.IO) {
         runCatching {
             val config = getConfig() ?: throw IllegalStateException("尚未配置 OneDrive 备份目录")
-            OneDriveKeePassFileSource(
+            val backups = OneDriveKeePassFileSource(
                 context = appContext,
                 accountIdentifier = config.accountId
             ).listDirectory(config.folderPath)
@@ -81,10 +82,12 @@ class OneDriveBackupHelper(context: Context) {
                         name = entry.name,
                         path = entry.path,
                         size = entry.sizeBytes ?: 0L,
-                        modified = Date(entry.lastModified ?: 0L)
+                        modified = Date(entry.lastModified ?: System.currentTimeMillis())
                     )
                 }
                 .sortedByDescending { it.modified.time }
+            Log.d(TAG, "Listed OneDrive backups: folder=${config.folderPath}, count=${backups.size}")
+            backups
         }
     }
 
@@ -96,6 +99,11 @@ class OneDriveBackupHelper(context: Context) {
             } else {
                 file.name
             }
+            Log.i(
+                TAG,
+                "Uploading OneDrive backup: folder=${config.folderPath}, target=$targetName, " +
+                    "sizeBytes=${file.length()}, permanent=$isPermanent"
+            )
             val entry = OneDriveKeePassFileSource(
                 context = appContext,
                 accountIdentifier = config.accountId
@@ -105,6 +113,12 @@ class OneDriveBackupHelper(context: Context) {
                 bytes = file.readBytes()
             )
             cleanupBackups()
+                .onSuccess { deleted ->
+                    Log.i(TAG, "OneDrive backup cleanup completed after upload: deleted=$deleted")
+                }
+                .onFailure { error ->
+                    Log.w(TAG, "OneDrive backup cleanup failed after upload: ${error.message}", error)
+                }
             BackupFile(
                 name = entry.name,
                 path = entry.path,
@@ -167,13 +181,17 @@ class OneDriveBackupHelper(context: Context) {
     suspend fun cleanupBackups(): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
             val backups = listBackups().getOrThrow()
-            val sixtyDaysAgo = System.currentTimeMillis() - (60L * 24 * 60 * 60 * 1000)
+            val expiredBackups = BackupRetentionPolicy.expiredTemporaryBackupsToDelete(backups)
+            Log.i(
+                TAG,
+                "OneDrive cleanup scan: total=${backups.size}, " +
+                    "temporary=${backups.count { !it.isPermanent }}, candidates=${expiredBackups.size}"
+            )
             var deleted = 0
-            backups.forEach { backup ->
-                if (!backup.isPermanent && backup.modified.time < sixtyDaysAgo) {
-                    deleteBackup(backup).getOrThrow()
-                    deleted++
-                }
+            expiredBackups.forEach { backup ->
+                Log.d(TAG, "Deleting expired OneDrive backup: ${backup.name}")
+                deleteBackup(backup).getOrThrow()
+                deleted++
             }
             deleted
         }
@@ -190,6 +208,7 @@ class OneDriveBackupHelper(context: Context) {
     private fun preferences() = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     companion object {
+        private const val TAG = "OneDriveBackupHelper"
         private const val PREFS_NAME = "onedrive_backup_config"
         private const val KEY_ACCOUNT_ID = "account_id"
         private const val KEY_DISPLAY_NAME = "display_name"

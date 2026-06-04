@@ -89,6 +89,7 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.ui.components.SelectiveBackupCard
+import takagi.ru.monica.utils.BackupContentScope
 import takagi.ru.monica.utils.BackupFile
 import takagi.ru.monica.utils.BackupRestoreApplier
 import takagi.ru.monica.utils.OneDriveAccountSession
@@ -243,11 +244,13 @@ fun OneDriveBackupScreen(
 
     suspend fun loadCounts() {
         val database = PasswordDatabase.getDatabase(context)
-        passwordCount = passwordRepository.getLocalEntriesCount()
-        authenticatorCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.TOTP)
-        documentCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.DOCUMENT)
-        bankCardCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.BANK_CARD)
-        noteCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.NOTE)
+        val allPasswords = passwordRepository.getAllPasswordEntries().first()
+        val allSecureItems = secureItemRepository.getAllItems().first()
+        passwordCount = allPasswords.size
+        authenticatorCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.TOTP }
+        documentCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.DOCUMENT }
+        bankCardCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.BANK_CARD }
+        noteCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.NOTE }
         trashCount = passwordRepository.getLocalDeletedEntriesCount() + secureItemRepository.getLocalDeletedItemCount()
         passkeyCount = withContext(Dispatchers.IO) { database.passkeyDao().getAllPasskeysSync().size }
         localKeePassCount = withContext(Dispatchers.IO) { database.localKeePassDatabaseDao().getAllDatabasesSync().size }
@@ -766,17 +769,46 @@ fun OneDriveBackupScreen(
                         try {
                             val allPasswords = passwordRepository.getAllPasswordEntries().first()
                             val securityManager = takagi.ru.monica.security.SecurityManager(context)
+                            val failedPasswordTitles = mutableListOf<String>()
                             val decryptedPasswords = allPasswords.map { entry ->
-                                runCatching { entry.copy(password = securityManager.decryptData(entry.password)) }.getOrElse { entry }
+                                runCatching {
+                                    entry.copy(password = securityManager.decryptData(entry.password))
+                                }.getOrElse { error ->
+                                    Log.w(
+                                        ONEDRIVE_BACKUP_LOG_TAG,
+                                        "Failed to decrypt password for OneDrive backup: ${entry.title} (${error.message})"
+                                    )
+                                    failedPasswordTitles += entry.title.ifBlank { entry.website.ifBlank { entry.username } }
+                                    entry.copy(password = "")
+                                }
+                            }
+                            if (failedPasswordTitles.isNotEmpty()) {
+                                throw IllegalStateException(
+                                    "有 ${failedPasswordTitles.size} 条密码无法解密，已取消备份。请先用主密码解锁 Monica 后重新备份。"
+                                )
                             }
                             val allSecureItems = secureItemRepository.getAllItems().first()
+                            Log.i(
+                                ONEDRIVE_BACKUP_LOG_TAG,
+                                "Creating OneDrive backup zip: passwords=${allPasswords.size}, " +
+                                    "secureItems=${allSecureItems.size}, scope=${BackupContentScope.ALL_OFFLINE}"
+                            )
                             val createResult = webDavHelper.createBackupZip(
                                 passwords = decryptedPasswords,
                                 secureItems = allSecureItems,
-                                preferences = backupPreferences
+                                preferences = backupPreferences,
+                                contentScope = BackupContentScope.ALL_OFFLINE
                             )
                             createResult.fold(
                                 onSuccess = { (file, report) ->
+                                    Log.i(
+                                        ONEDRIVE_BACKUP_LOG_TAG,
+                                        "OneDrive backup zip ready: sizeBytes=${file.length()}, " +
+                                            "passwords=${report.successItems.passwords}/${report.totalItems.passwords}, " +
+                                            "totp=${report.successItems.totp}/${report.totalItems.totp}, " +
+                                            "notes=${report.successItems.notes}/${report.totalItems.notes}, " +
+                                            "warnings=${report.warnings.size}, failures=${report.failedItems.size}"
+                                    )
                                     backupHelper.uploadBackup(file, isPermanent = true).fold(
                                         onSuccess = {
                                             Toast.makeText(
@@ -804,6 +836,16 @@ fun OneDriveBackupScreen(
                                     ).show()
                                 }
                             )
+                        } catch (error: Exception) {
+                            Log.e(ONEDRIVE_BACKUP_LOG_TAG, "OneDrive backup creation failed", error)
+                            Toast.makeText(
+                                context,
+                                context.getString(
+                                    R.string.webdav_backup_failed,
+                                    error.toOneDriveUserMessage(context.getString(R.string.webdav_create_backup_failed))
+                                ),
+                                Toast.LENGTH_LONG
+                            ).show()
                         } finally {
                             creatingBackup = false
                         }

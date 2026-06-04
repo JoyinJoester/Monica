@@ -3332,6 +3332,8 @@
     <string name="authenticator_card_display_content_title">カード表示内容</string>
     <string name="authenticator_card_display_field_desc">タイトルは常に表示されます。最大 2 行の追加行をカスタマイズして並べ替えることができます。</string>
     <string name="authenticator_card_field_limit_hint">選択した最初の 2 つのフィールドのみがカードに表示されます。</string>
+    <string name="authenticator_card_hide_code_title">コードをデフォルトで非表示</string>
+    <string name="authenticator_card_hide_code_description">認証カードではタップするまでコードをアスタリスクで表示します。</string>
     <string name="password_quick_access_title">最近＆頻繁に</string>
     <string name="password_quick_access_desc">よく使うパスワードを検索せずに開きます。</string>
     <string name="password_quick_access_recent">最近の</string>

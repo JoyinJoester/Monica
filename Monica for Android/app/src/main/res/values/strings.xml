@@ -3596,6 +3596,8 @@
     <string name="authenticator_card_display_content_title">Card display content</string>
     <string name="authenticator_card_display_field_desc">Title is always displayed. You can customize and reorder up to 2 extra lines.</string>
     <string name="authenticator_card_field_limit_hint">Only the first 2 selected fields are shown on cards.</string>
+    <string name="authenticator_card_hide_code_title">Hide codes by default</string>
+    <string name="authenticator_card_hide_code_description">Show asterisks on authenticator cards until tapped.</string>
     <string name="password_quick_access_title">Recent &amp; frequent</string>
     <string name="password_quick_access_desc">Open passwords you use most without searching.</string>
     <string name="password_quick_access_recent">Recent</string>

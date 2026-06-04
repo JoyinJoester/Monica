@@ -17,6 +17,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -249,6 +250,11 @@ fun TotpCodeCard(
             currentCode
         }
     }
+    val hideCodeByDefault = settings.authenticatorCardHideCodeByDefault
+    var isCodeRevealed by remember(item.id, hideCodeByDefault) {
+        mutableStateOf(!hideCodeByDefault)
+    }
+    val showOtpCode = !hideCodeByDefault || isCodeRevealed
 
     val iconWebsite = remember(totpData.link) { totpData.link.trim() }
     val iconTitle = remember(item.title, totpData.issuer) { totpData.issuer.ifBlank { item.title } }
@@ -311,8 +317,20 @@ fun TotpCodeCard(
         modifier
             .fillMaxWidth()
             .combinedClickable(
-                onClick = { onCopyCode(codeToCopy) },
-                onLongClick = { onLongClick?.invoke() }
+                onClick = {
+                    if (hideCodeByDefault) {
+                        isCodeRevealed = !isCodeRevealed
+                    } else {
+                        onCopyCode(codeToCopy)
+                    }
+                },
+                onLongClick = {
+                    if (hideCodeByDefault) {
+                        onCopyCode(codeToCopy)
+                    } else {
+                        onLongClick?.invoke()
+                    }
+                }
             )
     }
 
@@ -606,17 +624,23 @@ fun TotpCodeCard(
                     else -> 32.sp
                 }
                 
-                Text(
-                    text = formatOtpCode(currentCode, totpData.otpType),
-                    fontSize = codeFontSize,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = when {
-                        totpData.otpType == OtpType.STEAM -> MaterialTheme.colorScheme.tertiary
-                        remainingSeconds <= 5 -> MaterialTheme.colorScheme.error
-                        else -> MaterialTheme.colorScheme.primary
-                    }.copy(alpha = blinkAlpha)
-                )
+                DisableSelection {
+                    Text(
+                        text = if (showOtpCode) {
+                            formatOtpCode(currentCode, totpData.otpType)
+                        } else {
+                            formatMaskedOtpCode(currentCode, totpData)
+                        },
+                        fontSize = codeFontSize,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = when {
+                            totpData.otpType == OtpType.STEAM -> MaterialTheme.colorScheme.tertiary
+                            remainingSeconds <= 5 -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.primary
+                        }.copy(alpha = blinkAlpha)
+                    )
+                }
                 
                 // 下一次验证码预览
                 if (totpData.otpType != OtpType.HOTP) {
@@ -627,12 +651,18 @@ fun TotpCodeCard(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Text(
-                            text = formatOtpCode(nextCode, totpData.otpType),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        DisableSelection {
+                            Text(
+                                text = if (showOtpCode) {
+                                    formatOtpCode(nextCode, totpData.otpType)
+                                } else {
+                                    formatMaskedOtpCode(nextCode, totpData)
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 } else {
                     IconButton(
@@ -878,6 +908,22 @@ private fun M3EProgressIndicator(
 
 private fun normalizeTotpData(data: TotpData): TotpData {
     return TotpDataResolver.normalizeTotpData(data)
+}
+
+private fun formatMaskedOtpCode(code: String, totpData: TotpData): String {
+    val fallbackLength = when (totpData.otpType) {
+        OtpType.STEAM -> 5
+        else -> totpData.digits.coerceIn(1, 12)
+    }
+    val visibleCode = code.ifEmpty { "*".repeat(fallbackLength) }
+    val maskedCode = when {
+        visibleCode.length <= 2 -> visibleCode
+        else -> buildString {
+            append(visibleCode.take(2))
+            repeat(visibleCode.length - 2) { append('*') }
+        }
+    }
+    return formatOtpCode(maskedCode, totpData.otpType)
 }
 
 /**

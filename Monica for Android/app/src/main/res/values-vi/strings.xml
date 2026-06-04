@@ -3345,6 +3345,8 @@ Làm mới hoặc đồng bộ hóa cơ sở dữ liệu KeePass này, sau đó 
     <string name="authenticator_card_display_content_title">Nội dung hiển thị thẻ</string>
     <string name="authenticator_card_display_field_desc">Tiêu đề luôn được hiển thị. Bạn có thể tùy chỉnh và sắp xếp lại tối đa 2 dòng bổ sung.</string>
     <string name="authenticator_card_field_limit_hint">Chỉ có 2 trường được chọn đầu tiên được hiển thị trên thẻ.</string>
+    <string name="authenticator_card_hide_code_title">Ẩn mã theo mặc định</string>
+    <string name="authenticator_card_hide_code_description">Hiển thị dấu sao trên thẻ xác thực cho đến khi chạm.</string>
     <string name="password_quick_access_title">Gần đây &amp; thường xuyên</string>
     <string name="password_quick_access_desc">Mở mật khẩu bạn sử dụng nhiều nhất mà không cần tìm kiếm.</string>
     <string name="password_quick_access_recent">Gần đây</string>
