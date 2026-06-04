@@ -294,6 +294,9 @@
     <string name="password_list_quick_filter_ssh_key">SSH 密钥</string>
     <string name="password_list_quick_filter_barcode">QRCode</string>
     <string name="barcode_payload_label">码内容</string>
+    <string name="barcode_manual_input_label">链接或文字</string>
+    <string name="barcode_manual_input_hint">输入 URL、普通文字或任意二维码内容</string>
+    <string name="barcode_manual_input_support">保存后会按这里的内容生成二维码。</string>
     <string name="barcode_detail_title">二维码详情</string>
     <string name="barcode_detail_subtitle">已保存的扫码内容</string>
     <string name="barcode_render_qr">二维码</string>
@@ -1057,7 +1060,7 @@
     <string name="custom_icon_load_more">加载更多图标（剩余 %1$d 个）</string>
     <string name="custom_icon_upload_success">图标上传成功</string>
     <string name="custom_icon_upload_failed">上传失败：%1$s</string>
-    <string name="settings_version_number">V1.0.288</string>
+    <string name="settings_version_number">V1.0.289</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>

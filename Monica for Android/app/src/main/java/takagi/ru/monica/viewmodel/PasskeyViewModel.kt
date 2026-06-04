@@ -237,6 +237,20 @@ class PasskeyViewModel(
         }
     }
 
+    suspend fun updateMdbxDatabaseForPasskeys(
+        recordIds: List<Long>,
+        databaseId: Long,
+        folderId: String? = null
+    ): Result<Unit> {
+        return try {
+            repository.updateMdbxDatabaseForPasskeys(recordIds, databaseId, folderId)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            _errorMessage.value = "更新 MDBX Passkey 归属失败: ${e.message}"
+            Result.failure(e)
+        }
+    }
+
     /**
      * 更新绑定密码
      */

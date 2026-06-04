@@ -840,8 +840,8 @@ class PasskeyCreateActivity : FragmentActivity() {
             kotlinx.coroutines.runBlocking {
                 val created = keepassPasskeyCreateExecutor.create(
                     passkey = passkeyEntry,
-                    insertPasskey = database.passkeyDao()::insert,
-                    rollbackPasskey = database.passkeyDao()::deleteById
+                    insertPasskey = repository::savePasskey,
+                    rollbackPasskey = ::rollbackPasskeyByCredentialId
                 )
                 if (!created) {
                     throw IllegalStateException(getString(R.string.passkey_keepass_create_failed))
@@ -975,6 +975,15 @@ class PasskeyCreateActivity : FragmentActivity() {
             Log.w(TAG, "Rolled back passkey creation for credentialId=$credentialId")
         }.onFailure { rollbackError ->
             Log.e(TAG, "Failed to rollback created passkey: $credentialId", rollbackError)
+        }
+    }
+
+    private suspend fun rollbackPasskeyByCredentialId(credentialId: String) {
+        val createdPasskey = database.passkeyDao().getPasskeyById(credentialId)
+        if (createdPasskey != null) {
+            repository.deletePasskeyLocalOnly(createdPasskey)
+        } else {
+            database.passkeyDao().deleteById(credentialId)
         }
     }
 

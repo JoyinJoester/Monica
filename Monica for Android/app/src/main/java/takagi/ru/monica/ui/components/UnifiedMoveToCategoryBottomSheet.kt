@@ -258,6 +258,27 @@ fun UnifiedMoveToCategoryBottomSheet(
             )
         }
     }
+    fun stageRootTargetForSource(source: MovePickerSource) {
+        when (source) {
+            MovePickerSource.MonicaLocal -> stageTarget(
+                target = UnifiedMoveCategoryTarget.Uncategorized,
+                label = "$monicaLabel / $categoryNoneLabel"
+            )
+            is MovePickerSource.KeePassDatabase -> selectKeePassTarget(
+                database = source.database,
+                target = UnifiedMoveCategoryTarget.KeePassDatabaseTarget(source.database.id),
+                label = "${source.database.name} / $keepassRootLabel"
+            )
+            is MovePickerSource.MdbxDatabase -> stageTarget(
+                target = UnifiedMoveCategoryTarget.MdbxDatabaseTarget(source.database.id),
+                label = "${source.database.name} / $categoryNoneLabel"
+            )
+            is MovePickerSource.BitwardenVaultSource -> stageTarget(
+                target = UnifiedMoveCategoryTarget.BitwardenVaultTarget(source.vault.id),
+                label = "${source.vault.email} / $bitwardenRootLabel"
+            )
+        }
+    }
     fun confirmSelectedTarget() {
         val target = selectedTarget.value ?: return
         val keepassDatabaseId = when (target) {
@@ -527,6 +548,7 @@ fun UnifiedMoveToCategoryBottomSheet(
                                     activeSourceKey.value = source.key
                                     selectedTarget.value = null
                                     selectedTargetLabel.value = null
+                                    stageRootTargetForSource(source)
                                 },
                                 label = labelForSource(source),
                                 leadingIcon = source.icon

@@ -417,6 +417,7 @@ interface PasskeyDao {
         UPDATE passkeys
         SET mdbx_database_id = :databaseId,
             mdbx_folder_id = :folderId,
+            category_id = NULL,
             keepass_database_id = NULL,
             keepass_group_path = NULL,
             bitwarden_vault_id = NULL,

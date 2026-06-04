@@ -323,7 +323,16 @@ fun PasskeyListScreen(
         { passkey -> boundPasswordForPasskey(passkey)?.keepassGroupPath ?: passkey.keepassGroupPath }
     }
     val effectiveMdbxDatabaseId: (PasskeyEntry) -> Long? = remember(passwordMap) {
-        { passkey -> boundPasswordForPasskey(passkey)?.mdbxDatabaseId ?: passkey.mdbxDatabaseId }
+        { passkey -> passkey.mdbxDatabaseId ?: boundPasswordForPasskey(passkey)?.mdbxDatabaseId }
+    }
+    val effectiveMdbxFolderId: (PasskeyEntry) -> String? = remember(passwordMap) {
+        { passkey ->
+            if (passkey.mdbxDatabaseId != null) {
+                passkey.mdbxFolderId
+            } else {
+                boundPasswordForPasskey(passkey)?.mdbxFolderId
+            }
+        }
     }
     val effectiveIsFavorite: (PasskeyEntry) -> Boolean = remember(passwordMap) {
         { passkey -> boundPasswordForPasskey(passkey)?.isFavorite == true }
@@ -335,6 +344,7 @@ fun PasskeyListScreen(
             val effectiveKeePassId = effectiveKeePassDatabaseId(passkey)
             val effectiveGroupPath = effectiveKeePassGroupPath(passkey)
             val effectiveMdbxId = effectiveMdbxDatabaseId(passkey)
+            val effectiveMdbxFolder = effectiveMdbxFolderId(passkey)
             val isLocal = effectiveVaultId == null && effectiveKeePassId == null && effectiveMdbxId == null
             when (val filter = selectedCategoryFilter) {
                 UnifiedCategoryFilterSelection.All -> true
@@ -359,7 +369,8 @@ fun PasskeyListScreen(
                 is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
                     effectiveKeePassId == filter.databaseId && effectiveGroupPath.isNullOrBlank()
                 is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> effectiveMdbxId == filter.databaseId
-                is UnifiedCategoryFilterSelection.MdbxFolderFilter -> effectiveMdbxId == filter.databaseId
+                is UnifiedCategoryFilterSelection.MdbxFolderFilter ->
+                    effectiveMdbxId == filter.databaseId && effectiveMdbxFolder == filter.folderId
             }
         }
     }
@@ -806,35 +817,35 @@ fun PasskeyListScreen(
                 bitwardenFolderId = null,
                 bitwardenVaultId = null
             )
-                is UnifiedMoveCategoryTarget.KeePassGroupTarget -> passkey.copy(
-                    keepassDatabaseId = target.databaseId,
-                    keepassGroupPath = target.groupPath,
-                    mdbxDatabaseId = null,
-                    mdbxFolderId = null,
-                    bitwardenFolderId = null,
-                    bitwardenVaultId = null
-                )
-                is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> passkey.copy(
-                    categoryId = null,
-                    keepassDatabaseId = null,
-                    keepassGroupPath = null,
-                    mdbxDatabaseId = target.databaseId,
-                    mdbxFolderId = null,
-                    bitwardenVaultId = null,
-                    bitwardenFolderId = null,
-                    bitwardenCipherId = null
-                )
-                is UnifiedMoveCategoryTarget.MdbxFolderTarget -> passkey.copy(
-                    categoryId = null,
-                    keepassDatabaseId = null,
-                    keepassGroupPath = null,
-                    mdbxDatabaseId = target.databaseId,
-                    mdbxFolderId = target.folderId,
-                    bitwardenVaultId = null,
-                    bitwardenFolderId = null,
-                    bitwardenCipherId = null
-                )
-            }
+            is UnifiedMoveCategoryTarget.KeePassGroupTarget -> passkey.copy(
+                keepassDatabaseId = target.databaseId,
+                keepassGroupPath = target.groupPath,
+                mdbxDatabaseId = null,
+                mdbxFolderId = null,
+                bitwardenFolderId = null,
+                bitwardenVaultId = null
+            )
+            is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> passkey.copy(
+                categoryId = null,
+                keepassDatabaseId = null,
+                keepassGroupPath = null,
+                mdbxDatabaseId = target.databaseId,
+                mdbxFolderId = null,
+                bitwardenVaultId = null,
+                bitwardenFolderId = null,
+                bitwardenCipherId = null
+            )
+            is UnifiedMoveCategoryTarget.MdbxFolderTarget -> passkey.copy(
+                categoryId = null,
+                keepassDatabaseId = null,
+                keepassGroupPath = null,
+                mdbxDatabaseId = target.databaseId,
+                mdbxFolderId = target.folderId,
+                bitwardenVaultId = null,
+                bitwardenFolderId = null,
+                bitwardenCipherId = null
+            )
+        }
 
         val keepExistingCipher =
             !currentCipherId.isNullOrBlank() &&
@@ -866,6 +877,38 @@ fun PasskeyListScreen(
                 syncStatus = resolvedSyncStatus
             )
         )
+    }
+
+    suspend fun persistStorageTarget(passkey: PasskeyEntry, target: UnifiedMoveCategoryTarget): Result<Unit> {
+        val updateResult = applyStorageTarget(passkey, target)
+        if (updateResult.isFailure) {
+            return Result.failure(
+                updateResult.exceptionOrNull()
+                    ?: IllegalStateException("Passkey storage target update failed")
+            )
+        }
+        val moved = updateResult.getOrThrow()
+        val mdbxTarget: Pair<Long, String?>? = when (target) {
+            is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> target.databaseId to null
+            is UnifiedMoveCategoryTarget.MdbxFolderTarget -> target.databaseId to target.folderId
+            else -> null
+        }
+        if (mdbxTarget != null && passkey.id > 0L) {
+            return viewModel.updateMdbxDatabaseForPasskeys(
+                recordIds = listOf(passkey.id),
+                databaseId = mdbxTarget.first,
+                folderId = mdbxTarget.second
+            )
+        }
+        val persisted = viewModel.updatePasskey(moved)
+        return if (persisted.isSuccess) {
+            Result.success(Unit)
+        } else {
+            Result.failure(
+                persisted.exceptionOrNull()
+                    ?: IllegalStateException("Passkey update failed")
+            )
+        }
     }
 
     suspend fun deletePasskeyWithBinding(passkey: PasskeyEntry): Boolean {
@@ -1034,9 +1077,13 @@ fun PasskeyListScreen(
                                     onSelect = { selection -> selectedCategoryFilter = selection },
                                     categories = categories,
                                     keepassDatabases = keepassDatabases,
+                                    mdbxDatabases = mdbxDatabases,
                                     bitwardenVaults = bitwardenVaults,
                                     getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
                                     getKeePassGroups = getKeePassGroups,
+                                    getMdbxFolders = { databaseId ->
+                                        passwordViewModel?.getMdbxFolders(databaseId) ?: flowOf(emptyList())
+                                    },
                                     categoryEditMode = categoryMgmt.categoryEditMode,
                                     onRequestCategoryAction = { categoryMgmt.categoryActionTarget = it },
                                     quickFilterContent = {},
@@ -1531,9 +1578,9 @@ fun PasskeyListScreen(
                         Toast.LENGTH_SHORT
                     ).show()
                 }
-                val updateResult = applyStorageTarget(passkey, target)
-                if (updateResult.isFailure) {
-                    val messageRes = if (updateResult.exceptionOrNull() is PasskeyBitwardenMoveBlockedException) {
+                val persistResult = persistStorageTarget(passkey, target)
+                if (persistResult.isFailure) {
+                    val messageRes = if (persistResult.exceptionOrNull() is PasskeyBitwardenMoveBlockedException) {
                         R.string.passkey_bitwarden_move_blocked
                     } else {
                         R.string.passkey_bitwarden_move_failed
@@ -1542,10 +1589,6 @@ fun PasskeyListScreen(
                     return@launch
                 }
 
-                if (viewModel.updatePasskey(updateResult.getOrThrow()).isFailure) {
-                    Toast.makeText(context, context.getString(R.string.passkey_update_failed), Toast.LENGTH_SHORT).show()
-                    return@launch
-                }
                 val targetLabel = when (target) {
                     UnifiedMoveCategoryTarget.Uncategorized -> context.getString(R.string.category_none)
                     is UnifiedMoveCategoryTarget.MonicaCategory -> categoryMap[target.categoryId]?.name ?: context.getString(R.string.category_none)
@@ -1607,15 +1650,11 @@ fun PasskeyListScreen(
                 }
 
                 movable.forEach { passkey ->
-                    val updateResult = applyStorageTarget(passkey, target)
-                    if (updateResult.isSuccess) {
-                        if (viewModel.updatePasskey(updateResult.getOrThrow()).isSuccess) {
-                            movedCount++
-                        } else {
-                            failedCount++
-                        }
+                    val persistResult = persistStorageTarget(passkey, target)
+                    if (persistResult.isSuccess) {
+                        movedCount++
                     } else {
-                        if (updateResult.exceptionOrNull() is PasskeyBitwardenMoveBlockedException) {
+                        if (persistResult.exceptionOrNull() is PasskeyBitwardenMoveBlockedException) {
                             blockedCount++
                         } else {
                             failedCount++
@@ -1674,7 +1713,7 @@ private fun encodePasskeyCategoryFilter(filter: UnifiedCategoryFilterSelection):
     is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> SavedCategoryFilterState(type = "keepass_database_starred", primaryId = filter.databaseId)
     is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> SavedCategoryFilterState(type = "keepass_database_uncategorized", primaryId = filter.databaseId)
     is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> SavedCategoryFilterState(type = "mdbx_database", primaryId = filter.databaseId)
-    is UnifiedCategoryFilterSelection.MdbxFolderFilter -> SavedCategoryFilterState(type = "mdbx_database", primaryId = filter.databaseId)
+    is UnifiedCategoryFilterSelection.MdbxFolderFilter -> SavedCategoryFilterState(type = "mdbx_folder", primaryId = filter.databaseId, text = filter.folderId)
 }
 
 private fun decodePasskeyCategoryFilter(state: SavedCategoryFilterState): UnifiedCategoryFilterSelection {
@@ -1710,6 +1749,18 @@ private fun decodePasskeyCategoryFilter(state: SavedCategoryFilterState): Unifie
         }
         "keepass_database_starred" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(it) } ?: UnifiedCategoryFilterSelection.All
         "keepass_database_uncategorized" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "mdbx_database" -> state.primaryId
+            ?.let { UnifiedCategoryFilterSelection.MdbxDatabaseFilter(it) }
+            ?: UnifiedCategoryFilterSelection.All
+        "mdbx_folder" -> {
+            val databaseId = state.primaryId
+            val folderId = state.text
+            if (databaseId != null && !folderId.isNullOrBlank()) {
+                UnifiedCategoryFilterSelection.MdbxFolderFilter(databaseId, folderId)
+            } else {
+                UnifiedCategoryFilterSelection.All
+            }
+        }
         else -> UnifiedCategoryFilterSelection.All
     }
 }

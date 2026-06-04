@@ -172,6 +172,7 @@ class PasskeyRepository(
         if (databaseId != null) {
             val passkeysForMdbx = existingPasskeys.map { passkey ->
                 passkey.copy(
+                    categoryId = null,
                     mdbxDatabaseId = databaseId,
                     mdbxFolderId = folderId,
                     keepassDatabaseId = null,

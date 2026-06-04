@@ -136,13 +136,139 @@ class MdbxAndroidIntegrationGuardTest {
         assertTrue(
             "The DAO batch MDBX binding must write mdbx_folder_id as well as mdbx_database_id.",
             daoSource.contains("mdbx_folder_id = :folderId") &&
+                daoSource.contains("category_id = NULL") &&
                 daoSource.contains("updateMdbxDatabaseForPasskeys(recordIds: List<Long>, databaseId: Long?, folderId: String?)")
         )
         assertTrue(
             "The repository batch MDBX binding must mirror the same folder target into the MDBX file and Room row.",
             repositorySource.contains("folderId: String? = null") &&
+                repositorySource.contains("categoryId = null") &&
                 repositorySource.contains("mdbxFolderId = folderId") &&
                 repositorySource.contains("passkeyDao.updateMdbxDatabaseForPasskeys(recordIds, databaseId, folderId.takeIf { databaseId != null })")
+        )
+    }
+
+    @Test
+    fun passkeyCreateAndMoveUseMdbxAwarePersistencePaths() {
+        val createSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/passkey/PasskeyCreateActivity.kt"
+        ).readText()
+        val listSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/PasskeyListScreen.kt"
+        ).readText()
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/PasskeyViewModel.kt"
+        ).readText()
+
+        assertTrue(
+            "Passkey creation must use PasskeyRepository so selected MDBX targets are written to the MDBX vault, not only Room.",
+            createSource.contains("insertPasskey = repository::savePasskey") &&
+                createSource.contains("rollbackPasskey = ::rollbackPasskeyByCredentialId") &&
+                createSource.contains("mdbxDatabaseId = initialMdbxDatabaseId") &&
+                createSource.contains("mdbxFolderId = if (initialMdbxDatabaseId != null) initialMdbxFolderId else null")
+        )
+        assertTrue(
+            "Passkey ViewModel must expose the repository MDBX batch binding so UI moves can keep Room and MDBX files aligned.",
+            viewModelSource.contains("suspend fun updateMdbxDatabaseForPasskeys(") &&
+                viewModelSource.contains("repository.updateMdbxDatabaseForPasskeys(recordIds, databaseId, folderId)")
+        )
+        assertTrue(
+            "Passkey list moves to MDBX must call the MDBX-aware persistence path instead of only mutating an in-memory copy.",
+            listSource.contains("suspend fun persistStorageTarget(") &&
+                listSource.contains("is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> target.databaseId to null") &&
+                listSource.contains("is UnifiedMoveCategoryTarget.MdbxFolderTarget -> target.databaseId to target.folderId") &&
+                listSource.contains("viewModel.updateMdbxDatabaseForPasskeys(")
+        )
+    }
+
+    @Test
+    fun passkeyMdbxFolderFilteringUsesFolderIdAndRoundTripsSavedState() {
+        val listSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/PasskeyListScreen.kt"
+        ).readText()
+
+        assertTrue(
+            "MDBX folder filtering must match both database id and folder id.",
+            listSource.contains("val effectiveMdbxFolderId: (PasskeyEntry) -> String?") &&
+                listSource.contains("effectiveMdbxId == filter.databaseId && effectiveMdbxFolder == filter.folderId")
+        )
+        assertTrue(
+            "Saved Passkey category filters must preserve MDBX folder selections across recomposition and app restart.",
+            listSource.contains("SavedCategoryFilterState(type = \"mdbx_folder\", primaryId = filter.databaseId, text = filter.folderId)") &&
+                listSource.contains("\"mdbx_database\" -> state.primaryId") &&
+                listSource.contains("\"mdbx_folder\" ->") &&
+                listSource.contains("UnifiedCategoryFilterSelection.MdbxFolderFilter(databaseId, folderId)")
+        )
+    }
+
+    @Test
+    fun movePickerDatabaseChipSelectsMdbxRootTargetDirectly() {
+        val moveSheetSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/UnifiedMoveToCategoryBottomSheet.kt"
+        ).readText()
+
+        assertTrue(
+            "Selecting an MDBX database chip must stage the MDBX root target directly; otherwise Passkey creation appears to fall back to local storage.",
+            moveSheetSource.contains("fun stageRootTargetForSource(source: MovePickerSource)") &&
+                moveSheetSource.contains("is MovePickerSource.MdbxDatabase -> stageTarget(") &&
+                moveSheetSource.contains("UnifiedMoveCategoryTarget.MdbxDatabaseTarget(source.database.id)") &&
+                moveSheetSource.contains("stageRootTargetForSource(source)")
+        )
+    }
+
+    @Test
+    fun passkeyCategoryChipMenuReceivesMdbxDatabases() {
+        val passkeyListSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/PasskeyListScreen.kt"
+        ).readText()
+        val chipMenuCall = passkeyListSource
+            .substringAfter("UnifiedCategoryFilterChipMenu(")
+            .substringBefore("trailingContent =")
+
+        assertTrue(
+            "Passkey database filter menu must receive MDBX databases and folder loader; otherwise MDBX vaults are hidden from the Passkey page.",
+            chipMenuCall.contains("mdbxDatabases = mdbxDatabases") &&
+                chipMenuCall.contains("getMdbxFolders = { databaseId ->") &&
+                chipMenuCall.contains("passwordViewModel?.getMdbxFolders(databaseId) ?: flowOf(emptyList())")
+        )
+    }
+
+    @Test
+    fun mdbxDatabaseChipsUseOneStorageIconAcrossMenus() {
+        val passwordDatabaseFiltersSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordDatabaseFiltersSection.kt"
+        ).readText()
+        val chipMenuSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/UnifiedCategoryFilterChipMenu.kt"
+        ).readText()
+        val bottomSheetSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/UnifiedCategoryFilterBottomSheet.kt"
+        ).readText()
+        val moveSheetSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/UnifiedMoveToCategoryBottomSheet.kt"
+        ).readText()
+        val storagePickerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/MultiStorageTargetPickerBottomSheet.kt"
+        ).readText()
+
+        val passwordMdbxBlock = passwordDatabaseFiltersSource
+            .substringAfter("params.mdbxDatabases.forEach")
+            .substringBefore("params.bitwardenVaults.forEach")
+        val chipMenuMdbxBlock = chipMenuSource
+            .substringAfter("mdbxDatabases.forEach")
+            .substringBefore("bitwardenVaults.forEach")
+        val bottomSheetMdbxBlock = bottomSheetSource
+            .substringAfter("if (mdbxDatabases.isNotEmpty())")
+            .substringBefore("if (bitwardenVaults.isNotEmpty())")
+
+        assertTrue(
+            "MDBX database chips should use the same storage icon everywhere, not KeePass key or old test-feature flask icons.",
+            passwordMdbxBlock.contains("leadingIcon = Icons.Default.Storage") &&
+                !passwordMdbxBlock.contains("Icons.Default.Science") &&
+                chipMenuMdbxBlock.contains("leadingIcon = Icons.Default.Storage") &&
+                bottomSheetMdbxBlock.contains("icon = Icons.Default.Storage") &&
+                moveSheetSource.contains("override val icon: ImageVector = Icons.Default.Storage") &&
+                storagePickerSource.contains("override val icon: ImageVector = Icons.Default.Storage")
         )
     }
 

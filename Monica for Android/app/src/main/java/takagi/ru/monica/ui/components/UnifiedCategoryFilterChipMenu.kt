@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
@@ -412,7 +413,7 @@ fun UnifiedCategoryFilterChipMenu(
                             selected = selected.isMdbxScope(database.id),
                             onClick = { onSelect(UnifiedCategoryFilterSelection.MdbxDatabaseFilter(database.id)) },
                             label = database.name,
-                            leadingIcon = Icons.Default.Key,
+                            leadingIcon = Icons.Default.Storage,
                             statusDotColor = StorageHealthyGreen
                         )
                     }
@@ -468,7 +469,7 @@ fun UnifiedCategoryFilterChipMenu(
                             selected = selected.isMdbxScope(database.id),
                             onClick = { onSelect(UnifiedCategoryFilterSelection.MdbxDatabaseFilter(database.id)) },
                             label = database.name,
-                            leadingIcon = Icons.Default.Key,
+                            leadingIcon = Icons.Default.Storage,
                             statusDotColor = StorageHealthyGreen
                         )
                     }

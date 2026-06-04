@@ -1833,77 +1833,64 @@ fun AddEditPasswordScreen(
 
                         if (isBarcodeMode) {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                if (barcodePayload.isBlank()) {
-                                    FilledTonalButton(
-                                        onClick = { onScanAuthenticatorQrCode?.invoke() },
-                                        enabled = onScanAuthenticatorQrCode != null,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(72.dp),
-                                        shape = RoundedCornerShape(18.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.QrCodeScanner,
-                                            contentDescription = null
-                                        )
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Text(stringResource(R.string.scan_qr_code))
-                                    }
-                                } else {
+                                FilledTonalButton(
+                                    onClick = { onScanAuthenticatorQrCode?.invoke() },
+                                    enabled = onScanAuthenticatorQrCode != null,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(64.dp),
+                                    shape = RoundedCornerShape(18.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.QrCodeScanner,
+                                        contentDescription = null
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(stringResource(R.string.scan_qr_code))
+                                }
+
+                                OutlinedTextField(
+                                    value = barcodePayload,
+                                    onValueChange = { barcodePayload = it },
+                                    label = { Text(stringResource(R.string.barcode_manual_input_label)) },
+                                    placeholder = { Text(stringResource(R.string.barcode_manual_input_hint)) },
+                                    trailingIcon = {
+                                        if (barcodePayload.isNotBlank()) {
+                                            IconButton(onClick = { barcodePayload = "" }) {
+                                                Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear))
+                                            }
+                                        }
+                                    },
+                                    supportingText = {
+                                        Text(stringResource(R.string.barcode_manual_input_support))
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 120.dp),
+                                    minLines = 3,
+                                    maxLines = 6,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Text,
+                                        imeAction = ImeAction.Default
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+
+                                if (barcodePayload.isNotBlank()) {
                                     ElevatedCard(
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = CardDefaults.elevatedCardColors(
                                             containerColor = MaterialTheme.colorScheme.secondaryContainer
                                         )
                                     ) {
-                                        Column(
+                                        Text(
+                                            text = barcodePayload,
                                             modifier = Modifier.padding(14.dp),
-                                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.QrCode2,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                                                )
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = stringResource(R.string.barcode_payload_label),
-                                                        style = MaterialTheme.typography.titleSmall,
-                                                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                                                    )
-                                                    Text(
-                                                        text = barcodePayload,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f),
-                                                        maxLines = 2,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
-                                            }
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                FilledTonalButton(
-                                                    onClick = { onScanAuthenticatorQrCode?.invoke() },
-                                                    enabled = onScanAuthenticatorQrCode != null
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.QrCodeScanner,
-                                                        contentDescription = null
-                                                    )
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Text(stringResource(R.string.scan_qr_code))
-                                                }
-                                                TextButton(onClick = { barcodePayload = "" }) {
-                                                    Text(stringResource(R.string.clear))
-                                                }
-                                            }
-                                        }
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                 }
                             }

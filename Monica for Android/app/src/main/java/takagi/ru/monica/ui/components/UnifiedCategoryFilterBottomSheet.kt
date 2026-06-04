@@ -67,6 +67,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -866,7 +867,7 @@ fun UnifiedCategoryFilterBottomSheet(
                                 Column {
                                     UnifiedCategoryListItem(
                                         title = database.name,
-                                        icon = Icons.Default.Key,
+                                        icon = Icons.Default.Storage,
                                         selected = (
                                             selected is UnifiedCategoryFilterSelection.MdbxDatabaseFilter &&
                                                 selected.databaseId == database.id

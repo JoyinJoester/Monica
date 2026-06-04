@@ -282,6 +282,9 @@
     <string name="password_list_quick_filter_ssh_key">SSH keys</string>
     <string name="password_list_quick_filter_barcode">QR Code</string>
     <string name="barcode_payload_label">Code content</string>
+    <string name="barcode_manual_input_label">Link or text</string>
+    <string name="barcode_manual_input_hint">Enter a URL, plain text, or any QR code payload</string>
+    <string name="barcode_manual_input_support">This content will be saved and rendered as a QR code.</string>
     <string name="barcode_detail_title">QR Code details</string>
     <string name="barcode_detail_subtitle">Stored code payload</string>
     <string name="barcode_render_qr">QR Code</string>
@@ -1092,7 +1095,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.288</string>
+    <string name="settings_version_number">V1.0.289</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>

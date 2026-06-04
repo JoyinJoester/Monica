@@ -23,8 +23,8 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -135,7 +135,7 @@ internal fun PasswordDatabaseFiltersSection(
                         selected = params.currentFilter.isMdbxDatabaseFilter(database.id),
                         onClick = { params.onSelectFilter(CategoryFilter.MdbxDatabase(database.id)) },
                         label = database.name,
-                        leadingIcon = Icons.Default.Science
+                        leadingIcon = Icons.Default.Storage
                     )
                 }
                 params.bitwardenVaults.forEach { vault ->
@@ -190,7 +190,7 @@ internal fun PasswordDatabaseFiltersSection(
                         selected = params.currentFilter.isMdbxDatabaseFilter(database.id),
                         onClick = { params.onSelectFilter(CategoryFilter.MdbxDatabase(database.id)) },
                         label = database.name,
-                        leadingIcon = Icons.Default.Science
+                        leadingIcon = Icons.Default.Storage
                     )
                 }
                 params.bitwardenVaults.forEach { vault ->
