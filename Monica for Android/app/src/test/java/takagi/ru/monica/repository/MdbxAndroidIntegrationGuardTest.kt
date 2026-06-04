@@ -202,6 +202,45 @@ class MdbxAndroidIntegrationGuardTest {
     }
 
     @Test
+    fun vaultV2MdbxFilteringKeepsPasskeyOwnershipAndFolderSemantics() {
+        val vaultV2Source = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/vaultv2/VaultV2Pane.kt"
+        ).readText()
+
+        assertTrue(
+            "VaultV2 MDBX database filters must include passkeys owned by that MDBX database.",
+            vaultV2Source.contains("VaultV2ItemType.PASSKEY -> passkeyEntry?.mdbxDatabaseId") &&
+                !vaultV2Source.contains("VaultV2ItemType.PASSKEY -> null")
+        )
+        assertTrue(
+            "VaultV2 MDBX folder filters must use folder/root semantics for passkeys as well as other vault items.",
+            vaultV2Source.contains("private fun VaultV2Item.mdbxFolderId(): String?") &&
+                vaultV2Source.contains("VaultV2ItemType.PASSKEY -> passkeyEntry?.mdbxFolderId") &&
+                vaultV2Source.contains("private fun VaultV2Item.matchesMdbxFolder(databaseId: Long, folderId: String): Boolean") &&
+                vaultV2Source.contains("matchesMdbxFolder(selection.databaseId, selection.folderId)")
+        )
+    }
+
+    @Test
+    fun vaultV2MoveSheetPersistsPasskeysThroughRepositoryAwareUpdate() {
+        val vaultV2Source = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/vaultv2/VaultV2Pane.kt"
+        ).readText()
+
+        assertTrue(
+            "VaultV2 move sheet must collect selected passkeys instead of silently ignoring them.",
+            vaultV2Source.contains("val passkeyEntries = selectedItems") &&
+                vaultV2Source.contains(".filter { it.type == VaultV2ItemType.PASSKEY }") &&
+                vaultV2Source.contains(".mapNotNull { it.passkeyEntry }")
+        )
+        assertTrue(
+            "VaultV2 passkey moves must use PasskeyViewModel.updatePasskey so MDBX/KeePass/Bitwarden persistence stays aligned.",
+            vaultV2Source.contains("applyPasswordPagePasskeyStorageTarget(") &&
+                vaultV2Source.contains("passkeyViewModel.updatePasskey(updateResult.getOrThrow())")
+        )
+    }
+
+    @Test
     fun movePickerDatabaseChipSelectsMdbxRootTargetDirectly() {
         val moveSheetSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/components/UnifiedMoveToCategoryBottomSheet.kt"

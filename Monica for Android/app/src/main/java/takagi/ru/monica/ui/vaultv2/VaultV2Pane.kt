@@ -160,6 +160,7 @@ import takagi.ru.monica.ui.mdbxPathPendingSyncCount
 import takagi.ru.monica.ui.mdbxPathShouldFlushPendingUpload
 import takagi.ru.monica.ui.PasswordQuickFilterChipCallbacks
 import takagi.ru.monica.ui.PasswordQuickFilterChipState
+import takagi.ru.monica.ui.applyPasswordPagePasskeyStorageTarget
 import takagi.ru.monica.ui.supportsQuickFolders
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.QuickStatusBar
@@ -866,7 +867,7 @@ private fun VaultV2Item.matchesStorageFilter(selection: UnifiedCategoryFilterSel
 			mdbxDatabaseId() == selection.databaseId
 		}
 		is UnifiedCategoryFilterSelection.MdbxFolderFilter -> {
-			mdbxDatabaseId() == selection.databaseId
+			matchesMdbxFolder(selection.databaseId, selection.folderId)
 		}
 	}
 }
@@ -944,8 +945,36 @@ private fun VaultV2Item.mdbxDatabaseId(): Long? {
 		VaultV2ItemType.NOTE,
 		VaultV2ItemType.BANK_CARD,
 		VaultV2ItemType.DOCUMENT -> secureItem?.mdbxDatabaseId
-		VaultV2ItemType.PASSKEY -> null
+		VaultV2ItemType.PASSKEY -> passkeyEntry?.mdbxDatabaseId
 	}
+}
+
+private fun VaultV2Item.mdbxFolderId(): String? {
+	return when (type) {
+		VaultV2ItemType.PASSWORD -> passwordEntry?.mdbxFolderId
+		VaultV2ItemType.AUTHENTICATOR -> totpItem?.mdbxFolderId
+		VaultV2ItemType.NOTE,
+		VaultV2ItemType.BANK_CARD,
+		VaultV2ItemType.DOCUMENT -> secureItem?.mdbxFolderId
+		VaultV2ItemType.PASSKEY -> passkeyEntry?.mdbxFolderId
+	}
+}
+
+private fun VaultV2Item.matchesMdbxFolder(databaseId: Long, folderId: String): Boolean {
+	if (mdbxDatabaseId() != databaseId) return false
+	val normalizedFolderId = folderId.trim()
+	val explicitFolderId = mdbxFolderId()?.trim().orEmpty()
+	if (normalizedFolderId.equals("root", ignoreCase = true)) {
+		return explicitFolderId.isBlank() && categoryId() == null
+	}
+	if (explicitFolderId.isNotBlank()) {
+		return explicitFolderId == normalizedFolderId
+	}
+	val categoryIdFromFolder = normalizedFolderId
+		.removePrefix("category:")
+		.takeIf { it != normalizedFolderId }
+		?.toLongOrNull()
+	return categoryIdFromFolder != null && categoryId() == categoryIdFromFolder
 }
 
 private fun toggleVaultV2ContentType(
@@ -1009,6 +1038,7 @@ private fun VaultV2Item.matchesPasswordQuickFilters(
 	if (
 		quickFilterPasskey &&
 		PasswordListQuickFilterItem.PASSKEY in configuredQuickFilterItems &&
+		type != VaultV2ItemType.PASSKEY &&
 		PasskeyBindingCodec.decodeList(passwordEntry?.passkeyBindings.orEmpty()).isEmpty()
 	) {
 		return false
@@ -2792,6 +2822,9 @@ fun VaultV2Pane(
 					val documentIds = selectedItems
 						.filter { it.type == VaultV2ItemType.DOCUMENT }
 						.mapNotNull { it.secureItem?.id }
+					val passkeyEntries = selectedItems
+						.filter { it.type == VaultV2ItemType.PASSKEY }
+						.mapNotNull { it.passkeyEntry }
 
 					when (target) {
 						is UnifiedMoveCategoryTarget.Uncategorized -> {
@@ -2923,6 +2956,35 @@ fun VaultV2Pane(
 									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null, mdbxDatabaseId = dbId, mdbxFolderId = folderId)
 								}
 							}
+						}
+					}
+					if (passkeyEntries.isNotEmpty()) {
+						scope.launch {
+							passkeyEntries
+								.filter { it.boundPasswordId == null && it.syncStatus != "REFERENCE" }
+								.forEach { passkey ->
+									val updateResult = applyPasswordPagePasskeyStorageTarget(
+										passkey = passkey,
+										target = target,
+										bitwardenRepository = bitwardenRepository
+									)
+									if (updateResult.isFailure) {
+										Toast.makeText(
+											context,
+											context.getString(R.string.passkey_bitwarden_move_failed),
+											Toast.LENGTH_SHORT
+										).show()
+										return@forEach
+									}
+									val persistedResult = passkeyViewModel.updatePasskey(updateResult.getOrThrow())
+									if (persistedResult.isFailure) {
+										Toast.makeText(
+											context,
+											context.getString(R.string.passkey_bitwarden_move_failed),
+											Toast.LENGTH_SHORT
+										).show()
+									}
+								}
 						}
 					}
 					selectedKeys.clear()

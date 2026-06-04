@@ -893,7 +893,7 @@ private suspend fun PasswordViewModel.addPasswordEntryWithResultAwait(
 private class PasswordPagePasskeyBitwardenMoveBlockedException :
     IllegalStateException("Passkey cannot be migrated to Bitwarden")
 
-private suspend fun applyPasswordPagePasskeyStorageTarget(
+internal suspend fun applyPasswordPagePasskeyStorageTarget(
     passkey: PasskeyEntry,
     target: UnifiedMoveCategoryTarget,
     bitwardenRepository: BitwardenRepository
