@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.first
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
+import takagi.ru.monica.utils.BackupContentScope
 import takagi.ru.monica.utils.WebDavHelper
 import takagi.ru.monica.webdav.WebDavBackoffState
 import takagi.ru.monica.webdav.WebDavErrorClassifier
@@ -115,7 +116,8 @@ class AutoBackupWorker(
                 secureItems = secureItems,
                 preferences = backupPreferences,
                 isPermanent = false,
-                isManualTrigger = isManualTrigger
+                isManualTrigger = isManualTrigger,
+                contentScope = BackupContentScope.ALL_OFFLINE
             )
 
             if (backupResult.isSuccess) {

@@ -2453,6 +2453,35 @@ class MultiPasswordSaveRegressionGuardTest {
         )
     }
 
+    @Test
+    fun webDavBackupsUseAllOfflineContentScope() {
+        val webDavHelperSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt"
+        ).readText()
+        val webDavScreenSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/WebDavBackupScreen.kt"
+        ).readText()
+        val autoBackupWorkerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/workers/AutoBackupWorker.kt"
+        ).readText()
+
+        assertTrue(
+            "WebDAV helper must forward the requested backup content scope into createBackupZip.",
+            webDavHelperSource.contains("contentScope: BackupContentScope = BackupContentScope.MONICA_LOCAL_ONLY") &&
+                webDavHelperSource.contains("contentScope = contentScope")
+        )
+        assertTrue(
+            "Manual WebDAV backup is a cross-device backup and must include all offline sources, not only Monica-local rows.",
+            webDavScreenSource.contains("import takagi.ru.monica.utils.BackupContentScope") &&
+                webDavScreenSource.contains("contentScope = BackupContentScope.ALL_OFFLINE")
+        )
+        assertTrue(
+            "Automatic WebDAV backup must use the same all-offline scope as manual WebDAV backup.",
+            autoBackupWorkerSource.contains("import takagi.ru.monica.utils.BackupContentScope") &&
+                autoBackupWorkerSource.contains("contentScope = BackupContentScope.ALL_OFFLINE")
+        )
+    }
+
     private fun String.countOccurrences(needle: String): Int {
         if (needle.isEmpty()) return 0
         var count = 0

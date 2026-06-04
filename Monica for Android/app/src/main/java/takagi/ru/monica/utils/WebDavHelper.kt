@@ -2194,7 +2194,8 @@ class WebDavHelper(
         secureItems: List<SecureItem>,
         preferences: BackupPreferences = getBackupPreferences(),
         isPermanent: Boolean = false,
-        isManualTrigger: Boolean = true  // 默认为手动触发
+        isManualTrigger: Boolean = true,  // 默认为手动触发
+        contentScope: BackupContentScope = BackupContentScope.MONICA_LOCAL_ONLY
     ): Result<BackupReport> = withContext(Dispatchers.IO) {
         // 检查是否已有备份正在进行
         if (!backupLock.compareAndSet(false, true)) {
@@ -2203,10 +2204,18 @@ class WebDavHelper(
         }
         
         try {
-            android.util.Log.d("WebDavHelper", "Starting backup with ${passwords.size} passwords and ${secureItems.size} secure items")
+            android.util.Log.d(
+                "WebDavHelper",
+                "Starting backup with ${passwords.size} passwords and ${secureItems.size} secure items, scope=$contentScope"
+            )
             
             // 调用重构后的创建方法
-            val createResult = createBackupZip(passwords, secureItems, preferences)
+            val createResult = createBackupZip(
+                passwords = passwords,
+                secureItems = secureItems,
+                preferences = preferences,
+                contentScope = contentScope
+            )
             
             if (createResult.isFailure) {
                 return@withContext Result.failure(createResult.exceptionOrNull() ?: Exception("创建备份失败"))

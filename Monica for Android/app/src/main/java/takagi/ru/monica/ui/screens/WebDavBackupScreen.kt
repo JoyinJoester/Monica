@@ -36,6 +36,7 @@ import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.utils.BackupFile
 import takagi.ru.monica.utils.BackupContent
+import takagi.ru.monica.utils.BackupContentScope
 import takagi.ru.monica.utils.BackupRestoreApplier
 import takagi.ru.monica.utils.RestoreResult
 import takagi.ru.monica.utils.WebDavHelper
@@ -801,7 +802,8 @@ fun WebDavBackupScreen(
                                     secureItems = allSecureItems,
                                     preferences = backupPreferences,
                                     isPermanent = true, // Manual backups are permanent
-                                    isManualTrigger = true
+                                    isManualTrigger = true,
+                                    contentScope = BackupContentScope.ALL_OFFLINE
                                 )
                                 
                                 if (result.isSuccess) {
