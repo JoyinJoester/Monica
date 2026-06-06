@@ -6,7 +6,7 @@ export default defineConfig({
   cleanUrls: false,
   lastUpdated: true,
   sitemap: {
-    hostname: "https://joyinjoester.github.io",
+    hostname: "https://Monica-Pass.github.io/Monica",
     transformItems: (items) => {
       const permalinkItemBak = [];
       const permalinks = globalThis.VITEPRESS_CONFIG?.site?.themeConfig?.permalinks;
@@ -28,7 +28,7 @@ export default defineConfig({
   },
   themeConfig: {
     logo: "/themepng.png",
-    socialLinks: [{ icon: "github", link: "https://github.com/JoyinJoester/Monica" }],
+    socialLinks: [{ icon: "github", link: "https://github.com/Monica-Pass/Monica" }],
     search: { provider: "local" },
   },
   vite: {

@@ -21,4 +21,4 @@ outline: false
 
 ❤️ このプロジェクトを支援してくださる皆様に心より感謝申し上げます。皆様のサポートが、このプロジェクトをより良くする原動力となっています！
 
-❤️ このプロジェクトにコードで貢献してくださった皆様に感謝します → [Contributors](https://github.com/JoyinJoester/Monica/graphs/contributors)
+❤️ このプロジェクトにコードで貢献してくださった皆様に感謝します → [Contributors](https://github.com/Monica-Pass/Monica/graphs/contributors)

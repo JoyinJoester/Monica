@@ -12,10 +12,16 @@ hero:
   actions:
     - theme: brand
       text: Download for Android
-      link: https://github.com/JoyinJoester/Monica/releases
+      link: https://github.com/Monica-Pass/Monica/releases
+    - theme: brand
+      text: Windows Version
+      link: https://github.com/Monica-Pass/Monica-by-Avalonia
+    - theme: brand
+      text: iOS Version
+      link: https://github.com/Monica-Pass/Monica-for-iOS
     - theme: alt
-      text: Browser Extension
-      link: https://github.com/JoyinJoester/Monica/tree/main/Monica%20for%20Browser
+      text: Project Introduction
+      link: /en/guide/intro
     - theme: alt
       text: Documentation
       link: /en/reference/catalogue

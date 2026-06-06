@@ -1,5 +1,5 @@
 ---
-url: /en/personal.md
+url: /Monica/en/personal.md
 ---
 
 # Support this project
@@ -20,4 +20,4 @@ Your support will be prioritized for:
 
 ❤️ Thank you to everyone who supports this project. Your help makes it better every day!
 
-❤️ Thank you to the brilliant contributors who co-create this project → [Contributors](https://github.com/JoyinJoester/Monica/graphs/contributors)
+❤️ Thank you to the brilliant contributors who co-create this project → [Contributors](https://github.com/Monica-Pass/Monica/graphs/contributors)

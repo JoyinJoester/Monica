@@ -12,10 +12,16 @@ hero:
   actions:
     - theme: brand
       text: Скачать для Android
-      link: https://github.com/JoyinJoester/Monica/releases
+      link: https://github.com/Monica-Pass/Monica/releases
+    - theme: brand
+      text: Версия для Windows
+      link: https://github.com/Monica-Pass/Monica-by-Avalonia
+    - theme: brand
+      text: Версия для iOS
+      link: https://github.com/Monica-Pass/Monica-for-iOS
     - theme: alt
-      text: Расширение для браузера
-      link: https://github.com/JoyinJoester/Monica/tree/main/Monica%20for%20Browser
+      text: Введение в проект
+      link: /ru/guide/intro
     - theme: alt
       text: Документация проекта
       link: /ru/reference/catalogue

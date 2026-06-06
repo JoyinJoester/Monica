@@ -1,5 +1,5 @@
 ---
-url: /ja/02.Configuration/Menu.md
+url: /Monica/ja/02.Configuration/Menu.md
 ---
 
 # ⚙️ 設定ドキュメント

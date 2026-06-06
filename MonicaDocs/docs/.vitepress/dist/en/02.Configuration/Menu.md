@@ -1,5 +1,5 @@
 ---
-url: /en/02.Configuration/Menu.md
+url: /Monica/en/02.Configuration/Menu.md
 ---
 
 # ⚙️ Configuration Docs
