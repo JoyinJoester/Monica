@@ -34,7 +34,7 @@ It is built around local-first storage and helps you manage passwords, 2FA, secu
 
 This project is AI-assisted. Please build a habit of backing up regularly to avoid data loss. Data privacy is priceless, so do not keep all of your data in a single app.
 
-Website: https://joyinjoester.github.io/Monica/
+Website: https://monica-pass.github.io/Monica/
 
 > Monica for Windows is archived. Historical code: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 >

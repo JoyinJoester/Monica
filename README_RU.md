@@ -34,7 +34,7 @@ Monica — это локальное хранилище паролей, кото
 
 Проект создан с использованием ИИ. Сделайте регулярные резервные копии привычкой, чтобы избежать потери данных. Приватность данных бесценна, поэтому не храните все данные только в одном приложении.
 
-Сайт: https://joyinjoester.github.io/Monica/
+Сайт: https://monica-pass.github.io/Monica/
 
 > Monica for Windows архивирован. Исторический код: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 >

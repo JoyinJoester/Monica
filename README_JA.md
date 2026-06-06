@@ -34,7 +34,7 @@ Monica は **Bitwarden** と **KeePass** を統合するローカルパスワー
 
 このプロジェクトは AI を活用して作られています。データ損失を防ぐため、定期的なバックアップを習慣にしてください。データのプライバシーは何にも代えがたいので、重要なデータを1つのアプリだけにまとめないようにしてください。
 
-サイト: https://joyinjoester.github.io/Monica/
+サイト: https://monica-pass.github.io/Monica/
 
 > Monica for Windows はアーカイブ済みです。過去コード: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 >

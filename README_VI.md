@@ -34,7 +34,7 @@ Ung dung uu tien luu tru local, giup quan ly mat khau, 2FA, ghi chu bao mat va t
 
 Du an nay co su ho tro cua AI. Hay tap tho quen sao luu du lieu thuong xuyen de tranh mat mat du lieu. Quyen rieng tu du lieu la vo gia, vi vay khong nen de tat ca du lieu cua ban nam trong chi mot ung dung.
 
-Trang web: https://joyinjoester.github.io/Monica/
+Trang web: https://monica-pass.github.io/Monica/
 
 > Monica for Windows da duoc luu tru (archived). Ma nguon lich su: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 >
