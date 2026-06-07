@@ -12,15 +12,24 @@ hero:
   actions:
     - theme: brand
       text: 下载 Android 版
-      link: https://github.com/JoyinJoester/Monica/releases
-    - theme: alt
+      link: https://github.com/Monica-Pass/Monica/releases
+    - theme: brand
       text: Windows 版
-      link: https://github.com/JoyinJoester/Monica-for-Windows
+      link: https://github.com/Monica-Pass/Monica-by-Avalonia
+    - theme: brand
+      text: iOS 版
+      link: https://github.com/Monica-Pass/Monica-for-iOS
+    - theme: alt
+      text: 项目介绍
+      link: /guide/intro
     - theme: alt
       text: 项目文档
       link: /reference/catalogue
 
 features:
+  - title: 多客户端支持
+    details: Android，iOS，Windows 利用同步功能将您的数据在三端流转
+    icon: 🏘️
   - title: 密码管理
     details: 支持自动填充和多字段存储。采用 AES-256 高强度加密，确保数据仅存在于您的本地设备中。
     icon: 🔑
@@ -31,11 +40,8 @@ features:
     details: 安全存储银行卡、证件照和私密便签。所有敏感信息均由您完全掌控。
     icon: 💳
   - title: Material Design 3
-    details: 严格遵循 Google Material Design 3 设计规范。支持动态色彩方案和深色模式，界面纯净无广告。
+    details: 遵循 Google Material Design 3 设计规范。支持动态色彩方案和深色模式，界面纯净无广告。
     icon: 🎨
-  - title: 硬件级 Keystore
-    details: 密钥受 Android 系统 Keystore (TEE) 保护，为您的加密数据提供基于硬件的安全隔离边界。
-    icon: 🛡️
   - title: 零知识架构
     details: 默认完全离线运行，无需网络权限。确保即使是开发者也无法访问或获取您的任何数据。
     icon: 🚫

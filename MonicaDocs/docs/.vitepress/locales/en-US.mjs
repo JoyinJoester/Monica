@@ -21,6 +21,7 @@ export default defineConfig({
     docFooter: { prev: "Previous page", next: "Next page" },
     nav: [
       { text: "Home", link: "/en/" },
+      { text: "Ecosystem", link: "/en/03.Ecosystem/Menu" },
       { text: "Guide", link: "/en/guide/intro" },
       { text: "Docs", link: "/en/reference/catalogue" },
       {

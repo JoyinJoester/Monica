@@ -1,4 +1,4 @@
 ---
-url: /ja/@papes/archivesPage.md
+url: /Monica/ja/@papes/archivesPage.md
 ---
 

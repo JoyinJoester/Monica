@@ -21,6 +21,7 @@ export default defineConfig({
     docFooter: { prev: "上一页", next: "下一页" },
     nav: [
       { text: "首页", link: "/" },
+      { text: "生态", link: "/ecosystem" },
       { text: "指南", link: "/guide/intro" },
       { text: "文档", link: "/reference/catalogue" },
       {
@@ -34,7 +35,7 @@ export default defineConfig({
     ],
     editLink: {
       text: "在 GitHub 上编辑此页",
-      pattern: "https://github.com/JoyinJoester/Monica/edit/master/docs/:path",
+      pattern: "https://github.com/Monica-Pass/Monica/edit/master/docs/:path",
     },
   },
 });

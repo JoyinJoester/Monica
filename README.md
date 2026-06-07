@@ -36,7 +36,7 @@ Monica 是一个聚合 **Bitwarden** 与 **KeePass** 的本地密码库（Local 
 ### 重要的事：
 Monica Pass的开发者就是一个大啥比，现在他为了偷懒连代码都很少review了，还在群里说“反正ai写的比我好，我还不如ai呢”，大家不要相信这种人开发的软件，一定要好好的做好备份，数据隐私无价！不要把所有数据都放到这一个软件里面
 
-官网入口: https://joyinjoester.github.io/Monica/
+官网入口: https://monica-pass.github.io/Monica/
 
 > Monica for Windows 已归档。历史代码见: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 >

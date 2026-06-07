@@ -1,0 +1,282 @@
+---
+title: iOS版 介绍
+date: 2025-06-01 23:00:00
+permalink: /ecosystem/iOSreadme
+---
+
+# Monica for iOS
+
+> Monica 的本地优先 iOS 密码库客户端  
+> iOS 17+ · SwiftUI · MDBX Vault · AutoFill · TOTP · WebDAV
+
+[![Release](https://img.shields.io/github/v/release/Monica-Pass/Monica-for-iOS?style=flat-square)](https://github.com/Monica-Pass/Monica-for-iOS/releases)
+
+[![Downloads](https://img.shields.io/github/downloads/Monica-Pass/Monica-for-iOS/total?style=flat-square)](https://github.com/Monica-Pass/Monica-for-iOS/releases)
+
+[![Last Commit](https://img.shields.io/github/last-commit/Monica-Pass/Monica-for-iOS?style=flat-square)](https://github.com/Monica-Pass/Monica-for-iOS/commits)
+
+[![License](https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square)](LICENSE)
+
+Monica for iOS 是 Monica 密码库生态中的原生 iOS 客户端，采用 **本地优先** 的设计理念，专注于在 iPhone 上提供安全、可控、可恢复的密码管理体验。
+
+项目当前以 **MDBX 优先、iOS 17+、iPhone 优先、Rust/Swift UniFFI 桥接** 为核心路线，重点围绕本地加密保险库、原生 AutoFill、TOTP、WebDAV 备份恢复以及与 Android / MDBX 数据模型兼容的多类型条目管理展开。
+
+首个公开版本将优先完成：
+
+- 本地 Vault 基础能力
+- 核心条目管理
+- WebDAV 备份与恢复
+- 较完整的 AutoFill 支持
+
+后续会继续完善：
+
+- Passkey
+- Bitwarden 兼容
+- 附件支持
+- 更多云端同步能力
+
+---
+
+## 适合谁使用
+
+Monica for iOS 适合以下用户：
+
+- 希望使用**本地优先**方案管理密码，不愿将核心凭据托管给第三方服务。
+- 已经在 Monica Android 或 MDBX 生态中管理密码、TOTP、私密笔记等数据。
+- 需要使用 iOS 原生的 **AutoFill、Face ID / Touch ID、本地备份恢复** 等能力。
+- 希望在 iPhone 上统一管理登录项、安全笔记、TOTP、银行卡、证件元数据等多类型条目。
+
+---
+
+## 当前功能
+
+### 本地 MDBX Vault
+
+- 支持创建、打开、锁定本地加密保险库
+- 采用本地优先策略，降低对外部服务的依赖
+
+### 多类型条目管理
+
+- 支持登录项、安全笔记、TOTP、银行卡、证件元数据等基础 CRUD
+- 兼容 Monica / MDBX 的数据模型思路
+
+### 收藏与搜索
+
+- 支持收藏优先
+- 支持仅看收藏
+- 支持会话内搜索
+- 支持软删除恢复
+
+### TOTP
+
+- 支持 `otpauth://` URI 导入
+- 支持二维码导入
+- 支持验证码生成与剩余秒数刷新
+
+### iOS AutoFill
+
+- 通过 Credential Provider Extension 读取加密索引
+- 向系统返回可填充的凭据
+- 为密码自动填充场景提供原生支持
+
+### 安全解锁
+
+- 结合 Keychain、LocalAuthentication 和 MDBX `security_key`
+- 不保存主密码明文
+- 尽量将敏感信息限制在本地安全边界内
+
+### WebDAV
+
+- 支持上传、下载、SHA-256 完整性校验
+- 支持恢复预览
+- 支持恢复前打开验证
+
+### OneDrive
+
+- 已接入 MSAL 和 Microsoft Graph app-folder provider
+- 真实账号与网络验收仍在持续推进
+
+### KeePass / KDBX
+
+- 已完成现代 KDBX3 / KDBX4 主链路读写兼容
+- 后续将继续扩展更多真实场景验收
+
+---
+
+## 当前状态
+
+- 项目仍处于 iOS 客户端开发和真机验收阶段。
+- 在未签名模拟器测试中，使用 `CODE_SIGNING_ALLOWED=NO` 时，App Group container 不可用属于预期现象。
+- AutoFill QuickType 展示、Credential Provider、App Group、Keychain access group、TOTP 相机扫描等能力，仍需要在签名真机环境中继续验证。
+
+---
+
+## 开发者信息
+
+### 目录结构
+
+```text
+.
+├── Monica.xcodeproj/
+├── App/
+│   └── MonicaApp/
+├── Extensions/
+│   ├── MonicaAutoFillExtension/
+│   ├── MonicaShareExtension/
+│   └── MonicaWidgetExtension/
+├── Tests/
+│   └── MonicaTests/
+├── Scripts/
+│   ├── build-mdbx-xcframework.sh
+│   └── generate-mdbx-swift-bindings.sh
+├── Artifacts/
+│   ├── MDBX/
+│   └── MSAL/
+├── Generated/
+│   └── MDBXUniFFI/
+└── SwiftPackages/
+    ├── MSAL/
+    ├── MonicaCore/
+    ├── MonicaMDBX/
+    ├── MonicaSecurity/
+    ├── MonicaStorage/
+    ├── MonicaSync/
+    └── MonicaUI/
+```
+
+### 技术栈
+
+- **App 层**：SwiftUI、Observation、AuthenticationServices、LocalAuthentication、Keychain、WidgetKit
+- **本地 Vault**：MDBX Rust workspace + UniFFI + `MonicaMDBX` Swift Package
+- **核心逻辑**：`MonicaCore` 提供 TOTP、`otpauth://` parser、安全随机密码生成等能力
+- **存储层**：`MonicaStorage` 负责本地 vault repository、KDBX 兼容、AutoFill 加密索引和 secret snapshot
+- **安全层**：`MonicaSecurity` 负责 Keychain / LocalAuthentication 边界和本地 key material 管理
+- **同步层**：`MonicaSync` 提供 WebDAV、OneDrive / CloudFile provider 和 Bitwarden 同步边界
+
+### MDBX UniFFI
+
+Rust 侧桥接 crate 位于上游 MDBX workspace：
+
+```text
+mdbx/crates/mdbx-ios-ffi
+```
+
+生成 Swift binding：
+
+```bash
+Scripts/generate-mdbx-swift-bindings.sh
+```
+
+生成 iOS XCFramework：
+
+```bash
+Scripts/build-mdbx-xcframework.sh
+```
+
+如果缺少 UniFFI CLI：
+
+```bash
+cargo install uniffi --version 0.31.1 --locked --features cli
+```
+
+注意：不要把 `Scripts/build-mdbx-xcframework.sh` 和 Xcode build 并行运行。脚本会替换 `MonicaMDBXGenerated.xcframework`，Xcode 在替换期间读取产物可能失败。
+
+---
+
+## 验证命令
+
+### Swift Package 测试
+
+```bash
+cd SwiftPackages/MonicaCore && swift test
+cd ../MonicaMDBX && swift test
+cd ../MonicaStorage && swift test
+cd ../MonicaSecurity && swift test
+cd ../MonicaSync && swift test
+cd ../MonicaUI && swift test
+```
+
+### iOS Simulator 构建
+
+```bash
+xcrun simctl list devices available
+
+xcodebuild \
+  -project Monica.xcodeproj \
+  -scheme Monica \
+  -configuration Debug \
+  -sdk iphonesimulator \
+  -destination "id=<iPhone simulator UUID>" \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+```
+
+### iOS Simulator XCTest
+
+```bash
+xcodebuild test \
+  -project Monica.xcodeproj \
+  -scheme Monica \
+  -configuration Debug \
+  -sdk iphonesimulator \
+  -destination "id=<iPhone simulator UUID>" \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+---
+
+## 路线图
+
+### 首发重点
+
+- MDBX 本地 Vault
+- 核心条目管理
+- TOTP
+- WebDAV
+- iOS AutoFill
+
+### 持续推进
+
+- 签名真机验收
+- Keychain / LocalAuthentication
+- App Group
+- QuickType
+- 相机扫描
+
+### 后续能力
+
+- Passkey
+- Bitwarden 双向同步
+- 附件体验
+- 更多云服务
+- Widget / Live Activity 等 iOS 原生入口
+
+---
+
+## 致谢
+
+Monica 的设计、兼容性适配与部分功能方向，受到了以下优秀开源项目和软件的启发与帮助：
+
+- [Bitwarden](https://bitwarden.com/) - 开源密码管理生态、Vault 模型与同步能力的重要参考
+- [KeePass](https://keepass.info/) - 本地密码库理念与 `.kdbx` 生态兼容的重要基础
+- [Keyguard](https://github.com/AChep/keyguard-app) - Android 端密码管理器的交互设计与体验参考
+- [Stratum Auth](https://github.com/stratumauth/app) - 身份验证器体验、图标资源与相关兼容支持参考
+
+---
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Monica-Pass/Monica-for-iOS&type=Date)](https://star-history.com/#Monica-Pass/Monica-for-iOS&Date)
+
+---
+
+## 许可证
+
+Copyright (c) 2025 JoyinJoester
+
+Monica for iOS 基于 [GNU General Public License v3.0](LICENSE) 开源发布。
+
+## 第三方图标标注
+
+- 本项目使用的第三方图标资源来自 [Stratum Auth app](https://github.com/stratumauth/app)（版本 [v1.4.0](https://github.com/stratumauth/app/releases/tag/v1.4.0)，目录 [icons](https://github.com/stratumauth/app/tree/v1.4.0/icons) / [extraicons](https://github.com/stratumauth/app/tree/v1.4.0/extraicons)，GPL-3.0）
+- 品牌名称与 Logo 的商标权归各自权利人所有

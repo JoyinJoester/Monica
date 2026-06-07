@@ -21,6 +21,7 @@ export default defineConfig({
     docFooter: { prev: "Trang trước", next: "Trang sau" },
     nav: [
       { text: "Trang chủ", link: "/vi/" },
+      { text: "Hệ sinh thái", link: "/vi/03.Ecosystem/Menu" },
       { text: "Hướng dẫn", link: "/vi/guide/intro" },
       { text: "Tài liệu", link: "/vi/reference/catalogue" },
       {

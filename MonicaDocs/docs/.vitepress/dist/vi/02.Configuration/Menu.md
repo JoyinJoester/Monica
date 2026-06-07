@@ -1,5 +1,5 @@
 ---
-url: /vi/02.Configuration/Menu.md
+url: /Monica/vi/02.Configuration/Menu.md
 ---
 
 # ⚙️ Tài liệu cấu hình

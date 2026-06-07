@@ -1,5 +1,5 @@
 ---
-url: /vi/personal.md
+url: /Monica/vi/personal.md
 ---
 
 # Hỗ trợ dự án này
@@ -20,4 +20,4 @@ Sự hỗ trợ của bạn sẽ được ưu tiên sử dụng cho:
 
 ❤️ Xin chân thành cảm ơn những người bạn đã hỗ trợ dự án này, mỗi sự giúp đỡ của bạn đều làm cho dự án này trở nên tốt đẹp hơn!
 
-❤️ Xin cảm ơn những người bạn đã đóng góp mã nguồn cho dự án này → [Contributors](https://github.com/JoyinJoester/Monica/graphs/contributors)
+❤️ Xin cảm ơn những người bạn đã đóng góp mã nguồn cho dự án này → [Contributors](https://github.com/Monica-Pass/Monica/graphs/contributors)

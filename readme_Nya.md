@@ -41,7 +41,7 @@ Monica 的开发者只是一个会犯懒的大笨蛋铲屎官喵。
 
 他有时候会偷懒，有时候会说「反正 AI 写得比我好」这种很欠揉脑袋的话喵。所以你要答应人家：一定要好好备份喵。数据隐私是无价的小鱼干，不能全都压在一个篮子里喵。
 
-官网入口在这里喵: https://joyinjoester.github.io/Monica/
+官网入口在这里喵: https://monica-pass.github.io/Monica/
 
 > Monica for Windows 已经钻进纸箱里归档了喵。想考古的话看这里喵: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 >

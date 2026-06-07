@@ -1,5 +1,5 @@
 ---
-url: /ru/personal.md
+url: /Monica/ru/personal.md
 ---
 
 # Поддержать проект
@@ -20,4 +20,4 @@ url: /ru/personal.md
 
 ❤️ Спасибо всем, кто поддерживает этот проект. Ваша помощь делает его лучше с каждым днем!
 
-❤️ Спасибо тем, кто вносит вклад в развитие исходного кода проекта → [Contributors](https://github.com/JoyinJoester/Monica/graphs/contributors)
+❤️ Спасибо тем, кто вносит вклад в развитие исходного кода проекта → [Contributors](https://github.com/Monica-Pass/Monica/graphs/contributors)
