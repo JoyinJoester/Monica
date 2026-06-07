@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-06-06T23:22:49.597Z",
+  "generatedAt": "2026-06-07T21:36:24.334Z",
   "range": {
-    "from": "2025-06-07",
-    "to": "2026-06-06"
+    "from": "2025-06-08",
+    "to": "2026-06-07"
   },
   "activity": [
-    {
-      "date": "2025-06-07",
-      "count": 0
-    },
     {
       "date": "2025-06-08",
       "count": 0
@@ -1465,99 +1461,103 @@
     },
     {
       "date": "2026-06-06",
-      "count": 0
+      "count": 10
+    },
+    {
+      "date": "2026-06-07",
+      "count": 3
     }
   ],
   "latest": [
     {
-      "sha": "38478f2527cab58a8f256b7a847798547e7eb07b",
-      "shortSha": "38478f2",
-      "message": "Fix WebDAV backup content scope",
+      "sha": "85cb7e47c0cdf29607b46ab5d70e8e68dddb8eaf",
+      "shortSha": "85cb7e4",
+      "message": "Fix Android sync lag and category UI state",
       "authorName": "JoyinJoester",
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-04T14:38:40Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/38478f2527cab58a8f256b7a847798547e7eb07b"
+      "date": "2026-06-07T04:04:02Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/85cb7e47c0cdf29607b46ab5d70e8e68dddb8eaf"
     },
     {
-      "sha": "4a6feb65e277dc455d4ac75868f05d5a4731476f",
-      "shortSha": "4a6feb6",
+      "sha": "02769be64651aec91bccda158998e2b27689a269",
+      "shortSha": "02769be",
       "message": "Update contributor flag SVG",
       "authorName": "github-actions[bot]",
       "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-04T14:19:14Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/4a6feb65e277dc455d4ac75868f05d5a4731476f"
+      "date": "2026-06-07T02:12:47Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/02769be64651aec91bccda158998e2b27689a269"
     },
     {
-      "sha": "ed3e6cda883d8183df2356a1e129b0190ab05309",
-      "shortSha": "ed3e6cd",
-      "message": "Fix authenticator privacy and backup coverage",
+      "sha": "19916533cc15decff5f855df63296c2bc9b0ea2f",
+      "shortSha": "1991653",
+      "message": "Merge pull request #58 from Mrmiaomrzh/main",
       "authorName": "JoyinJoester",
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-04T14:18:41Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/ed3e6cda883d8183df2356a1e129b0190ab05309"
+      "date": "2026-06-07T02:12:35Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/19916533cc15decff5f855df63296c2bc9b0ea2f"
     },
     {
-      "sha": "6a13c1c6c0ea33db12257f24c1284ba1b2d2dcc9",
-      "shortSha": "6a13c1c",
-      "message": "Update contributor flag SVG",
+      "sha": "d030bf129359cbd6d0a92e48ada3b6b7860c5099",
+      "shortSha": "d030bf1",
+      "message": "Merge branch 'main' of https://github.com/Mrmiaomrzh/Monica",
+      "authorName": "Mrmiaomrzh",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
+      "date": "2026-06-06T23:42:31Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/d030bf129359cbd6d0a92e48ada3b6b7860c5099"
+    },
+    {
+      "sha": "23dcde04b3c8a00751b67d349bb6cdf153242d54",
+      "shortSha": "23dcde0",
+      "message": "fix: update website links in multiple language README files",
+      "authorName": "Mrmiaomrzh",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
+      "date": "2026-06-06T23:42:22Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/23dcde04b3c8a00751b67d349bb6cdf153242d54"
+    },
+    {
+      "sha": "1e38acfc518f57ad9e1513be51104ae90b936f57",
+      "shortSha": "1e38acf",
+      "message": "feat: add script to fetch and update GitHub commits data",
+      "authorName": "Mrmiaomrzh",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
+      "date": "2026-06-06T23:23:12Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/1e38acfc518f57ad9e1513be51104ae90b936f57"
+    },
+    {
+      "sha": "3e3212825382922a50e777bf65775341f39e4443",
+      "shortSha": "3e32128",
+      "message": "chore: update github commit data",
       "authorName": "github-actions[bot]",
       "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-04T06:58:11Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/6a13c1c6c0ea33db12257f24c1284ba1b2d2dcc9"
+      "date": "2026-06-06T23:22:49Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/3e3212825382922a50e777bf65775341f39e4443"
     },
     {
-      "sha": "3bff390f8a6515af754252f33f7f37ec5c89e67b",
-      "shortSha": "3bff390",
-      "message": "fix: improve vault pane and batch move for Monica Android",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-04T06:57:43Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/3bff390f8a6515af754252f33f7f37ec5c89e67b"
+      "sha": "11490b0111cbe564aa830f7661cabd27c4124872",
+      "shortSha": "11490b0",
+      "message": "Merge branch 'main' of https://github.com/Mrmiaomrzh/Monica",
+      "authorName": "Mrmiaomrzh",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
+      "date": "2026-06-06T23:10:59Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/11490b0111cbe564aa830f7661cabd27c4124872"
     },
     {
-      "sha": "c08cc6a1d3bfeabc12bdec8552234a17ae2070b7",
-      "shortSha": "c08cc6a",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-04T06:04:13Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/c08cc6a1d3bfeabc12bdec8552234a17ae2070b7"
+      "sha": "66729bc68bd280ac94005b68d35d4540e66b5e1e",
+      "shortSha": "66729bc",
+      "message": "feat:add ArchivePage workflows",
+      "authorName": "Mrmiaomrzh",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
+      "date": "2026-06-06T23:09:29Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/66729bc68bd280ac94005b68d35d4540e66b5e1e"
     },
     {
-      "sha": "6f742715e505ab54a33623d681947819a2534447",
-      "shortSha": "6f74271",
-      "message": "feat: enhance passkey, category filters, and i18n for Monica Android",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-04T06:03:28Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/6f742715e505ab54a33623d681947819a2534447"
-    },
-    {
-      "sha": "bcc0471488c91e2c5525296d397b7c80468eb4fb",
-      "shortSha": "bcc0471",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-04T04:17:28Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/bcc0471488c91e2c5525296d397b7c80468eb4fb"
-    },
-    {
-      "sha": "54473e384595d18c565490f0dd788893d3d1e59b",
-      "shortSha": "54473e3",
-      "message": "feat: add barcode entry type support for Monica Android",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-04T04:16:39Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/54473e384595d18c565490f0dd788893d3d1e59b"
-    },
-    {
-      "sha": "de5c1b917b3be44320da21b6241a5314c5d78af0",
-      "shortSha": "de5c1b9",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-03T15:51:52Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/de5c1b917b3be44320da21b6241a5314c5d78af0"
+      "sha": "0720fe17428bb7110d1ee882f03ac330deb1c46a",
+      "shortSha": "0720fe1",
+      "message": "Delete .github/workflows/Build-Website-ci.yml",
+      "authorName": "Mrmiaomrzh",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
+      "date": "2026-06-06T22:59:50Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/0720fe17428bb7110d1ee882f03ac330deb1c46a"
     }
   ]
 }
