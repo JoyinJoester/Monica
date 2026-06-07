@@ -1731,9 +1731,7 @@ class PasswordViewModel(
                 repository.createMdbxFolder(databaseId, name, parentFolderId)
                     ?: throw IllegalStateException("MDBX repository unavailable")
             }
-            result.onSuccess {
-                refreshMdbxFolders(databaseId)
-            }
+            refreshMdbxFolders(databaseId)
             onResult(result)
         }
     }

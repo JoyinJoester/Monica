@@ -236,12 +236,14 @@ fun WebDavBackupScreen(
         // 加载备份偏好设置
         backupPreferences = webDavHelper.getBackupPreferences()
         
-        // 加载各类型的数量（仅 Monica 本地数据，排除 KeePass 和 Bitwarden）
-        passwordCount = passwordRepository.getLocalEntriesCount()
-        authenticatorCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.TOTP)
-        documentCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.DOCUMENT)
-        bankCardCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.BANK_CARD)
-        noteCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.NOTE)
+        // WebDAV 备份是跨端完整备份，数量展示需要和 ALL_OFFLINE 打包范围一致。
+        val allPasswordsForBackupCount = passwordRepository.getAllPasswordEntries().first()
+        val allSecureItemsForBackupCount = secureItemRepository.getAllItems().first()
+        passwordCount = allPasswordsForBackupCount.size
+        authenticatorCount = allSecureItemsForBackupCount.count { it.itemType == takagi.ru.monica.data.ItemType.TOTP }
+        documentCount = allSecureItemsForBackupCount.count { it.itemType == takagi.ru.monica.data.ItemType.DOCUMENT }
+        bankCardCount = allSecureItemsForBackupCount.count { it.itemType == takagi.ru.monica.data.ItemType.BANK_CARD }
+        noteCount = allSecureItemsForBackupCount.count { it.itemType == takagi.ru.monica.data.ItemType.NOTE }
         
         // 获取本地回收站数量（排除 KeePass 和 Bitwarden 的数据）
         val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)

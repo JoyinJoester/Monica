@@ -1271,7 +1271,10 @@ class MultiPasswordSaveRegressionGuardTest {
                 viewModelSource.contains("fun refreshMdbxFolders(databaseId: Long)") &&
                 viewModelSource.substringAfter("fun createMdbxFolder(")
                     .substringBefore("fun updateCategory(")
-                    .contains("refreshMdbxFolders(databaseId)")
+                    .contains("refreshMdbxFolders(databaseId)") &&
+                !viewModelSource.substringAfter("fun createMdbxFolder(")
+                    .substringBefore("fun updateCategory(")
+                    .contains("result.onSuccess")
         )
         assertTrue(
             "Password list must load MDBX folders for the selected MDBX database or folder filter.",
@@ -1360,6 +1363,21 @@ class MultiPasswordSaveRegressionGuardTest {
 
         val createFolderBody = storeSource.substringAfter("override suspend fun createFolder(")
             .substringBefore("override suspend fun listFolders(")
+        val ensureRootFolderBody = storeSource.substringAfter("private fun ensureRootFolder(")
+            .substringBefore("private fun ensureFolder(")
+        val ensureFolderBody = storeSource.substringAfter("private fun ensureFolder(")
+            .substringBefore("private fun upsertObjectIndex(")
+        assertTrue(
+            "MDBX folder creation must repair/create the root folder before looking up the selected parent, otherwise old/compat vaults cannot create folders at root.",
+            createFolderBody.contains("ensureRootFolder(db, epochKey)") &&
+                createFolderBody.indexOf("ensureRootFolder(db, epochKey)") <
+                    createFolderBody.indexOf("SELECT path_key FROM folders WHERE folder_id = ?") &&
+                ensureRootFolderBody.contains("VALUES ('root', NULL") &&
+                ensureRootFolderBody.contains("path_key = '/'") &&
+                ensureRootFolderBody.contains("parent_folder_id = NULL") &&
+                ensureFolderBody.contains("if (folderId == \"root\")") &&
+                ensureFolderBody.contains("ensureRootFolder(db, epochKey)")
+        )
         assertTrue(
             "MDBX folder creation failures must be persisted to the MDBX diagnostic log so exported logs are actionable.",
             createFolderBody.contains("MdbxDiagLogger.append(") &&
@@ -1427,6 +1445,25 @@ class MultiPasswordSaveRegressionGuardTest {
                 vaultV2Source.contains("is UnifiedCategoryFilterSelection.MdbxFolderFilter -> Triple(CreateDialogTarget.Mdbx") &&
             vaultV2Source.contains("initialMdbxParentFolderId = (storageSelection as? UnifiedCategoryFilterSelection.MdbxFolderFilter)?.folderId") &&
                 vaultV2Source.contains("passwordViewModel.createMdbxFolder(databaseId, name, parentFolderId ?: \"root\")")
+        )
+    }
+
+    @Test
+    fun createCategoryDialogKeepsInputReachableWhenCategoryListIsLong() {
+        val dialogSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/CreateCategoryDialog.kt"
+        ).readText()
+        val dialogTextBody = dialogSource.substringAfter("text = {")
+            .substringBefore("confirmButton = {")
+
+        assertTrue(
+            "CreateCategoryDialog content must scroll vertically so long local/MDBX/KeePass folder lists cannot push the name field off-screen.",
+            dialogSource.contains("import androidx.compose.foundation.verticalScroll") &&
+                dialogSource.contains("val createDialogContentScroll = rememberScrollState()") &&
+                dialogTextBody.contains(".verticalScroll(createDialogContentScroll)") &&
+                dialogTextBody.contains("OutlinedTextField(") &&
+                dialogTextBody.indexOf(".verticalScroll(createDialogContentScroll)") <
+                    dialogTextBody.indexOf("OutlinedTextField(")
         )
     }
 
@@ -1877,6 +1914,37 @@ class MultiPasswordSaveRegressionGuardTest {
                 mdbxViewModelSource.contains("private suspend fun List<PasswordEntry>.dedupeMdbxPasswordRowsByEntryId()") &&
                 mdbxViewModelSource.contains("softDeleteMdbxPasswordRows(") &&
                 mdbxViewModelSource.contains("reason = \"duplicate_mdbx_entry_id\"")
+        )
+    }
+
+    @Test
+    fun passwordCategoryQuickFilterRowKeepsHorizontalScrollStateOutsideLazyHeader() {
+        val quickFolderRowSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordQuickFolderFlow.kt"
+        ).readText()
+        val scrollableContentSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListScrollableContent.kt"
+        ).readText()
+        val vaultV2Source = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/vaultv2/VaultV2Pane.kt"
+        ).readText()
+        val chipRowBody = quickFolderRowSource.substringAfter("internal fun PasswordQuickFolderChipRow(")
+            .substringBefore("private fun PasswordQuickFolderShortcut.resolveLeadingIcon")
+        val passwordListBody = scrollableContentSource.substringAfter("fun PasswordListScrollableContent(")
+            .substringBefore("if (quickFolderShortcuts.isNotEmpty())")
+        val vaultV2ListBody = vaultV2Source.substringAfter("private fun VaultV2List(")
+            .substringBefore("if (sections.isEmpty() && showLoadingIndicator)")
+
+        assertTrue(
+            "The folder chip row below password quick filters must receive a hoisted ScrollState so returning from detail keeps its horizontal position.",
+            quickFolderRowSource.contains("import androidx.compose.foundation.ScrollState") &&
+                chipRowBody.contains("scrollState: ScrollState") &&
+                chipRowBody.contains(".horizontalScroll(scrollState)") &&
+                !chipRowBody.contains("rememberScrollState()") &&
+                passwordListBody.contains("val categoryQuickFilterScrollState = rememberScrollState()") &&
+                passwordListBody.contains("scrollState = categoryQuickFilterScrollState") &&
+                vaultV2ListBody.contains("val categoryQuickFilterScrollState = rememberScrollState()") &&
+                vaultV2ListBody.contains("scrollState = categoryQuickFilterScrollState")
         )
     }
 
@@ -2478,7 +2546,51 @@ class MultiPasswordSaveRegressionGuardTest {
         assertTrue(
             "Automatic WebDAV backup must use the same all-offline scope as manual WebDAV backup.",
             autoBackupWorkerSource.contains("import takagi.ru.monica.utils.BackupContentScope") &&
-                autoBackupWorkerSource.contains("contentScope = BackupContentScope.ALL_OFFLINE")
+            autoBackupWorkerSource.contains("contentScope = BackupContentScope.ALL_OFFLINE")
+        )
+    }
+
+    @Test
+    fun webDavBackupContentCountsMatchAllOfflineBackupScope() {
+        val webDavScreenSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/WebDavBackupScreen.kt"
+        ).readText()
+        val launchedEffectBody = webDavScreenSource.substringAfter("LaunchedEffect(Unit) {")
+            .substringBefore("Scaffold(")
+
+        assertTrue(
+            "WebDAV backup count labels must reflect the same all-offline dataset that WebDAV actually backs up.",
+            launchedEffectBody.contains("val allPasswordsForBackupCount = passwordRepository.getAllPasswordEntries().first()") &&
+                launchedEffectBody.contains("val allSecureItemsForBackupCount = secureItemRepository.getAllItems().first()") &&
+                launchedEffectBody.contains("passwordCount = allPasswordsForBackupCount.size") &&
+                launchedEffectBody.contains("authenticatorCount = allSecureItemsForBackupCount.count") &&
+                launchedEffectBody.contains("documentCount = allSecureItemsForBackupCount.count") &&
+                launchedEffectBody.contains("bankCardCount = allSecureItemsForBackupCount.count") &&
+                launchedEffectBody.contains("noteCount = allSecureItemsForBackupCount.count") &&
+                !launchedEffectBody.contains("passwordRepository.getLocalEntriesCount()") &&
+                !launchedEffectBody.contains("secureItemRepository.getLocalItemCountByType")
+        )
+    }
+
+    @Test
+    fun bitwardenFullSyncRawLogUsesLightweightSummaryInsteadOfFullVaultJson() {
+        val syncServiceSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/bitwarden/service/BitwardenSyncService.kt"
+        ).readText()
+        val successFullSyncCapture = syncServiceSource.substringAfter("val syncResponse = response.body()")
+            .substringBefore("runCatching {\n                BitwardenSyncForensicsLogger.captureSyncCipherSnapshots")
+
+        assertTrue(
+            "Successful Bitwarden full-sync raw logging must use a lightweight summary; re-encoding the full vault JSON causes large-object GC storms during rapid page changes.",
+            successFullSyncCapture.contains("responseBody = buildSyncFullRawSummary(syncResponse)") &&
+                syncServiceSource.contains("private fun buildSyncFullRawSummary(response: SyncResponse): String") &&
+                syncServiceSource.contains("data class SyncFullRawSummary") &&
+                syncServiceSource.contains("rawResponseOmitted: Boolean = true") &&
+                syncServiceSource.contains("per-cipher snapshots are captured separately")
+        )
+        assertFalse(
+            "Do not bring back json.encodeToString(syncResponse) in the sync_full success raw log path.",
+            successFullSyncCapture.contains("json.encodeToString(syncResponse)")
         )
     }
 

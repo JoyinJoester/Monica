@@ -3,6 +3,7 @@ package takagi.ru.monica.bitwarden.service
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.attachments.AttachmentContainer
@@ -152,7 +153,7 @@ class BitwardenSyncService(
                 endpoint = "/sync?excludeDomains=true",
                 requestBody = null,
                 responseCode = response.code(),
-                responseBody = runCatching { json.encodeToString(syncResponse) }.getOrNull(),
+                responseBody = buildSyncFullRawSummary(syncResponse),
                 success = true
             )
             runCatching {
@@ -1531,6 +1532,22 @@ class BitwardenSyncService(
     private fun buildBitwardenItemId(vaultId: Long, cipherId: String): Long {
         return "${vaultId}:$cipherId".hashCode().toLong() and 0x7FFFFFFFL
     }
+
+    private fun buildSyncFullRawSummary(response: SyncResponse): String {
+        return json.encodeToString(
+            SyncFullRawSummary(
+                profileIdDigest = response.profile.id.takeIf { it.isNotBlank() }?.let { shortSha(it) },
+                emailDigest = response.profile.email.takeIf { it.isNotBlank() }?.let { shortSha(it.lowercase()) },
+                premium = response.profile.hasPremium,
+                folderCount = response.folders.size,
+                cipherCount = response.ciphers.size,
+                activeCipherCount = response.ciphers.count { it.deletedDate == null },
+                collectionCount = response.collections?.size ?: 0,
+                policyCount = response.policies?.size ?: 0,
+                sendCount = response.sends?.size ?: 0
+            )
+        )
+    }
     
     /**
      * 删除远程 Cipher
@@ -2253,6 +2270,22 @@ class BitwardenSyncService(
         }
     }
 }
+
+@Serializable
+private data class SyncFullRawSummary(
+    val schemaVersion: Int = 1,
+    val rawResponseOmitted: Boolean = true,
+    val reason: String = "sync_full success response can be very large; per-cipher snapshots are captured separately",
+    val profileIdDigest: String? = null,
+    val emailDigest: String? = null,
+    val premium: Boolean = false,
+    val folderCount: Int = 0,
+    val cipherCount: Int = 0,
+    val activeCipherCount: Int = 0,
+    val collectionCount: Int = 0,
+    val policyCount: Int = 0,
+    val sendCount: Int = 0
+)
 
 // ========== 同步结果 ==========
 

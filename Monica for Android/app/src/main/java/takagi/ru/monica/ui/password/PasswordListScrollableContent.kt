@@ -87,6 +87,8 @@ internal fun PasswordListScrollableContent(
     emptyStateMessage: PasswordListEmptyStateMessage,
     renderPasswordRows: LazyListScope.() -> Unit
 ) {
+    val categoryQuickFilterScrollState = rememberScrollState()
+
     LazyColumn(
         state = listState,
         modifier = modifier,
@@ -180,7 +182,8 @@ internal fun PasswordListScrollableContent(
                                     currentFilter = currentFilter,
                                     quickFolderShortcuts = categoryQuickFilterShortcuts,
                                     onSelectFilter = onNavigateFilter
-                                )
+                                ),
+                                scrollState = categoryQuickFilterScrollState
                             )
                         }
                     }

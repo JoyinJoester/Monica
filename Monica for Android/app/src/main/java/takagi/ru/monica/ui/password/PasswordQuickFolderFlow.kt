@@ -1,11 +1,11 @@
 package takagi.ru.monica.ui
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Edit
@@ -68,12 +68,13 @@ internal fun PasswordQuickFolderFlow(
 @Composable
 internal fun PasswordQuickFolderChipRow(
     params: PasswordQuickFolderChipRowParams,
+    scrollState: ScrollState,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            .horizontalScroll(scrollState),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         params.quickFolderShortcuts.forEach { shortcut ->

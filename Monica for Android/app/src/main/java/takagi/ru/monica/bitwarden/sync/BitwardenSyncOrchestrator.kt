@@ -73,6 +73,7 @@ private data class VaultRuntime(
     var pendingReason: SyncTriggerReason? = null,
     var lastPageEnterAt: Long = 0L,
     var lastAppResumeAt: Long = 0L,
+    var lastSuccessAt: Long = 0L,
     var retryAttempt: Int = 0,
     var mutationDebounceJob: Job? = null,
     var retryJob: Job? = null,
@@ -216,6 +217,7 @@ class BitwardenSyncOrchestrator(
             when (outcome) {
                 is SyncExecutionOutcome.Success -> {
                     runtime.retryAttempt = 0
+                    runtime.lastSuccessAt = nowProvider()
                     updateStatus(vaultId) { old ->
                         val existing = old ?: VaultSyncStatus()
                         existing.copy(
@@ -223,7 +225,7 @@ class BitwardenSyncOrchestrator(
                             queuedReason = null,
                             blockedReason = null,
                             lastError = null,
-                            lastSuccessAt = nowProvider(),
+                            lastSuccessAt = runtime.lastSuccessAt,
                             retryAttempt = 0,
                             nextRetryAt = null
                         )
@@ -279,7 +281,12 @@ class BitwardenSyncOrchestrator(
         }
 
         if (pendingReasonToReplay != null) {
-            requestSync(vaultId, pendingReasonToReplay ?: SyncTriggerReason.RETRY, force = true)
+            val replayReason = pendingReasonToReplay ?: SyncTriggerReason.RETRY
+            requestSync(
+                vaultId = vaultId,
+                reason = replayReason,
+                force = shouldForceQueuedReplay(replayReason)
+            )
         }
     }
 
@@ -322,6 +329,12 @@ class BitwardenSyncOrchestrator(
     }
 
     private fun passesThrottle(runtime: VaultRuntime, reason: SyncTriggerReason, now: Long): Boolean {
+        if (isPassiveAutoReason(reason) && runtime.lastSuccessAt > 0L) {
+            val quietWindowMs = passiveAutoQuietWindowMs(reason)
+            if (now - runtime.lastSuccessAt < quietWindowMs) {
+                return false
+            }
+        }
         return when (reason) {
             SyncTriggerReason.PAGE_ENTER -> {
                 if (now - runtime.lastPageEnterAt < config.pageEnterThrottleMs) {
@@ -342,6 +355,29 @@ class BitwardenSyncOrchestrator(
             }
 
             else -> true
+        }
+    }
+
+    private fun shouldForceQueuedReplay(reason: SyncTriggerReason): Boolean {
+        return when (reason) {
+            SyncTriggerReason.LOCAL_MUTATION,
+            SyncTriggerReason.MANUAL,
+            SyncTriggerReason.RETRY -> true
+
+            SyncTriggerReason.PAGE_ENTER,
+            SyncTriggerReason.APP_RESUME,
+            SyncTriggerReason.PERIODIC -> false
+        }
+    }
+
+    private fun isPassiveAutoReason(reason: SyncTriggerReason): Boolean {
+        return reason == SyncTriggerReason.PAGE_ENTER || reason == SyncTriggerReason.APP_RESUME
+    }
+
+    private fun passiveAutoQuietWindowMs(reason: SyncTriggerReason): Long {
+        return when (reason) {
+            SyncTriggerReason.APP_RESUME -> config.appResumeThrottleMs
+            else -> config.pageEnterThrottleMs
         }
     }
 

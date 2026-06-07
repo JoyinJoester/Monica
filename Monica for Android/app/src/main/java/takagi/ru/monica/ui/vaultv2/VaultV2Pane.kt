@@ -3094,6 +3094,8 @@ private fun VaultV2List(
 	modifier: Modifier = Modifier,
 	onOpenItem: (VaultV2Item) -> Unit,
 ) {
+	val categoryQuickFilterScrollState = rememberScrollState()
+
 	LazyColumn(
 		state = listState,
 		modifier = modifier,
@@ -3122,7 +3124,8 @@ private fun VaultV2List(
 								currentFilter = currentFilter,
 								quickFolderShortcuts = categoryQuickFilterShortcuts,
 								onSelectFilter = onNavigateFilter,
-							)
+							),
+							scrollState = categoryQuickFilterScrollState,
 						)
 					}
 				}

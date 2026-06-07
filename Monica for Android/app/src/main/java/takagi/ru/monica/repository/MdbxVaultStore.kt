@@ -372,6 +372,9 @@ class MdbxVaultStore(
                         ensureDeviceRegistration(db)
                         val epochKey = requireEpochKey(db, dbInfo)
                         val resolvedParentFolderId = parentFolderId?.takeIf { it.isNotBlank() } ?: "root"
+                        val folderId = UUID.randomUUID().toString()
+                        val commitId = appendCommit(db, "folder", folderId, epochKey)
+                        ensureRootFolder(db, epochKey)
                         val parentPathKey = queryString(
                             db,
                             "SELECT path_key FROM folders WHERE folder_id = ? AND deleted = 0 LIMIT 1",
@@ -400,8 +403,6 @@ class MdbxVaultStore(
                             throw IllegalArgumentException("MDBX 文件夹已存在: $normalizedName")
                         }
 
-                        val folderId = UUID.randomUUID().toString()
-                        val commitId = appendCommit(db, "folder", folderId, epochKey)
                         val now = now()
                         val pathKey = if (parentPathKey == "/") "/$folderId" else "$parentPathKey/$folderId"
                         val nameCt = encrypt(normalizedName, epochKey)
@@ -3082,10 +3083,47 @@ class MdbxVaultStore(
         )
     }
 
+    private fun ensureRootFolder(db: SQLiteDatabase, epochKey: ByteArray? = null) {
+        val now = now()
+        val headCommitId = queryString(
+            db,
+            "SELECT head_commit_id FROM device_heads WHERE device_id = ? LIMIT 1",
+            arrayOf(deviceId)
+        ) ?: queryString(
+            db,
+            "SELECT commit_id FROM commits ORDER BY created_at DESC LIMIT 1"
+        ) ?: "root"
+        db.execSQL(
+            """
+            INSERT OR IGNORE INTO folders (
+                folder_id, parent_folder_id, name_ct, path_key, object_clock, head_commit_id,
+                deleted, created_at, updated_at, created_by_device_id, updated_by_device_id
+            ) VALUES ('root', NULL, ?, '/', '1', ?, 0, ?, ?, ?, ?)
+            """.trimIndent(),
+            arrayOf(encrypt("Root", epochKey), headCommitId, now, now, deviceId, deviceId)
+        )
+        db.execSQL(
+            """
+            UPDATE folders
+            SET parent_folder_id = NULL,
+                path_key = '/',
+                deleted = 0,
+                updated_at = ?,
+                updated_by_device_id = ?
+            WHERE folder_id = 'root'
+            """.trimIndent(),
+            arrayOf(now, deviceId)
+        )
+    }
+
     private fun ensureFolder(db: SQLiteDatabase, folderId: String, epochKey: ByteArray? = null) {
+        if (folderId == "root") {
+            ensureRootFolder(db, epochKey)
+            return
+        }
+        ensureRootFolder(db, epochKey)
         val now = now()
         val name = when {
-            folderId == "root" -> "Root"
             folderId.startsWith("category:") -> "Category ${folderId.substringAfter(':')}"
             else -> folderId.substringAfterLast(':').ifBlank { folderId }
         }

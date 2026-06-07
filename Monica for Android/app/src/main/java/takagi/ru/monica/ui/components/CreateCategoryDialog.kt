@@ -14,6 +14,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -171,6 +172,7 @@ internal fun CreateCategoryDialog(
     val createKeePassDbScroll = rememberScrollState()
     val createKeePassParentScroll = rememberScrollState()
     val createMdbxParentScroll = rememberScrollState()
+    val createDialogContentScroll = rememberScrollState()
 
     val createKeePassGroups by (
         if (
@@ -323,7 +325,12 @@ internal fun CreateCategoryDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(createDialogContentScroll),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(
                     text = stringResource(R.string.create_target_section_title),
                     style = MaterialTheme.typography.labelLarge,
