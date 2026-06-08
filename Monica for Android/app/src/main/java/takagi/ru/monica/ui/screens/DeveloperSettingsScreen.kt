@@ -820,7 +820,7 @@ private object DeveloperLogDebugHelper {
             "Bitwarden persisted logs unavailable: ${it.message}"
         }
         val persistedForensicsLogs = runCatching {
-            BitwardenSyncForensicsLogger.exportPersistedLogs(context, 40)
+            BitwardenSyncForensicsLogger.exportPersistedLogs(context, 12)
         }.getOrElse {
             "Bitwarden sync forensics logs unavailable: ${it.message}"
         }

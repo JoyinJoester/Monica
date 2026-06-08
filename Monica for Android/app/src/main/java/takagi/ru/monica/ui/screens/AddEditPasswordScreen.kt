@@ -69,6 +69,7 @@ import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.LinkedAppBinding
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PresetCustomField
@@ -452,6 +453,7 @@ fun AddEditPasswordScreen(
     val linkedAppBindings = remember(appPackageName, appName) {
         parseLinkedAppBindings(appPackageName, appName)
     }
+    var showAppSelectorFromWebsite by remember { mutableStateOf(false) }
     val primaryAppPackageName = linkedAppBindings.firstOrNull()?.packageName.orEmpty()
     val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
         website = website,
@@ -1893,10 +1895,28 @@ fun AddEditPasswordScreen(
                                         )
                                     }
                                 }
+
+                                PasswordAppBindingButton(
+                                    hasBindings = linkedAppBindings.isNotEmpty(),
+                                    onClick = { showAppSelectorFromWebsite = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                PasswordAppBindingChips(
+                                    linkedAppBindings = linkedAppBindings,
+                                    onOpenSelector = { showAppSelectorFromWebsite = true },
+                                    onRemoveBinding = { packageName ->
+                                        val updated = removeLinkedAppBinding(
+                                            appPackageName,
+                                            appName,
+                                            packageName
+                                        )
+                                        appPackageName = updated.first
+                                        appName = updated.second
+                                    }
+                                )
                             }
                         } else {
                             // Website URLs + App Binding (inline)
-                            var showAppSelectorFromWebsite by remember { mutableStateOf(false) }
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             websiteUrls.forEachIndexed { index, url ->
                                 key("website_url_$index") {
@@ -2007,93 +2027,27 @@ fun AddEditPasswordScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
-                                OutlinedButton(
+                                PasswordAppBindingButton(
+                                    hasBindings = linkedAppBindings.isNotEmpty(),
                                     onClick = { showAppSelectorFromWebsite = true },
-                                    modifier = Modifier.weight(1f),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Apps,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp),
-                                        tint = if (linkedAppBindings.isNotEmpty()) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            LocalContentColor.current
-                                        }
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = stringResource(R.string.bind_app),
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
 
-                            if (linkedAppBindings.isNotEmpty()) {
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    linkedAppBindings.forEach { binding ->
-                                        InputChip(
-                                            selected = true,
-                                            onClick = { showAppSelectorFromWebsite = true },
-                                            label = {
-                                                Text(
-                                                    text = binding.appName.ifBlank { binding.packageName },
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            },
-                                            leadingIcon = {
-                                                Icon(
-                                                    imageVector = Icons.Default.Apps,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            },
-                                            trailingIcon = {
-                                                Icon(
-                                                    imageVector = Icons.Default.Close,
-                                                    contentDescription = stringResource(R.string.clear_app_selection),
-                                                    modifier = Modifier
-                                                        .size(16.dp)
-                                                        .clickable {
-                                                            val updated = removeLinkedAppBinding(
-                                                                appPackageName,
-                                                                appName,
-                                                                binding.packageName
-                                                            )
-                                                            appPackageName = updated.first
-                                                            appName = updated.second
-                                                        }
-                                                )
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        if (showAppSelectorFromWebsite) {
-                            AppSelectorDialog(
-                                onDismiss = { showAppSelectorFromWebsite = false },
-                                onAppSelected = { packageName, name ->
-                                    val updated = addOrReplaceLinkedAppBinding(
+                            PasswordAppBindingChips(
+                                linkedAppBindings = linkedAppBindings,
+                                onOpenSelector = { showAppSelectorFromWebsite = true },
+                                onRemoveBinding = { packageName ->
+                                    val updated = removeLinkedAppBinding(
                                         appPackageName,
                                         appName,
-                                        packageName,
-                                        name
+                                        packageName
                                     )
                                     appPackageName = updated.first
                                     appName = updated.second
-                                    showAppSelectorFromWebsite = false
                                 }
                             )
                         }
-
                         // Username - 支持常用账号填充
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -3050,6 +3004,23 @@ fun AddEditPasswordScreen(
         }
     }
 
+    if (showAppSelectorFromWebsite) {
+        AppSelectorDialog(
+            onDismiss = { showAppSelectorFromWebsite = false },
+            onAppSelected = { packageName, name ->
+                val updated = addOrReplaceLinkedAppBinding(
+                    appPackageName,
+                    appName,
+                    packageName,
+                    name
+                )
+                appPackageName = updated.first
+                appName = updated.second
+                showAppSelectorFromWebsite = false
+            }
+        )
+    }
+
     if (showPasswordGenerator) {
         PasswordGeneratorDialog(
             commonPasswordOptions = buildCommonAccountOptions("password"),
@@ -4004,6 +3975,81 @@ private fun maskSensitiveContent(content: String): String {
     if (value.isEmpty()) return ""
     if (value.length <= 2) return "•".repeat(value.length)
     return value.first() + "•".repeat((value.length - 2).coerceAtLeast(0)) + value.last()
+}
+
+@Composable
+private fun PasswordAppBindingButton(
+    hasBindings: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.Apps,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = if (hasBindings) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                LocalContentColor.current
+            }
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = stringResource(R.string.bind_app),
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun PasswordAppBindingChips(
+    linkedAppBindings: List<LinkedAppBinding>,
+    onOpenSelector: () -> Unit,
+    onRemoveBinding: (String) -> Unit
+) {
+    if (linkedAppBindings.isEmpty()) return
+
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        linkedAppBindings.forEach { binding ->
+            InputChip(
+                selected = true,
+                onClick = onOpenSelector,
+                label = {
+                    Text(
+                        text = binding.appName.ifBlank { binding.packageName },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Apps,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
+                trailingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.clear_app_selection),
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clickable { onRemoveBinding(binding.packageName) }
+                    )
+                }
+            )
+        }
+    }
 }
 
 /**

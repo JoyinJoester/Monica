@@ -1,7 +1,6 @@
 package takagi.ru.monica.ui.screens
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -42,7 +41,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
@@ -146,12 +147,9 @@ fun PasswordListScreen(
                         val oldOffset = currentOffset
                         currentOffset = newOffset
                         
-                        android.util.Log.d("PullToSearch", "Pulling: old=$oldOffset, new=$newOffset, trigger=$triggerDistance")
-
                         // 触发界限检测
                         if (oldOffset < triggerDistance && newOffset >= triggerDistance && !hasVibrated) {
                             hasVibrated = true
-                            android.util.Log.d("PullToSearch", "Vibration Triggered!")
                             // 播放轻微的机械感震动 (Tick)
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                                  vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
@@ -550,7 +548,6 @@ fun PasswordListScreen(
                                             }
                                         },
                                         onLongPress = {
-                                            android.util.Log.d("PasswordList", "Long press detected on entry: ${entry.title}")
                                             if (!selectionMode) {
                                                 selectionMode = true
                                                 selectedItems = setOf(entry.id)
@@ -632,7 +629,6 @@ fun PasswordListScreen(
                                             }
                                         },
                                         onLongPress = {
-                                            android.util.Log.d("PasswordList", "Long press detected on entry: ${entry.title}")
                                             if (!selectionMode) {
                                                 selectionMode = true
                                                 selectedItems = setOf(entry.id)
@@ -692,7 +688,6 @@ fun PasswordListScreen(
                                         }
                                     },
                                     onLongPress = {
-                                        android.util.Log.d("PasswordList", "Long press detected on entry: ${entry.title}")
                                         if (!selectionMode) {
                                             selectionMode = true
                                             selectedItems = setOf(entry.id)
@@ -833,31 +828,21 @@ fun PasswordListScreen(
  */
 @Composable
 fun rememberAppIcon(context: Context, packageName: String?): Drawable? {
-    return remember(packageName) {
-        android.util.Log.d("PasswordListScreen", "rememberAppIcon: packageName = $packageName")
-        if (packageName.isNullOrEmpty()) {
-            android.util.Log.d("PasswordListScreen", "rememberAppIcon: packageName is null or empty")
-            null
-        } else {
-            try {
-                val icon = context.packageManager.getApplicationIcon(packageName)
-                android.util.Log.d("PasswordListScreen", "rememberAppIcon: Successfully loaded icon for $packageName")
-                icon
-            } catch (e: PackageManager.NameNotFoundException) {
-                // 应用未安装
-                android.util.Log.w("PasswordListScreen", "rememberAppIcon: App not found: $packageName", e)
-                null
-            } catch (e: OutOfMemoryError) {
-                // 内存不足
-                android.util.Log.e("PasswordListScreen", "rememberAppIcon: OOM for $packageName", e)
-                null
-            } catch (e: Exception) {
-                // 其他错误
-                android.util.Log.e("PasswordListScreen", "rememberAppIcon: Error loading icon for $packageName", e)
-                null
-            }
+    val appContext = context.applicationContext
+    val iconState = produceState<Drawable?>(
+        initialValue = null,
+        key1 = appContext,
+        key2 = packageName
+    ) {
+        value = null
+        val normalizedPackageName = packageName?.takeIf { it.isNotBlank() } ?: return@produceState
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                appContext.packageManager.getApplicationIcon(normalizedPackageName)
+            }.getOrNull()
         }
     }
+    return iconState.value
 }
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)

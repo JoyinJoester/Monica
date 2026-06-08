@@ -7,6 +7,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
 import takagi.ru.monica.BuildConfig
 
 /**
@@ -23,6 +24,9 @@ object MdbxDiagLogger {
     private const val ROTATE_KEEP_LINES = 4000
 
     private val fileLock = Any()
+    private val writeExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "monica-mdbx-diag").apply { isDaemon = true }
+    }
     @Volatile
     private var persistentLogFile: File? = null
 
@@ -57,21 +61,24 @@ object MdbxDiagLogger {
     }
 
     fun append(rawLine: String) {
-        val sanitizedLine = sanitize(rawLine).trimEnd()
-        Log.d(TAG, sanitizedLine)
         val file = persistentLogFile
         if (file == null) {
             Log.w(TAG, "Persistent MDBX diag log file is not initialized yet")
             return
         }
-        synchronized(fileLock) {
-            runCatching {
-                if (file.exists() && file.length() > MAX_LOG_FILE_BYTES) {
-                    rotate(file)
+        val line = rawLine.trimEnd()
+        writeExecutor.execute {
+            val sanitizedLine = sanitize(line)
+            Log.d(TAG, sanitizedLine)
+            synchronized(fileLock) {
+                runCatching {
+                    if (file.exists() && file.length() > MAX_LOG_FILE_BYTES) {
+                        rotate(file)
+                    }
+                    file.appendText(sanitizedLine + "\n")
+                }.onFailure {
+                    Log.e(TAG, "Failed to append MDBX diag log", it)
                 }
-                file.appendText(sanitizedLine + "\n")
-            }.onFailure {
-                Log.e(TAG, "Failed to append MDBX diag log", it)
             }
         }
     }

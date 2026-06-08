@@ -25,6 +25,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.core.AutofillLogger
 
@@ -326,23 +328,31 @@ fun AppInfo(
     val context = LocalContext.current
     
     // 尝试获取应用图标和名称
-    val (resolvedIcon, resolvedName) = remember(packageName, appIcon, appName) {
+    val appContext = context.applicationContext
+    val resolvedAppInfo by produceState<Pair<Drawable?, String?>>(
+        initialValue = appIcon to appName,
+        appContext,
+        packageName,
+        appIcon,
+        appName
+    ) {
         if (appIcon != null || appName != null) {
-            appIcon to appName
+            value = appIcon to appName
         } else if (packageName != null) {
-            try {
-                val pm = context.packageManager
-                val appInfo = pm.getApplicationInfo(packageName, 0)
-                val icon = pm.getApplicationIcon(appInfo)
-                val name = pm.getApplicationLabel(appInfo).toString()
-                icon to name
-            } catch (e: Exception) {
-                null to null
+            value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val pm = appContext.packageManager
+                    val appInfo = pm.getApplicationInfo(packageName, 0)
+                    val icon = pm.getApplicationIcon(appInfo)
+                    val name = pm.getApplicationLabel(appInfo).toString()
+                    icon to name
+                }.getOrDefault(null to null)
             }
         } else {
-            null to null
+            value = null to null
         }
     }
+    val (resolvedIcon, resolvedName) = resolvedAppInfo
     val resolvedMainTitle = (webDomain
         ?: resolvedName
         ?: packageName?.substringAfterLast('.')?.replaceFirstChar { it.uppercaseChar() }

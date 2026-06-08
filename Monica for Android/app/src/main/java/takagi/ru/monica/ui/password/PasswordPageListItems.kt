@@ -25,7 +25,8 @@ internal data class PasswordPageCardItemUi(
 
 internal data class PasswordGroupListItemUi(
     val groupKey: String,
-    val passwords: List<PasswordEntry>
+    val passwords: List<PasswordEntry>,
+    val displayTitle: String? = null
 ) : PasswordPageListItemUi {
     override val key: String = "group:$groupKey"
 }
@@ -47,12 +48,14 @@ internal fun buildPasswordPageListItems(
     selectedContentTypes: Set<PasswordPageContentType>,
     groupedPasswords: Map<String, List<PasswordEntry>>,
     supplementaryItems: List<PasswordAggregateListItemUi>,
+    groupMode: String,
     manualStackGroups: List<PasswordManualStackGroupListItemUi> = emptyList()
 ): List<PasswordPageListItemUi> {
     if (selectedContentTypes.isEmpty()) return emptyList()
 
     val passwordItems = buildPasswordGroupListItems(
         groupedPasswords = groupedPasswords,
+        groupMode = groupMode,
         includePasswords =
             PasswordPageContentType.PASSWORD in selectedContentTypes ||
                 PasswordPageContentType.AUTHENTICATOR in selectedContentTypes ||
@@ -74,6 +77,7 @@ internal fun buildPasswordPageListItems(
 
 private fun buildPasswordGroupListItems(
     groupedPasswords: Map<String, List<PasswordEntry>>,
+    groupMode: String,
     includePasswords: Boolean
 ): List<PasswordGroupListItemUi> {
     if (!includePasswords) return emptyList()
@@ -83,8 +87,22 @@ private fun buildPasswordGroupListItems(
         .map { (groupKey, passwords) ->
         PasswordGroupListItemUi(
             groupKey = groupKey,
-            passwords = passwords
+            passwords = passwords,
+            displayTitle = resolvePasswordGroupDisplayTitle(passwords, groupMode)
         )
+    }
+}
+
+private fun resolvePasswordGroupDisplayTitle(
+    passwords: List<PasswordEntry>,
+    groupMode: String
+): String? {
+    val first = passwords.firstOrNull() ?: return null
+    val noteLabel = getPasswordNoteStackLabel(first) ?: return null
+    return when (groupMode) {
+        "note" -> noteLabel
+        "smart" -> noteLabel
+        else -> null
     }
 }
 

@@ -254,9 +254,6 @@ fun DocumentDetailScreen(
                             )
                         }
 
-                        if (data.issuedBy.isNotBlank()) {
-                            InfoField(label = stringResource(R.string.issued_by), value = data.issuedBy)
-                        }
                     }
                 }
 

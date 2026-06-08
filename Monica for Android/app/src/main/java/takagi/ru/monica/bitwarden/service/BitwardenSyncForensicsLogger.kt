@@ -87,6 +87,8 @@ object BitwardenSyncForensicsLogger {
     private const val MAX_RAW_PREVIEW_CHARS = 24_000
     private const val RAW_PREVIEW_HEAD_CHARS = 16_000
     private const val RAW_PREVIEW_TAIL_CHARS = 8_000
+    private const val EXPORT_FORENSICS_FILE_MAX_CHARS = 120_000
+    private const val EXPORT_RAW_FILE_MAX_CHARS = 80_000
     private const val MAX_ERROR_CHARS = 600
     private const val RAW_ENTRY_RECORD_LIMIT = 30
 
@@ -378,7 +380,7 @@ object BitwardenSyncForensicsLogger {
                 files.forEach { file ->
                     val exportedAt = exportFormatter.format(Date(file.lastModified()))
                     appendLine("---- ${file.name} ($exportedAt) ----")
-                    appendLine(runCatching { file.readText() }.getOrElse { "read_failed: ${it.message}" })
+                    appendLine(readFileForExport(file, EXPORT_FORENSICS_FILE_MAX_CHARS))
                     appendLine()
                 }
             }
@@ -388,11 +390,31 @@ object BitwardenSyncForensicsLogger {
                 rawFiles.forEach { file ->
                     val exportedAt = exportFormatter.format(Date(file.lastModified()))
                     appendLine("---- ${file.name} ($exportedAt) ----")
-                    appendLine(runCatching { file.readText() }.getOrElse { "read_failed: ${it.message}" })
+                    appendLine(readFileForExport(file, EXPORT_RAW_FILE_MAX_CHARS))
                     appendLine()
                 }
             }
         }.trim()
+    }
+
+    private fun readFileForExport(file: File, maxChars: Int): String {
+        return runCatching {
+            val text = file.readText()
+            if (text.length <= maxChars) {
+                text
+            } else {
+                val headChars = (maxChars * 0.65f).toInt()
+                val tailChars = maxChars - headChars
+                buildString {
+                    append(text.take(headChars))
+                    appendLine()
+                    appendLine("... truncated ${text.length - maxChars} chars from middle for developer log export ...")
+                    append(text.takeLast(tailChars))
+                }
+            }
+        }.getOrElse {
+            "read_failed: ${it.message}"
+        }
     }
 
     fun clear(context: Context) {

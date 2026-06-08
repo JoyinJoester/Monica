@@ -50,15 +50,20 @@ fun buildPasswordSourceKey(entry: PasswordEntry): String {
     }
 }
 
+fun getPasswordNoteStackLabel(entry: PasswordEntry): String? {
+    return entry.notes
+        .lineSequence()
+        .firstOrNull { it.isNotBlank() }
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+}
+
 fun getGroupKeyForMode(
     entry: PasswordEntry,
     mode: String,
     websiteStackMatchMode: String = WebsiteStackMatchMode.STRICT.storageValue
 ): String {
-    val noteLabel = entry.notes
-        .lineSequence()
-        .firstOrNull { it.isNotBlank() }
-        ?.trim()
+    val noteLabel = getPasswordNoteStackLabel(entry)
     val website = normalizeWebsiteForStackGroupKey(entry.website, websiteStackMatchMode)
     val appName = entry.appName.trim()
     val packageName = entry.appPackageName.trim()

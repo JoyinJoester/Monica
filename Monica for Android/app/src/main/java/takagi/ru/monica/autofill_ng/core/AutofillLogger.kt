@@ -5,6 +5,7 @@ import android.util.Log
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.Executors
 
 /**
  * 自动填充日志系统
@@ -58,6 +59,9 @@ object AutofillLogger {
     private val logs = mutableListOf<LogEntry>()
     private var isEnabled = true // 默认启用，生产环境可设置为 false
     private val fileLock = Any()
+    private val writeExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "monica-autofill-log").apply { isDaemon = true }
+    }
     @Volatile
     private var persistentLogFile: File? = null
 
@@ -287,16 +291,19 @@ object AutofillLogger {
 
     private fun appendPersistentLog(entry: LogEntry) {
         val file = persistentLogFile ?: return
-        synchronized(fileLock) {
-            runCatching {
-                if (file.exists() && file.length() > MAX_LOG_FILE_BYTES) {
-                    file.writeText(
-                        "=== log rotated at ${
-                            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-                        } ===\n"
-                    )
+        writeExecutor.execute {
+            val formatted = entry.format()
+            synchronized(fileLock) {
+                runCatching {
+                    if (file.exists() && file.length() > MAX_LOG_FILE_BYTES) {
+                        file.writeText(
+                            "=== log rotated at ${
+                                SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                            } ===\n"
+                        )
+                    }
+                    file.appendText(formatted + "\n")
                 }
-                file.appendText(entry.format() + "\n")
             }
         }
     }

@@ -252,6 +252,7 @@ internal fun LazyListScope.passwordPageListRows(
                 StackedPasswordGroup(
                     website = groupKey,
                     passwords = passwords,
+                    displayTitle = listItem.displayTitle,
                     isExpanded = isExpanded,
                     stackCardMode = effectiveStackCardMode,
                     enableSharedBounds = false,

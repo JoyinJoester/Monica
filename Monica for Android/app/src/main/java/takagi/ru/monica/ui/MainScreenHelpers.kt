@@ -31,10 +31,10 @@ internal fun togglePasswordPageContentType(
     toggledType: PasswordPageContentType,
     visibleTypes: List<PasswordPageContentType>
 ): Set<PasswordPageContentType> {
-    val nextTypes = if (toggledType in currentTypes) {
-        currentTypes - toggledType
+    val nextTypes = if (toggledType in currentTypes && currentTypes.size == 1) {
+        emptySet()
     } else {
-        currentTypes + toggledType
+        setOf(toggledType)
     }
     return sanitizeSelectedPasswordPageTypes(
         visibleTypes = visibleTypes,

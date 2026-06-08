@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -12,6 +13,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -36,7 +40,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
@@ -44,7 +52,10 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -65,6 +76,7 @@ import takagi.ru.monica.data.HistoryFilterPreferences
 import takagi.ru.monica.data.HistoryFilterSettings
 import java.util.Date
 import kotlin.random.Random
+import kotlin.math.roundToInt
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -651,17 +663,11 @@ fun GeneratorScreen(
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
                         
-                        // 长度滑块
-                        Text(
-                            text = stringResource(R.string.length_label, symbolLength),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Slider(
-                            value = symbolLength.toFloat(),
-                            onValueChange = { viewModel.updateSymbolLength(it.toInt()) },
-                            valueRange = 4f..128f,
-                            steps = 123,
-                            modifier = Modifier.fillMaxWidth()
+                        IntegerSliderWithInput(
+                            label = stringResource(R.string.length_label, symbolLength),
+                            value = symbolLength,
+                            onValueChange = viewModel::updateSymbolLength,
+                            valueRange = 4..128
                         )
                         
                         Spacer(modifier = Modifier.height(16.dp))
@@ -866,19 +872,12 @@ fun GeneratorScreen(
                                 )
 
                                 // 权重滑块：控制保留常见片段的强度
-                                Text(
-                                    text = stringResource(R.string.analyze_weight_label, analyzeWeight),
-                                    style = MaterialTheme.typography.bodyMedium,
+                                IntegerSliderWithInput(
+                                    label = stringResource(R.string.analyze_weight_label, analyzeWeight),
+                                    value = analyzeWeight,
+                                    onValueChange = viewModel::updateAnalyzeWeight,
+                                    valueRange = 0..100,
                                     modifier = Modifier.padding(start = 16.dp, top = 4.dp)
-                                )
-                                Slider(
-                                    value = analyzeWeight.toFloat(),
-                                    onValueChange = { viewModel.updateAnalyzeWeight(it.toInt()) },
-                                    valueRange = 0f..100f,
-                                    steps = 10,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 4.dp, end = 4.dp)
                                 )
                             }
                         }
@@ -919,58 +918,38 @@ fun GeneratorScreen(
                         
                         Column {
                             // 大写字母最小数量
-                            Text(
-                                text = stringResource(R.string.min_uppercase, uppercaseMin),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Slider(
-                                value = uppercaseMin.toFloat(),
-                                onValueChange = { viewModel.updateUppercaseMin(it.toInt()) },
-                                valueRange = 0f..10f,
-                                steps = 10,
-                                modifier = Modifier.fillMaxWidth(),
+                            IntegerSliderWithInput(
+                                label = stringResource(R.string.min_uppercase, uppercaseMin),
+                                value = uppercaseMin,
+                                onValueChange = viewModel::updateUppercaseMin,
+                                valueRange = 0..10,
                                 enabled = includeUppercase
                             )
                             
                             // 小写字母最小数量
-                            Text(
-                                text = stringResource(R.string.min_lowercase, lowercaseMin),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Slider(
-                                value = lowercaseMin.toFloat(),
-                                onValueChange = { viewModel.updateLowercaseMin(it.toInt()) },
-                                valueRange = 0f..10f,
-                                steps = 10,
-                                modifier = Modifier.fillMaxWidth(),
+                            IntegerSliderWithInput(
+                                label = stringResource(R.string.min_lowercase, lowercaseMin),
+                                value = lowercaseMin,
+                                onValueChange = viewModel::updateLowercaseMin,
+                                valueRange = 0..10,
                                 enabled = includeLowercase
                             )
                             
                             // 数字最小数量
-                            Text(
-                                text = stringResource(R.string.min_numbers, numbersMin),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Slider(
-                                value = numbersMin.toFloat(),
-                                onValueChange = { viewModel.updateNumbersMin(it.toInt()) },
-                                valueRange = 0f..10f,
-                                steps = 10,
-                                modifier = Modifier.fillMaxWidth(),
+                            IntegerSliderWithInput(
+                                label = stringResource(R.string.min_numbers, numbersMin),
+                                value = numbersMin,
+                                onValueChange = viewModel::updateNumbersMin,
+                                valueRange = 0..10,
                                 enabled = includeNumbers
                             )
                             
                             // 符号最小数量
-                            Text(
-                                text = stringResource(R.string.min_symbols, symbolsMin),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Slider(
-                                value = symbolsMin.toFloat(),
-                                onValueChange = { viewModel.updateSymbolsMin(it.toInt()) },
-                                valueRange = 0f..10f,
-                                steps = 10,
-                                modifier = Modifier.fillMaxWidth(),
+                            IntegerSliderWithInput(
+                                label = stringResource(R.string.min_symbols, symbolsMin),
+                                value = symbolsMin,
+                                onValueChange = viewModel::updateSymbolsMin,
+                                valueRange = 0..10,
                                 enabled = includeSymbols
                             )
                         }
@@ -989,17 +968,11 @@ fun GeneratorScreen(
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
                         
-                        // 长度滑块
-                        Text(
-                            text = "${stringResource(R.string.generator_length)}: $passwordLength",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Slider(
-                            value = passwordLength.toFloat(),
-                            onValueChange = { viewModel.updatePasswordLength(it.toInt()) },
-                            valueRange = 4f..128f,
-                            steps = 124,
-                            modifier = Modifier.fillMaxWidth()
+                        IntegerSliderWithInput(
+                            label = "${stringResource(R.string.generator_length)}: $passwordLength",
+                            value = passwordLength,
+                            onValueChange = viewModel::updatePasswordLength,
+                            valueRange = 4..128
                         )
                         
                         // 复选框选项
@@ -1036,18 +1009,12 @@ fun GeneratorScreen(
                                 .padding(top = 8.dp)
                         )
                         
-                        // 修改：分段长度滑动条
-                        Text(
-                            text = "${stringResource(R.string.generator_segment_length)}: $segmentLength",
-                            style = MaterialTheme.typography.bodyMedium,
+                        IntegerSliderWithInput(
+                            label = "${stringResource(R.string.generator_segment_length)}: $segmentLength",
+                            value = segmentLength,
+                            onValueChange = viewModel::updateSegmentLength,
+                            valueRange = 0..20,
                             modifier = Modifier.padding(top = 8.dp)
-                        )
-                        Slider(
-                            value = segmentLength.toFloat(),
-                            onValueChange = { viewModel.updateSegmentLength(it.toInt()) },
-                            valueRange = 0f..20f,  // 0表示不使用分段功能
-                            steps = 20,  // 步进值为1
-                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
@@ -1064,17 +1031,11 @@ fun GeneratorScreen(
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
                         
-                        // 单词数量滑块
-                        Text(
-                            text = stringResource(R.string.word_count, passphraseWordCount),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Slider(
-                            value = passphraseWordCount.toFloat(),
-                            onValueChange = { viewModel.updatePassphraseWordCount(it.toInt()) },
-                            valueRange = 1f..20f,
-                            steps = 18,
-                            modifier = Modifier.fillMaxWidth()
+                        IntegerSliderWithInput(
+                            label = stringResource(R.string.word_count, passphraseWordCount),
+                            value = passphraseWordCount,
+                            onValueChange = viewModel::updatePassphraseWordCount,
+                            valueRange = 1..20
                         )
                         
                         Spacer(modifier = Modifier.height(16.dp))
@@ -1145,17 +1106,11 @@ fun GeneratorScreen(
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
                         
-                        // 长度滑块
-                        Text(
-                            text = stringResource(R.string.pin_length, pinLength),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Slider(
-                            value = pinLength.toFloat(),
-                            onValueChange = { viewModel.updatePinLength(it.toInt()) },
-                            valueRange = 3f..9f,
-                            steps = 6,
-                            modifier = Modifier.fillMaxWidth()
+                        IntegerSliderWithInput(
+                            label = stringResource(R.string.pin_length, pinLength),
+                            value = pinLength,
+                            onValueChange = viewModel::updatePinLength,
+                            valueRange = 3..9
                         )
                     }
                 }
@@ -1293,6 +1248,172 @@ fun CheckboxWithText(
             text = text,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(start = 8.dp)
+        )
+    }
+}
+
+@Composable
+private fun IntegerSliderWithInput(
+    label: String,
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    valueRange: IntRange,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    val minValue = valueRange.first
+    val maxValue = valueRange.last
+    val coercedValue = value.coerceIn(minValue, maxValue)
+    val sliderSteps = (maxValue - minValue - 1).coerceAtLeast(0)
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
+    var isEditing by remember { mutableStateOf(false) }
+    var editingFieldWasFocused by remember { mutableStateOf(false) }
+    var inputValue by remember { mutableStateOf(TextFieldValue(coercedValue.toString())) }
+    val valueText = coercedValue.toString()
+    val valueIndex = label.lastIndexOf(valueText)
+    val labelPrefix = if (valueIndex >= 0) label.substring(0, valueIndex) else "$label: "
+    val labelSuffix = if (valueIndex >= 0) label.substring(valueIndex + valueText.length) else ""
+    val maxDigits = maxValue.toString().length.coerceAtLeast(1)
+
+    fun finishEditing() {
+        val committedValue = inputValue.text
+            .toIntOrNull()
+            ?.coerceIn(minValue, maxValue)
+            ?: coercedValue
+        if (committedValue != value) {
+            onValueChange(committedValue)
+        }
+        inputValue = TextFieldValue(committedValue.toString())
+        isEditing = false
+        keyboardController?.hide()
+    }
+
+    LaunchedEffect(coercedValue, isEditing) {
+        if (!isEditing && inputValue.text.toIntOrNull() != coercedValue) {
+            inputValue = TextFieldValue(coercedValue.toString())
+        }
+    }
+
+    LaunchedEffect(isEditing) {
+        if (isEditing) {
+            editingFieldWasFocused = false
+            inputValue = TextFieldValue(
+                text = coercedValue.toString(),
+                selection = TextRange(0, coercedValue.toString().length)
+            )
+            withFrameNanos { }
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp)
+                    .then(
+                        if (enabled && !isEditing) {
+                            Modifier.clickable { isEditing = true }
+                        } else {
+                            Modifier
+                        }
+                    ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = labelPrefix,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (enabled) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    }
+                )
+                Box(
+                    modifier = Modifier.widthIn(min = 32.dp, max = 80.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (isEditing && enabled) {
+                        BasicTextField(
+                            value = inputValue,
+                            onValueChange = { raw ->
+                                val digits = raw.text.filter(Char::isDigit).take(maxDigits)
+                                inputValue = TextFieldValue(
+                                    text = digits,
+                                    selection = TextRange(digits.length)
+                                )
+                                digits.toIntOrNull()
+                                    ?.coerceIn(minValue, maxValue)
+                                    ?.let { if (it != value) onValueChange(it) }
+                            },
+                            modifier = Modifier
+                                .widthIn(min = 32.dp, max = 80.dp)
+                                .focusRequester(focusRequester)
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused) {
+                                        editingFieldWasFocused = true
+                                    } else if (editingFieldWasFocused && isEditing) {
+                                        finishEditing()
+                                    }
+                                },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = { finishEditing() }
+                            )
+                        )
+                    } else {
+                        Text(
+                            text = valueText,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = if (enabled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            }
+                        )
+                    }
+                }
+                if (labelSuffix.isNotEmpty()) {
+                    Text(
+                        text = labelSuffix,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (enabled) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        }
+                    )
+                }
+            }
+        }
+        Slider(
+            value = coercedValue.toFloat(),
+            onValueChange = {
+                onValueChange(it.roundToInt().coerceIn(minValue, maxValue))
+                if (!isEditing) {
+                    inputValue = TextFieldValue(it.roundToInt().coerceIn(minValue, maxValue).toString())
+                }
+            },
+            valueRange = minValue.toFloat()..maxValue.toFloat(),
+            steps = sliderSteps,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = enabled
         )
     }
 }

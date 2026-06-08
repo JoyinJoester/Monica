@@ -112,11 +112,17 @@ internal fun PasswordQuickFilterChipItem(
         }
 
         PasswordListQuickFilterItem.TWO_FA -> {
+            val type = PasswordPageContentType.AUTHENTICATOR
+            val useAggregateFilter = type in aggregateVisibleTypes
             PasswordQuickFilterChip(
-                selected = quickFilter2fa,
+                selected = if (useAggregateFilter) aggregateSelectedTypes.contains(type) else quickFilter2fa,
                 onClick = {
                     if (!categoryEditMode) {
-                        onQuickFilter2faChange(!quickFilter2fa)
+                        if (useAggregateFilter) {
+                            onToggleAggregateType?.invoke(type)
+                        } else {
+                            onQuickFilter2faChange(!quickFilter2fa)
+                        }
                     }
                 },
                 label = stringResource(R.string.password_list_quick_filter_2fa),

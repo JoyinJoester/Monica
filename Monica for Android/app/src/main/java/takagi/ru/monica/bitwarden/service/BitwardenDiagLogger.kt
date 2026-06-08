@@ -6,6 +6,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
 import takagi.ru.monica.BuildConfig
 
 /**
@@ -21,6 +22,9 @@ object BitwardenDiagLogger {
     private const val ROTATE_KEEP_LINES = 4000
 
     private val fileLock = Any()
+    private val writeExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "monica-bitwarden-diag").apply { isDaemon = true }
+    }
     @Volatile
     private var persistentLogFile: File? = null
 
@@ -56,12 +60,16 @@ object BitwardenDiagLogger {
 
     fun append(rawLine: String) {
         val file = persistentLogFile ?: return
-        synchronized(fileLock) {
-            runCatching {
-                if (file.exists() && file.length() > MAX_LOG_FILE_BYTES) {
-                    rotate(file)
+        val line = rawLine.trimEnd()
+        writeExecutor.execute {
+            val sanitizedLine = sanitize(line)
+            synchronized(fileLock) {
+                runCatching {
+                    if (file.exists() && file.length() > MAX_LOG_FILE_BYTES) {
+                        rotate(file)
+                    }
+                    file.appendText(sanitizedLine + "\n")
                 }
-                file.appendText(sanitize(rawLine).trimEnd() + "\n")
             }
         }
     }

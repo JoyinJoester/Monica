@@ -53,9 +53,11 @@ fun StackedPasswordGroup(
     hideOtherContentWhenAuthenticator: Boolean = false,
     totpTimeOffsetSeconds: Int = 0,
     smoothAuthenticatorProgress: Boolean = true,
-    enableSharedBounds: Boolean = true
+    enableSharedBounds: Boolean = true,
+    displayTitle: String? = null
 ) {
     val leadPassword = passwords.firstOrNull() ?: return
+    val collapsedTitle = displayTitle?.takeIf { it.isNotBlank() } ?: leadPassword.title
 
     // 检查是否为多密码合并卡片(除密码外信息完全相同)
     val isMergedPasswordCard = passwords.size > 1 && 
@@ -403,7 +405,7 @@ fun StackedPasswordGroup(
                                             
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(
-                                                    text = leadPassword.title,
+                                                    text = collapsedTitle,
                                                     style = MaterialTheme.typography.titleMedium,
                                                     fontWeight = FontWeight.SemiBold,
                                                     maxLines = 1,

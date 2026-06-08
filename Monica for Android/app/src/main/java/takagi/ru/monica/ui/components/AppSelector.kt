@@ -362,6 +362,16 @@ fun AppListItem(
     app: AppInfo,
     onClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val icon by produceState<Drawable?>(initialValue = app.icon, app.packageName) {
+        if (value != null) return@produceState
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                context.packageManager.getApplicationIcon(app.packageName)
+            }.getOrNull()
+        }
+    }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -376,7 +386,7 @@ fun AppListItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 应用图标
-            app.icon?.let { drawable ->
+            icon?.let { drawable ->
                 val bitmap = remember(drawable) {
                     drawable.toBitmap(48, 48)
                 }
@@ -597,15 +607,7 @@ private fun ManualInputDialog(
 
                 val appName = activityInfo.loadLabel(packageManager).toString()
 
-                // 安全加载图标（可能失败）
-                val icon = try {
-                    activityInfo.loadIcon(packageManager)
-                } catch (e: Exception) {
-                    android.util.Log.w("AppSelector", "无法加载图标: $packageName", e)
-                    packageManager.defaultActivityIcon // 使用默认图标
-                }
-
-                appList.add(AppInfo(packageName, appName, icon))
+                appList.add(AppInfo(packageName, appName, icon = null))
                 
             } catch (e: Exception) {
                 android.util.Log.w("AppSelector", "跳过无效应用: ${e.message}")

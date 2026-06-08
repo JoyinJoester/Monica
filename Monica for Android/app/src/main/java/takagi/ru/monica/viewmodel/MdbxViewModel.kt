@@ -143,6 +143,7 @@ class MdbxViewModel(
     val activeMdbxDatabaseId: StateFlow<Long?> = _activeMdbxDatabaseId.asStateFlow()
     private var activePreloadJob: Job? = null
     private var activePreloadDatabaseId: Long? = null
+    private val activePreloadCompletedAt = ConcurrentHashMap<Long, Long>()
     private val deltaHistoryCache = ConcurrentHashMap<Long, CachedDeltaHistory>()
     private val structurePreviewCache =
         ConcurrentHashMap<SnapshotStructureCacheKey, MdbxStructurePreview>()
@@ -151,6 +152,7 @@ class MdbxViewModel(
         const val ACTIVE_VAULT_PREFS_NAME = "mdbx_active_vault"
         const val ACTIVE_VAULT_ID_KEY = "last_active_mdbx_database_id"
         const val NO_ACTIVE_VAULT_ID = -1L
+        const val ACTIVE_PRELOAD_MIN_INTERVAL_MS = 2_000L
     }
 
     private data class CachedDeltaHistory(
@@ -181,12 +183,20 @@ class MdbxViewModel(
             activePreloadJob?.cancel()
             activePreloadJob = null
             activePreloadDatabaseId = null
+            activePreloadCompletedAt.remove(databaseId)
         }
     }
 
     fun preloadActiveMdbxDatabase(databaseId: Long) {
         val runningJob = activePreloadJob
         if (runningJob?.isActive == true && activePreloadDatabaseId == databaseId) {
+            return
+        }
+        val now = System.currentTimeMillis()
+        val hasCachedPreloadState =
+            _vaultDiagnostics.value.containsKey(databaseId) && deltaHistoryCache.containsKey(databaseId)
+        val lastCompletedAt = activePreloadCompletedAt[databaseId] ?: 0L
+        if (hasCachedPreloadState && now - lastCompletedAt < ACTIVE_PRELOAD_MIN_INTERVAL_MS) {
             return
         }
         activePreloadJob?.cancel()
@@ -216,6 +226,7 @@ class MdbxViewModel(
                 }
                 applyVaultDiagnostic(databaseId, diagnostic)
                 updateDeltaHistoryCache(databaseId, deltas, snapshots)
+                activePreloadCompletedAt[databaseId] = System.currentTimeMillis()
                 MdbxDiagLogger.append(
                     "[MDBX][activePreload] success databaseId=$databaseId deltas=${deltas.size} snapshots=${snapshots.size} elapsedMs=${System.currentTimeMillis() - startedAt}"
                 )
@@ -1183,7 +1194,7 @@ class MdbxViewModel(
         }
     }
 
-    private suspend fun refreshSingleVaultState(databaseId: Long) {
+    private suspend fun refreshSingleVaultState(databaseId: Long) = withContext(Dispatchers.IO) {
         val diagnostic = vaultStore.getVaultDiagnostics(databaseId)
         applyVaultDiagnostic(databaseId, diagnostic)
     }
@@ -1381,6 +1392,7 @@ class MdbxViewModel(
     }
 
     private fun invalidateMdbxViewCaches(databaseId: Long) {
+        activePreloadCompletedAt.remove(databaseId)
         deltaHistoryCache.remove(databaseId)
         structurePreviewCache.keys.removeIf { it.databaseId == databaseId }
     }
@@ -1869,7 +1881,7 @@ class MdbxViewModel(
             keyFileFingerprint = keyFile?.fingerprint
         )
 
-    private suspend fun importEntriesFromVault(databaseId: Long) {
+    private suspend fun importEntriesFromVault(databaseId: Long) = withContext(Dispatchers.IO) {
         invalidateMdbxViewCaches(databaseId)
         val database = databaseDao.getDatabaseById(databaseId)
             ?: throw IllegalStateException("Vault not found")

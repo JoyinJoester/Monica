@@ -108,6 +108,7 @@ data class BitwardenSyncRawHistoryItem(
 )
 
 private const val PASSWORD_SCROLL_LOG_TAG = "PasswordScrollDebug"
+private const val PASSWORD_SCROLL_DEBUG_LOGS_ENABLED = false
 
 /**
  * ViewModel for password management
@@ -263,7 +264,7 @@ class PasswordViewModel(
     init {
         restoreLastCategoryFilter()
         observeInvalidCustomCategoryFilter()
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 repairLegacyDetachedKeePassEntries()
                 repairLegacyOwnershipConflicts()
@@ -289,7 +290,9 @@ class PasswordViewModel(
     fun refreshMdbxFolders(databaseId: Long) {
         viewModelScope.launch {
             runCatching {
-                repository.listMdbxFolders(databaseId)
+                withContext(Dispatchers.IO) {
+                    repository.listMdbxFolders(databaseId)
+                }
             }.onSuccess { folders ->
                 _mdbxFoldersByDatabase.value = _mdbxFoldersByDatabase.value + (databaseId to folders)
             }.onFailure { error ->
@@ -303,10 +306,12 @@ class PasswordViewModel(
         val nextRequestKey = _fastScrollRequestKey.value + 1
         _fastScrollProgress.value = safeProgress
         _fastScrollRequestKey.value = nextRequestKey
-        Log.d(
-            PASSWORD_SCROLL_LOG_TAG,
-            "source=v1_request_fast_scroll progress=$safeProgress requestKey=$nextRequestKey"
-        )
+        if (PASSWORD_SCROLL_DEBUG_LOGS_ENABLED) {
+            Log.d(
+                PASSWORD_SCROLL_LOG_TAG,
+                "source=v1_request_fast_scroll progress=$safeProgress requestKey=$nextRequestKey"
+            )
+        }
     }
 
     fun updateFastScrollProgress(progress: Float) {
@@ -336,7 +341,7 @@ class PasswordViewModel(
         if (anchorChanged) {
             _passwordListScrollAnchorKey.value = anchorKey
         }
-        if (indexChanged || offsetChanged || anchorChanged) {
+        if (PASSWORD_SCROLL_DEBUG_LOGS_ENABLED && (indexChanged || offsetChanged || anchorChanged)) {
             Log.d(
                 PASSWORD_SCROLL_LOG_TAG,
                 "source=$source old=$previousIndex/$previousOffset anchor=$previousAnchorKey new=$safeIndex/$safeOffset anchor=$anchorKey"
@@ -1727,9 +1732,11 @@ class PasswordViewModel(
         onResult: (Result<MdbxStoredFolderEntry>) -> Unit = {}
     ) {
         viewModelScope.launch {
-            val result = runCatching {
-                repository.createMdbxFolder(databaseId, name, parentFolderId)
-                    ?: throw IllegalStateException("MDBX repository unavailable")
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    repository.createMdbxFolder(databaseId, name, parentFolderId)
+                        ?: throw IllegalStateException("MDBX repository unavailable")
+                }
             }
             refreshMdbxFolders(databaseId)
             onResult(result)

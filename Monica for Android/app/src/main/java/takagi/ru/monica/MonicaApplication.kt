@@ -2,9 +2,9 @@ package takagi.ru.monica
 
 import android.app.Application
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -111,25 +111,27 @@ class MonicaApplication : Application() {
         }
     }
 
-    private fun syncLauncherEntryPointsWithSettings() {        runCatching {
-            val settings = runBlocking {
-                SettingsManager(this@MonicaApplication).settingsFlow.first()
-            }
-            AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
-                this,
-                settings.appLauncherIcon,
-                settings.appLauncherLabel
-            )
-        }.onFailure { error ->
-            Log.w(TAG, "Failed to sync launcher entry points with settings", error)
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    private fun syncLauncherEntryPointsWithSettings() {
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
             runCatching {
+                val settings = SettingsManager(this@MonicaApplication).settingsFlow.first()
                 AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
-                    this,
-                    AppLauncherIcon.MODERN,
-                    AppLauncherLabel.MONICA_PASS
+                    this@MonicaApplication,
+                    settings.appLauncherIcon,
+                    settings.appLauncherLabel
                 )
-            }.onFailure { fallbackError ->
-                Log.w(TAG, "Failed to apply fallback launcher entry points", fallbackError)
+            }.onFailure { error ->
+                Log.w(TAG, "Failed to sync launcher entry points with settings", error)
+                runCatching {
+                    AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
+                        this@MonicaApplication,
+                        AppLauncherIcon.MODERN,
+                        AppLauncherLabel.MONICA_PASS
+                    )
+                }.onFailure { fallbackError ->
+                    Log.w(TAG, "Failed to apply fallback launcher entry points", fallbackError)
+                }
             }
         }
     }

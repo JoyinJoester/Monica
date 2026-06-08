@@ -1258,12 +1258,14 @@ fun PasswordListContent(
     val passwordPageListItems = remember(
         aggregateUiState.displayedContentTypes,
         groupedPasswordsForRender,
-        effectiveVisibleAggregateItems
+        effectiveVisibleAggregateItems,
+        effectiveGroupMode
     ) {
         buildPasswordPageListItems(
             selectedContentTypes = aggregateUiState.displayedContentTypes,
             groupedPasswords = groupedPasswordsForRender,
             supplementaryItems = effectiveVisibleAggregateItems,
+            groupMode = effectiveGroupMode,
             manualStackGroups = manualAggregateStackBuildResult.groups
         )
     }

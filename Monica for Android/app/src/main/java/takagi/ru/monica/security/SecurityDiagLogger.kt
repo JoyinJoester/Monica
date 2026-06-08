@@ -6,6 +6,8 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import takagi.ru.monica.BuildConfig
 
 /**
@@ -18,8 +20,13 @@ object SecurityDiagLogger {
     private const val LOG_FILE_NAME = "security_diag_v1.log"
     private const val MAX_LOG_FILE_BYTES = 1024 * 1024L
     private const val ROTATE_KEEP_LINES = 4000
+    private const val ROUTINE_LOG_DEDUPE_WINDOW_MS = 5_000L
 
     private val fileLock = Any()
+    private val routineLogLastWrittenAt = ConcurrentHashMap<String, Long>()
+    private val writeExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "monica-security-diag").apply { isDaemon = true }
+    }
     @Volatile
     private var persistentLogFile: File? = null
 
@@ -53,12 +60,16 @@ object SecurityDiagLogger {
 
     fun append(rawLine: String) {
         val file = persistentLogFile ?: return
-        synchronized(fileLock) {
-            runCatching {
-                if (file.exists() && file.length() > MAX_LOG_FILE_BYTES) {
-                    rotate(file)
+        val line = rawLine.trimEnd()
+        if (shouldSkipRoutineLine(line)) return
+        writeExecutor.execute {
+            synchronized(fileLock) {
+                runCatching {
+                    if (file.exists() && file.length() > MAX_LOG_FILE_BYTES) {
+                        rotate(file)
+                    }
+                    file.appendText(sanitize(line) + "\n")
                 }
-                file.appendText(sanitize(rawLine).trimEnd() + "\n")
             }
         }
     }
@@ -73,6 +84,18 @@ object SecurityDiagLogger {
                     .joinToString(separator = "\n")
             }.getOrDefault("")
         }
+    }
+
+    private fun shouldSkipRoutineLine(line: String): Boolean {
+        val isRoutine = line.contains("canRestoreMainAppSession: session inactive -> locked") ||
+            line.contains("canRestoreMainAppSession: runtime MDK cache present") ||
+            line.contains("canAccessVaultNow: session inactive -> locked") ||
+            line.contains("canAccessVaultNow: runtime MDK cache present -> accessible")
+        if (!isRoutine) return false
+
+        val now = System.currentTimeMillis()
+        val previous = routineLogLastWrittenAt.put(line, now) ?: return false
+        return now - previous < ROUTINE_LOG_DEDUPE_WINDOW_MS
     }
 
     fun clear() {
