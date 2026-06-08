@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-06-07T21:36:24.334Z",
+  "generatedAt": "2026-06-08T22:01:01.334Z",
   "range": {
-    "from": "2025-06-08",
-    "to": "2026-06-07"
+    "from": "2025-06-09",
+    "to": "2026-06-08"
   },
   "activity": [
-    {
-      "date": "2025-06-08",
-      "count": 0
-    },
     {
       "date": "2025-06-09",
       "count": 0
@@ -1465,10 +1461,68 @@
     },
     {
       "date": "2026-06-07",
-      "count": 3
+      "count": 4
+    },
+    {
+      "date": "2026-06-08",
+      "count": 5
     }
   ],
   "latest": [
+    {
+      "sha": "436c7948e41fe5d2670b44bd8c6ef1a3194d391d",
+      "shortSha": "436c794",
+      "message": "Update Android password UI and diagnostics fixes",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-06-08T09:17:05Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/436c7948e41fe5d2670b44bd8c6ef1a3194d391d"
+    },
+    {
+      "sha": "095863cf882fef76ad947524d3a99fdba3da4b32",
+      "shortSha": "095863c",
+      "message": "Update contributor flag SVG",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-08T08:24:30Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/095863cf882fef76ad947524d3a99fdba3da4b32"
+    },
+    {
+      "sha": "d11aba6cdabbc269c25ad6f24381a21df08948ed",
+      "shortSha": "d11aba6",
+      "message": "Commit Android workspace updates",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-06-08T01:34:02Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/d11aba6cdabbc269c25ad6f24381a21df08948ed"
+    },
+    {
+      "sha": "2ea777803607cc63cb2d840b12dd229f2bef78a6",
+      "shortSha": "2ea7778",
+      "message": "Update contributor flag SVG",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-08T01:24:27Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/2ea777803607cc63cb2d840b12dd229f2bef78a6"
+    },
+    {
+      "sha": "7de58070d3dd0e8cbfee76309eb262f901fbf092",
+      "shortSha": "7de5807",
+      "message": "Fix password-bound authenticator editing",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-06-08T01:23:32Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/7de58070d3dd0e8cbfee76309eb262f901fbf092"
+    },
+    {
+      "sha": "745d94108a940f9029e422777e21c0c891b6f253",
+      "shortSha": "745d941",
+      "message": "chore: update github commit data",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-07T21:36:24Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/745d94108a940f9029e422777e21c0c891b6f253"
+    },
     {
       "sha": "85cb7e47c0cdf29607b46ab5d70e8e68dddb8eaf",
       "shortSha": "85cb7e4",
@@ -1504,60 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
       "date": "2026-06-06T23:42:31Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/d030bf129359cbd6d0a92e48ada3b6b7860c5099"
-    },
-    {
-      "sha": "23dcde04b3c8a00751b67d349bb6cdf153242d54",
-      "shortSha": "23dcde0",
-      "message": "fix: update website links in multiple language README files",
-      "authorName": "Mrmiaomrzh",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
-      "date": "2026-06-06T23:42:22Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/23dcde04b3c8a00751b67d349bb6cdf153242d54"
-    },
-    {
-      "sha": "1e38acfc518f57ad9e1513be51104ae90b936f57",
-      "shortSha": "1e38acf",
-      "message": "feat: add script to fetch and update GitHub commits data",
-      "authorName": "Mrmiaomrzh",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
-      "date": "2026-06-06T23:23:12Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/1e38acfc518f57ad9e1513be51104ae90b936f57"
-    },
-    {
-      "sha": "3e3212825382922a50e777bf65775341f39e4443",
-      "shortSha": "3e32128",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-06T23:22:49Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/3e3212825382922a50e777bf65775341f39e4443"
-    },
-    {
-      "sha": "11490b0111cbe564aa830f7661cabd27c4124872",
-      "shortSha": "11490b0",
-      "message": "Merge branch 'main' of https://github.com/Mrmiaomrzh/Monica",
-      "authorName": "Mrmiaomrzh",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
-      "date": "2026-06-06T23:10:59Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/11490b0111cbe564aa830f7661cabd27c4124872"
-    },
-    {
-      "sha": "66729bc68bd280ac94005b68d35d4540e66b5e1e",
-      "shortSha": "66729bc",
-      "message": "feat:add ArchivePage workflows",
-      "authorName": "Mrmiaomrzh",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
-      "date": "2026-06-06T23:09:29Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/66729bc68bd280ac94005b68d35d4540e66b5e1e"
-    },
-    {
-      "sha": "0720fe17428bb7110d1ee882f03ac330deb1c46a",
-      "shortSha": "0720fe1",
-      "message": "Delete .github/workflows/Build-Website-ci.yml",
-      "authorName": "Mrmiaomrzh",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
-      "date": "2026-06-06T22:59:50Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/0720fe17428bb7110d1ee882f03ac330deb1c46a"
     }
   ]
 }
