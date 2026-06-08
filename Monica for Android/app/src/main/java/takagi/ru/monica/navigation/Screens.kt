@@ -93,7 +93,7 @@ sealed class Screen(val route: String) {
             return if (totpId != null) {
                 "add_edit_totp/$totpId"
             } else {
-                "add_edit_totp/-1"
+                "add_edit_totp/0"
             }
         }
     }

@@ -1910,10 +1910,15 @@ class MultiPasswordSaveRegressionGuardTest {
                 passwordRepositorySource.contains("replicaGroupId = entry.mdbxPasswordObjectId()") &&
                 passwordRepositorySource.contains("passwordEntryDao.updatePasswordEntries(entriesForMdbx)") &&
                 passwordRepositorySource.contains("private fun PasswordEntry.mdbxPasswordObjectId(): String") &&
+                passwordRepositorySource.contains("?.takeIf { it.isMdbxPasswordObjectId() }") &&
+                passwordRepositorySource.contains("?: id.takeIf { it > 0 }?.let { \"password:${'$'}it\" }") &&
+                passwordRepositorySource.contains("private fun String.isMdbxPasswordObjectId(): Boolean") &&
                 mdbxViewModelSource.contains(".dedupeMdbxPasswordRowsByEntryId()") &&
-                mdbxViewModelSource.contains("private suspend fun List<PasswordEntry>.dedupeMdbxPasswordRowsByEntryId()") &&
-                mdbxViewModelSource.contains("softDeleteMdbxPasswordRows(") &&
-                mdbxViewModelSource.contains("reason = \"duplicate_mdbx_entry_id\"")
+                mdbxViewModelSource.contains("normalizeLegacyMdbxPasswordRows(") &&
+                mdbxViewModelSource.contains("withNormalizedMdbxPasswordEntryId()") &&
+                mdbxViewModelSource.contains("remoteRoomIdsByEntryId[entryId]") &&
+                mdbxViewModelSource.contains("[MDBX][legacy-normalize]") &&
+                mdbxViewModelSource.contains("[MDBX][duplicate-local-delete]")
         )
     }
 
@@ -2200,9 +2205,11 @@ class MultiPasswordSaveRegressionGuardTest {
             saveTotpSection.contains("findTotpBySecret(")
         )
         assertTrue(
-            "The password editor must not create a persisted TOTP when no real bound TOTP exists; the password authenticatorKey already provides the virtual authenticator.",
-            savePasswordBoundTotpBody.contains("No persisted bound TOTP for passwordId=") &&
-                savePasswordBoundTotpBody.contains("return@launch")
+            "The password editor must create the first real bound TOTP when none exists, so the authenticator page can display and edit the saved name/key instead of opening an empty virtual item.",
+            savePasswordBoundTotpBody.contains("val preferredItem = activeBoundItems") &&
+                savePasswordBoundTotpBody.contains("id = preferredItem?.first?.id") &&
+                savePasswordBoundTotpBody.contains("title = preferredItem?.first?.title ?: title") &&
+                !savePasswordBoundTotpBody.contains("No persisted bound TOTP for passwordId=")
         )
         assertTrue(
             "The bound-TOTP save path should soft-delete extra persisted bindings for the same password.",
@@ -2352,7 +2359,7 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
-    fun mdbxPasswordRefreshUsesRecoverableSoftDeleteForLocalRows() {
+    fun mdbxPasswordRefreshRescuesLocalRowsInsteadOfDeletingThem() {
         val daoSource = projectFile(
             "app/src/main/java/takagi/ru/monica/data/PasswordEntryDao.kt"
         ).readText()
@@ -2362,26 +2369,158 @@ class MultiPasswordSaveRegressionGuardTest {
         val importBody = mdbxViewModelSource
             .substringAfter("private suspend fun importEntriesFromVault(")
             .substringBefore("private suspend fun clearImportedEntries")
-        val softDeleteBody = mdbxViewModelSource
-            .substringAfter("private suspend fun softDeleteMdbxPasswordRows(")
-            .substringBefore("private suspend fun List<PasswordEntry>.dedupeMdbxPasswordRowsByEntryId")
 
         assertTrue(
-            "MDBX import reconciliation should only inspect active MDBX rows; soft-deleted rows must not be repeatedly deduped or reconciled.",
+            "MDBX import reconciliation should inspect active MDBX rows for local-vs-vault reconciliation.",
             daoSource.contains("SELECT * FROM password_entries WHERE mdbx_database_id = :databaseId AND isDeleted = 0 AND isArchived = 0")
         )
         assertTrue(
-            "MDBX password refresh must soft-delete missing password rows instead of physically deleting them, so an ownership bug cannot become unrecoverable data loss.",
-            importBody.contains("reason = \"orphaned_remote_entry\"") &&
-                importBody.contains("softDeleteMdbxPasswordRows(") &&
-                !importBody.contains("passwordEntryDao.deletePasswordEntryById(it.id)")
+            "MDBX import must classify vault-missing rows and write active local rows back to MDBX instead of deleting them.",
+            importBody.contains("deletedPasswordEntryIds") &&
+                importBody.contains("[MDBX][orphan-classify] type=password") &&
+                importBody.contains("rescueMissingRemoteMdbxPasswordRows(") &&
+                importBody.contains("rescueRemoteDeletedMdbxPasswordRows(") &&
+                importBody.contains("rescueMissingRemoteMdbxSecureItemRows(") &&
+                importBody.contains("rescueRemoteDeletedMdbxSecureItemRows(") &&
+                importBody.contains("rescueMissingRemoteMdbxPasskeyRows(") &&
+                importBody.contains("rescueRemoteDeletedMdbxPasskeyRows(")
         )
         assertTrue(
-            "MDBX duplicate-password cleanup must be recoverable and visible in diagnostics.",
-            softDeleteBody.contains("isDeleted = true") &&
-                softDeleteBody.contains("deletedAt = entry.deletedAt ?: now") &&
-                softDeleteBody.contains("passwordEntryDao.updatePasswordEntries(updates)") &&
-                softDeleteBody.contains("[MDBX][password-soft-delete]")
+            "MDBX rescue must use the repository boundary so tombstones are cleared in the vault file.",
+            mdbxViewModelSource.contains("vaultStore.upsertPasswords(rowsToRescue)") &&
+                mdbxViewModelSource.contains("vaultStore.upsertSecureItems(itemsToRescue)") &&
+                mdbxViewModelSource.contains("vaultStore.upsertPasskeys(passkeysToRescue)") &&
+                mdbxViewModelSource.contains("[MDBX][orphan-rescue]")
+        )
+        assertFalse(
+            "Do not bring back orphan soft-delete cleanup; it deletes autofill-created/restored MDBX rows after sync.",
+            mdbxViewModelSource.contains("reason = \"orphaned_remote_entry\"") ||
+                mdbxViewModelSource.contains("softDeleteMdbxPasswordRows(") ||
+                mdbxViewModelSource.contains("[MDBX][password-soft-delete]") ||
+                importBody.contains("secureItemDao.deleteItemById(it.id)") ||
+                importBody.contains("passkeyDao.deleteByRecordId(it.id)")
+        )
+        assertTrue(
+            "Duplicate MDBX Room rows should be diagnosed and preserved, not deleted during import reconciliation.",
+            mdbxViewModelSource.contains("[MDBX][duplicate-preserve] type=password") &&
+                mdbxViewModelSource.contains("[MDBX][duplicate-preserve] type=secure_item")
+        )
+    }
+
+    @Test
+    fun autofillMdbxSavesUseMdbxRepositoryAndInitialStorageTarget() {
+        val resolverSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/autofill_ng/AutofillSaveStorageResolver.kt"
+        ).readText()
+        val legacySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/autofill_ng/AutofillSaveActivity.kt"
+        ).readText()
+        val transparentSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/autofill_ng/AutofillSaveTransparentActivity.kt"
+        ).readText()
+        val repositorySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/PasswordRepository.kt"
+        ).readText()
+
+        assertTrue(
+            "Autofill save needs a shared resolver for the current password-list MDBX target.",
+            resolverSource.contains("resolveAutofillSaveInitialTarget(") &&
+                resolverSource.contains("lastPasswordCategoryFilterType") &&
+                resolverSource.contains("SAVED_FILTER_MDBX_DATABASE") &&
+                resolverSource.contains("SAVED_FILTER_MDBX_FOLDER") &&
+                resolverSource.contains("withAutofillSaveInitialTarget")
+        )
+        assertTrue(
+            "Legacy autofill save must inject MdbxVaultStore and write MDBX creates through the MDBX-aware repository path.",
+            legacySource.contains("MdbxVaultStore(") &&
+                legacySource.contains("mdbxRepository = mdbxRepository") &&
+                legacySource.contains("resolveInitialTarget()") &&
+                legacySource.contains(".withAutofillSaveInitialTarget(initialTarget)") &&
+                legacySource.contains("passwordRepository.insertPasswordEntries(listOf(newEntry)).singleOrNull()") &&
+                legacySource.contains("[MDBX][autofill-save-complete] source=legacy")
+        )
+        assertTrue(
+            "Transparent autofill save must pass the resolved MDBX database/folder into AddEditPasswordScreen.",
+            transparentSource.contains("produceState<AutofillSaveInitialTarget?>") &&
+                transparentSource.contains("MdbxVaultStore(") &&
+                transparentSource.contains("mdbxRepository = mdbxRepository") &&
+                transparentSource.contains("mdbxDatabasesFallback = resolvedInitialTarget.mdbxDatabasesFallback") &&
+                transparentSource.contains("initialMdbxDatabaseId = resolvedInitialTarget.mdbxDatabaseId") &&
+                transparentSource.contains("initialMdbxFolderId = resolvedInitialTarget.mdbxFolderId") &&
+                transparentSource.contains("[MDBX][autofill-save-complete] source=transparent")
+        )
+        assertTrue(
+            "MDBX object ids must preserve nonblank replicaGroupId values; rewriting them creates false orphan rows.",
+            repositorySource.contains("?.takeIf { it.isNotBlank() }") &&
+                !repositorySource.contains("startsWith(\"password:\")")
+        )
+        assertFalse(
+            "Autofill save activities must not use a bare PasswordRepository that cannot write MDBX.",
+            legacySource.contains("PasswordRepository(database.passwordEntryDao())") ||
+                transparentSource.contains("PasswordRepository(database.passwordEntryDao())")
+        )
+    }
+
+    @Test
+    fun trashRestoreWritesMdbxItemsThroughRepositories() {
+        val source = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/TrashViewModel.kt"
+        ).readText()
+        val applyRestoreBody = source
+            .substringAfter("private suspend fun applyLocalRestore(")
+            .substringBefore("private suspend fun rollbackLocalRestore")
+
+        assertTrue(
+            "Trash restore must inject an MDBX repository, otherwise MDBX restore only flips Room flags and sync deletes it again.",
+            source.contains("private val mdbxRepository: MdbxRepository = MdbxVaultStore(") &&
+                source.contains("mdbxRepository = mdbxRepository") &&
+                source.contains("private val secureItemRepository = SecureItemRepository(database.secureItemDao(), mdbxRepository)")
+        )
+        assertTrue(
+            "Trash restore must update via repositories so MDBX tombstones are cleared in the vault.",
+            applyRestoreBody.contains("passwordRepository.updatePasswordEntry(restoredEntry)") &&
+                applyRestoreBody.contains("secureItemRepository.updateItem(restoredItem)") &&
+                source.contains("[MDBX][trash-restore] type=password") &&
+                source.contains("[MDBX][trash-restore] type=secure_item")
+        )
+        assertFalse(
+            "Do not restore MDBX items by DAO-only updates; that leaves the MDBX file tombstoned.",
+            applyRestoreBody.contains("database.passwordEntryDao().update") ||
+                applyRestoreBody.contains("database.secureItemDao().update")
+        )
+    }
+
+    @Test
+    fun totpQrScanFillsAddScreenAndQuickScanUsesCurrentStorageTarget() {
+        val addTotpSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/AddEditTotpScreen.kt"
+        ).readText()
+        val mainActivitySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/MainActivity.kt"
+        ).readText()
+        val quickScanRoute = mainActivitySource
+            .substringAfter("composable(Screen.QuickTotpScan.route)")
+            .substringBefore("// 导出数据")
+
+        assertTrue(
+            "AddEditTotpScreen must consume raw QR results inside the form so existing rememberSaveable state is updated after returning from scanner.",
+            addTotpSource.contains("pendingQrResult: String? = null") &&
+                addTotpSource.contains("onConsumePendingQrResult: () -> Unit = {}") &&
+                addTotpSource.contains("LaunchedEffect(pendingQrResult)") &&
+                addTotpSource.contains("importTotpFromUri(qrValue)") &&
+                mainActivitySource.contains("pendingQrResult = qrResult") &&
+                mainActivitySource.contains("onConsumePendingQrResult = {")
+        )
+        assertTrue(
+            "Quick TOTP scan must save to the current validator filter target instead of always creating Monica-local items.",
+            quickScanRoute.contains("fun quickScanTargetsForCurrentFilter(): List<StorageTarget>") &&
+                quickScanRoute.contains("is TotpCategoryFilter.MdbxDatabase -> listOf(StorageTarget.Mdbx(filter.databaseId))") &&
+                quickScanRoute.contains("totpViewModel.saveTotpAcrossTargets(") &&
+                quickScanRoute.contains("targets = quickScanTargetsForCurrentFilter()")
+        )
+        assertFalse(
+            "Quick TOTP scan must not call saveTotpItem directly because that bypasses MDBX/KeePass/Bitwarden targets.",
+            quickScanRoute.contains("totpViewModel.saveTotpItem(")
         )
     }
 
@@ -2522,7 +2661,7 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
-    fun webDavBackupsUseAllOfflineContentScope() {
+    fun webDavBackupsUseMonicaLocalContentScope() {
         val webDavHelperSource = projectFile(
             "app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt"
         ).readText()
@@ -2539,19 +2678,19 @@ class MultiPasswordSaveRegressionGuardTest {
                 webDavHelperSource.contains("contentScope = contentScope")
         )
         assertTrue(
-            "Manual WebDAV backup is a cross-device backup and must include all offline sources, not only Monica-local rows.",
+            "Manual WebDAV backup must use the Monica-local scope so external caches are not exported as Monica-local entries.",
             webDavScreenSource.contains("import takagi.ru.monica.utils.BackupContentScope") &&
-                webDavScreenSource.contains("contentScope = BackupContentScope.ALL_OFFLINE")
+                webDavScreenSource.contains("contentScope = BackupContentScope.MONICA_LOCAL_ONLY")
         )
         assertTrue(
-            "Automatic WebDAV backup must use the same all-offline scope as manual WebDAV backup.",
+            "Automatic WebDAV backup must use the same Monica-local scope as manual WebDAV backup.",
             autoBackupWorkerSource.contains("import takagi.ru.monica.utils.BackupContentScope") &&
-            autoBackupWorkerSource.contains("contentScope = BackupContentScope.ALL_OFFLINE")
+            autoBackupWorkerSource.contains("contentScope = BackupContentScope.MONICA_LOCAL_ONLY")
         )
     }
 
     @Test
-    fun webDavBackupContentCountsMatchAllOfflineBackupScope() {
+    fun webDavBackupContentCountsMatchMonicaLocalBackupScope() {
         val webDavScreenSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/screens/WebDavBackupScreen.kt"
         ).readText()
@@ -2559,16 +2698,63 @@ class MultiPasswordSaveRegressionGuardTest {
             .substringBefore("Scaffold(")
 
         assertTrue(
-            "WebDAV backup count labels must reflect the same all-offline dataset that WebDAV actually backs up.",
-            launchedEffectBody.contains("val allPasswordsForBackupCount = passwordRepository.getAllPasswordEntries().first()") &&
-                launchedEffectBody.contains("val allSecureItemsForBackupCount = secureItemRepository.getAllItems().first()") &&
-                launchedEffectBody.contains("passwordCount = allPasswordsForBackupCount.size") &&
-                launchedEffectBody.contains("authenticatorCount = allSecureItemsForBackupCount.count") &&
-                launchedEffectBody.contains("documentCount = allSecureItemsForBackupCount.count") &&
-                launchedEffectBody.contains("bankCardCount = allSecureItemsForBackupCount.count") &&
-                launchedEffectBody.contains("noteCount = allSecureItemsForBackupCount.count") &&
-                !launchedEffectBody.contains("passwordRepository.getLocalEntriesCount()") &&
-                !launchedEffectBody.contains("secureItemRepository.getLocalItemCountByType")
+            "WebDAV backup count labels must reflect the same Monica-local dataset that WebDAV actually backs up.",
+            launchedEffectBody.contains("passwordCount = passwordRepository.getLocalEntriesCount()") &&
+                launchedEffectBody.contains("authenticatorCount = secureItemRepository.getLocalItemCountByType") &&
+                launchedEffectBody.contains("documentCount = secureItemRepository.getLocalItemCountByType") &&
+                launchedEffectBody.contains("bankCardCount = secureItemRepository.getLocalItemCountByType") &&
+                launchedEffectBody.contains("noteCount = secureItemRepository.getLocalItemCountByType") &&
+                !launchedEffectBody.contains("passwordRepository.getAllPasswordEntries().first()") &&
+                !launchedEffectBody.contains("secureItemRepository.getAllItems().first()")
+        )
+    }
+
+    @Test
+    fun webDavReplaceRestoreClearsLocalDataOnlyAfterBackupIsParsedAndValidated() {
+        val webDavHelperSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt"
+        ).readText()
+        val restoreBody = webDavHelperSource.substringAfter("suspend fun restoreFromBackupFile(")
+            .substringBefore("/**\n     * 下载并恢复备份")
+        val beforeZipScan = restoreBody.substringBefore("ZipInputStream(FileInputStream(zipFile)).use")
+        val afterRestoreCounts = restoreBody.substringAfter("val restoredCounts = ItemCounts(")
+            .substringBefore("val report = RestoreReport(")
+
+        assertFalse(
+            "Replace-local restore must not clear existing local data before the backup zip has been parsed. A corrupt or empty WebDAV backup could otherwise erase user data.",
+            beforeZipScan.contains("deleteAllLocalPasswordEntries()") ||
+                beforeZipScan.contains("deleteAllLocalItemsByType") ||
+                beforeZipScan.contains("deleteAllLocalPasskeys()")
+        )
+        assertTrue(
+            "Replace-local restore must clear local data only after parse succeeds and the backup contains core restorable data.",
+            webDavHelperSource.contains("private suspend fun clearLocalDataForOverwriteRestore") &&
+                afterRestoreCounts.contains("val hasRestorableCoreData") &&
+                afterRestoreCounts.contains("failedItems.isNotEmpty()") &&
+                afterRestoreCounts.contains("!hasRestorableCoreData") &&
+                afterRestoreCounts.contains("clearLocalDataForOverwriteRestore(backupFile.name)") &&
+                afterRestoreCounts.indexOf("failedItems.isNotEmpty()") <
+                    afterRestoreCounts.indexOf("clearLocalDataForOverwriteRestore(backupFile.name)") &&
+                afterRestoreCounts.indexOf("!hasRestorableCoreData") <
+                    afterRestoreCounts.indexOf("clearLocalDataForOverwriteRestore(backupFile.name)")
+        )
+    }
+
+    @Test
+    fun webDavUploadBlocksIncompleteBackupReportsBeforeRemoteOverwrite() {
+        val webDavHelperSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt"
+        ).readText()
+        val uploadBody = webDavHelperSource.substringAfter("suspend fun createAndUploadBackup(")
+            .substringBefore("/**\n     * 导出密码到CSV文件")
+        val afterCreateResult = uploadBody.substringAfter("val (backupFile, report) = createResult.getOrThrow()")
+        val beforeUpload = afterCreateResult.substringBefore("val uploadResult = uploadBackup(backupFile, isPermanent)")
+
+        assertTrue(
+            "WebDAV must never upload an incomplete backup over the remote backup. Failed serialization can otherwise turn a good full backup into a tiny partial one.",
+            beforeUpload.contains("!report.success || report.failedItems.isNotEmpty()") &&
+                beforeUpload.contains("Backup upload blocked because generated backup is incomplete") &&
+                beforeUpload.contains("备份文件不完整，已阻止上传覆盖远端备份")
         )
     }
 

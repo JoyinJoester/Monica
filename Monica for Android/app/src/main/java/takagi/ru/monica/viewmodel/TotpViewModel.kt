@@ -745,13 +745,6 @@ class TotpViewModel(
                     .firstOrNull { (item, _) -> preferredTotpId != null && item.id == preferredTotpId }
                     ?: activeBoundItems.firstOrNull { (_, data) -> buildTotpIdentityKey(data) == identityKey }
                     ?: activeBoundItems.firstOrNull()
-                if (preferredItem == null) {
-                    Log.d(
-                        "TotpViewModel",
-                        "No persisted bound TOTP for passwordId=$passwordId; password authenticatorKey will provide the virtual authenticator"
-                    )
-                    return@launch
-                }
                 val boundPassword = passwordRepository.getPasswordEntryById(passwordId)
                 val resolvedCategoryId = boundPassword?.categoryId ?: normalizedInput.categoryId
                 val resolvedKeepassDatabaseId = boundPassword?.keepassDatabaseId ?: normalizedInput.keepassDatabaseId

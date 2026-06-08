@@ -76,11 +76,11 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.data.model.LOGIN_TYPE_BARCODE
+import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.isBarcodeEntry
 import takagi.ru.monica.data.model.isSshKeyEntry
 import takagi.ru.monica.navigation.Screen
-import takagi.ru.monica.data.dedup.DedupEngine
-import takagi.ru.monica.data.dedup.DedupIgnoreStore
+import takagi.ru.monica.data.dedup.DedupMergeService
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.repository.MdbxRepository
@@ -137,6 +137,7 @@ import takagi.ru.monica.viewmodel.GeneratorViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SecurityAnalysisViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
+import takagi.ru.monica.viewmodel.TotpCategoryFilter
 import takagi.ru.monica.viewmodel.TotpViewModel
 import androidx.compose.foundation.isSystemInDarkTheme
 import takagi.ru.monica.data.AppSettings
@@ -1509,11 +1510,11 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
-            val totpId = backStackEntry.arguments?.getString("totpId")?.toLongOrNull() ?: -1L
+            val totpId = backStackEntry.arguments?.getString("totpId")?.toLongOrNull() ?: 0L
             val currentTotpFilter by totpViewModel.categoryFilter.collectAsState()
-            val context = LocalContext.current
+            val displayTotpItems by totpViewModel.allTotpItems.collectAsState()
             val pendingStorageDefaults = remember(backStackEntry, totpId) {
-                if (totpId > 0) {
+                if (totpId != 0L) {
                     navController.previousBackStackEntry?.savedStateHandle?.clearPendingAddStorageDefaults()
                     null
                 } else {
@@ -1525,6 +1526,7 @@ fun MonicaContent(
             var initialTitle by remember { mutableStateOf("") }
             var initialNotes by remember { mutableStateOf("") }
             var initialKeePassGroupPath by remember { mutableStateOf<String?>(null) }
+            var initialMdbxDatabaseIdFromItem by remember { mutableStateOf<Long?>(null) }
             var initialBitwardenVaultId by remember { mutableStateOf<Long?>(null) }
             var initialBitwardenFolderId by remember { mutableStateOf<String?>(null) }
             var initialReplicaGroupId by remember { mutableStateOf<String?>(null) }
@@ -1535,66 +1537,24 @@ fun MonicaContent(
                 ?.savedStateHandle
                 ?.get<String>("qr_result")
 
-            // 处理QR扫描结果
-            LaunchedEffect(qrResult) {
-                qrResult?.let { uri ->
-                    when (val scanResult = takagi.ru.monica.util.TotpUriParser.parseScannedContent(uri)) {
-                        is takagi.ru.monica.util.TotpScanParseResult.Single -> {
-                            initialData = scanResult.item.totpData
-                            if (initialTitle.isBlank()) {
-                                initialTitle = scanResult.item.label
-                            }
-                        }
-                        is takagi.ru.monica.util.TotpScanParseResult.Multiple -> {
-                            scanResult.items.firstOrNull()?.let { first ->
-                                initialData = first.totpData
-                                if (initialTitle.isBlank()) {
-                                    initialTitle = first.label
-                                }
-                            }
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.qr_migration_multiple_fill_first, scanResult.items.size),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                        takagi.ru.monica.util.TotpScanParseResult.UnsupportedPhoneFactor -> {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.qr_phonefactor_not_supported),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                        takagi.ru.monica.util.TotpScanParseResult.InvalidFormat -> {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.qr_invalid_authenticator),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                    // 清除结果
-                    navController.currentBackStackEntry
-                        ?.savedStateHandle
-                        ?.remove<String>("qr_result")
+            LaunchedEffect(totpId, displayTotpItems) {
+                val item = when {
+                    totpId > 0 -> totpViewModel.getTotpItemById(totpId)
+                    totpId < 0 -> displayTotpItems.firstOrNull { it.id == totpId }
+                    else -> null
                 }
-            }
-
-            LaunchedEffect(totpId) {
-                if (totpId > 0) {
-                    val item = totpViewModel.getTotpItemById(totpId)
-                    if (item != null) {
-                        initialTitle = item.title
-                        initialNotes = item.notes
-                        initialKeePassGroupPath = item.keepassGroupPath
-                        initialBitwardenVaultId = item.bitwardenVaultId
-                        initialBitwardenFolderId = item.bitwardenFolderId
-                        initialReplicaGroupId = item.replicaGroupId
-                        initialData = try {
-                            kotlinx.serialization.json.Json.decodeFromString(item.itemData)
-                        } catch (e: Exception) {
-                            null
-                        }
+                if (item != null) {
+                    initialTitle = item.title
+                    initialNotes = item.notes
+                    initialKeePassGroupPath = item.keepassGroupPath
+                    initialMdbxDatabaseIdFromItem = item.mdbxDatabaseId
+                    initialBitwardenVaultId = item.bitwardenVaultId
+                    initialBitwardenFolderId = item.bitwardenFolderId
+                    initialReplicaGroupId = item.replicaGroupId
+                    initialData = try {
+                        kotlinx.serialization.json.Json.decodeFromString(item.itemData)
+                    } catch (e: Exception) {
+                        null
                     }
                 }
                 isLoading = false
@@ -1668,6 +1628,7 @@ fun MonicaContent(
                     else -> filterDefaults.keepassGroupPath
                 }
                 val initialMdbxDatabaseId = when {
+                    initialMdbxDatabaseIdFromItem != null -> initialMdbxDatabaseIdFromItem
                     hasPendingStorageDefaults -> pendingStorageDefaults?.mdbxDatabaseId
                     else -> filterDefaults.mdbxDatabaseId
                 }
@@ -1697,6 +1658,12 @@ fun MonicaContent(
                     passwordViewModel = viewModel,
                     totpViewModel = totpViewModel,
                     localKeePassViewModel = localKeePassViewModel,
+                    pendingQrResult = qrResult,
+                    onConsumePendingQrResult = {
+                        navController.currentBackStackEntry
+                            ?.savedStateHandle
+                            ?.remove<String>("qr_result")
+                    },
                     onSave = { title, notes, totpData, targets, onComplete ->
                         totpViewModel.saveTotpAcrossTargets(
                             id = if (totpId > 0) totpId else null,
@@ -2157,11 +2124,48 @@ fun MonicaContent(
             val context = LocalContext.current
             takagi.ru.monica.ui.screens.QrScannerScreen(
                 onQrCodeScanned = { qrData ->
+                    fun quickScanTargetsForCurrentFilter(): List<StorageTarget> {
+                        return when (val filter = totpViewModel.categoryFilter.value) {
+                            TotpCategoryFilter.All,
+                            TotpCategoryFilter.Local,
+                            TotpCategoryFilter.Starred,
+                            TotpCategoryFilter.Uncategorized,
+                            TotpCategoryFilter.LocalStarred,
+                            TotpCategoryFilter.LocalUncategorized -> listOf(StorageTarget.MonicaLocal(null))
+                            is TotpCategoryFilter.Custom -> listOf(StorageTarget.MonicaLocal(filter.categoryId))
+                            is TotpCategoryFilter.KeePassDatabase -> listOf(StorageTarget.KeePass(filter.databaseId, null))
+                            is TotpCategoryFilter.KeePassGroupFilter -> listOf(StorageTarget.KeePass(filter.databaseId, filter.groupPath))
+                            is TotpCategoryFilter.KeePassDatabaseStarred -> listOf(StorageTarget.KeePass(filter.databaseId, null))
+                            is TotpCategoryFilter.KeePassDatabaseUncategorized -> listOf(StorageTarget.KeePass(filter.databaseId, null))
+                            is TotpCategoryFilter.BitwardenVault -> listOf(StorageTarget.Bitwarden(filter.vaultId, null))
+                            is TotpCategoryFilter.BitwardenFolderFilter -> listOf(StorageTarget.Bitwarden(filter.vaultId, filter.folderId))
+                            is TotpCategoryFilter.BitwardenVaultStarred -> listOf(StorageTarget.Bitwarden(filter.vaultId, null))
+                            is TotpCategoryFilter.BitwardenVaultUncategorized -> listOf(StorageTarget.Bitwarden(filter.vaultId, null))
+                            is TotpCategoryFilter.MdbxDatabase -> listOf(StorageTarget.Mdbx(filter.databaseId))
+                        }
+                    }
+
                     fun resolveTitle(item: takagi.ru.monica.util.TotpParseResult): String {
                         return item.label.takeIf { it.isNotBlank() }
                             ?: item.totpData.issuer.takeIf { it.isNotBlank() }
                             ?: item.totpData.accountName.takeIf { it.isNotBlank() }
                             ?: context.getString(R.string.untitled)
+                    }
+
+                    fun saveScannedTotp(
+                        title: String,
+                        totpData: takagi.ru.monica.data.model.TotpData,
+                        onComplete: (Boolean) -> Unit
+                    ) {
+                        totpViewModel.saveTotpAcrossTargets(
+                            id = null,
+                            title = title,
+                            notes = "",
+                            totpData = totpData,
+                            isFavorite = false,
+                            targets = quickScanTargetsForCurrentFilter(),
+                            onComplete = onComplete
+                        )
                     }
 
                     when (val scanResult = takagi.ru.monica.util.TotpUriParser.parseScannedContent(qrData)) {
@@ -2175,18 +2179,17 @@ fun MonicaContent(
                                     Toast.LENGTH_SHORT
                                 ).show()
                             } else {
-                                totpViewModel.saveTotpItem(
-                                    id = null,
-                                    title = title,
-                                    notes = "",
-                                    totpData = scanResult.item.totpData,
-                                    isFavorite = false
-                                )
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.qr_authenticator_added, title),
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                saveScannedTotp(title, scanResult.item.totpData) { saved ->
+                                    Toast.makeText(
+                                        context,
+                                        if (saved) {
+                                            context.getString(R.string.qr_authenticator_added, title)
+                                        } else {
+                                            context.getString(R.string.save_failed_with_error, title)
+                                        },
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
                             }
                         }
                         is takagi.ru.monica.util.TotpScanParseResult.Multiple -> {
@@ -2194,6 +2197,7 @@ fun MonicaContent(
                             var duplicateCount = 0
                             var invalidCount = 0
                             val batchSecretSet = mutableSetOf<String>()
+                            val pendingItems = mutableListOf<Pair<String, takagi.ru.monica.data.model.TotpData>>()
 
                             scanResult.items.forEach { item ->
                                 val secret = item.totpData.secret.trim()
@@ -2214,26 +2218,45 @@ fun MonicaContent(
                                 }
 
                                 val title = resolveTitle(item)
-                                totpViewModel.saveTotpItem(
-                                    id = null,
-                                    title = title,
-                                    notes = "",
-                                    totpData = item.totpData,
-                                    isFavorite = false
-                                )
-                                addedCount++
+                                pendingItems += title to item.totpData
                             }
 
-                            Toast.makeText(
-                                context,
-                                context.getString(
-                                    R.string.qr_authenticator_migration_result,
-                                    addedCount,
-                                    duplicateCount,
-                                    invalidCount
-                                ),
-                                Toast.LENGTH_LONG
-                            ).show()
+                            if (pendingItems.isEmpty()) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        R.string.qr_authenticator_migration_result,
+                                        addedCount,
+                                        duplicateCount,
+                                        invalidCount
+                                    ),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                var completedCount = 0
+                                pendingItems.forEach { (title, totpData) ->
+                                    saveScannedTotp(title, totpData) { saved ->
+                                        completedCount++
+                                        if (saved) {
+                                            addedCount++
+                                        } else {
+                                            invalidCount++
+                                        }
+                                        if (completedCount == pendingItems.size) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(
+                                                    R.string.qr_authenticator_migration_result,
+                                                    addedCount,
+                                                    duplicateCount,
+                                                    invalidCount
+                                                ),
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+                                    }
+                                }
+                            }
                         }
                         takagi.ru.monica.util.TotpScanParseResult.UnsupportedPhoneFactor -> {
                             Toast.makeText(
@@ -3349,26 +3372,37 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) {
-            val context = LocalContext.current
-            val passkeyRepository = remember(context.applicationContext) {
+            val dedupPasskeyRepository = remember {
                 PasskeyRepository(database.passkeyDao(), mdbxRepository)
             }
             val dedupViewModel: DedupEngineViewModel = viewModel {
                 DedupEngineViewModel(
-                    dedupEngine = DedupEngine(
+                    mergeService = DedupMergeService(
                         passwordRepository = repository,
                         secureItemRepository = secureItemRepository,
-                        passkeyRepository = passkeyRepository,
+                        passkeyRepository = dedupPasskeyRepository,
+                        customFieldRepository = takagi.ru.monica.repository.CustomFieldRepository(database.customFieldDao()),
                         localKeePassDatabaseDao = database.localKeePassDatabaseDao(),
+                        localMdbxDatabaseDao = database.localMdbxDatabaseDao(),
                         bitwardenVaultDao = database.bitwardenVaultDao(),
-                        securityManager = securityManager,
-                        ignoreStore = DedupIgnoreStore(context.applicationContext)
-                    ),
-                    localKeePassDatabaseDao = database.localKeePassDatabaseDao(),
-                    bitwardenVaultDao = database.bitwardenVaultDao()
+                        securityManager = securityManager
+                    )
                 )
             }
             val uiState by dedupViewModel.uiState.collectAsState()
+            val dedupLifecycleOwner = LocalLifecycleOwner.current
+
+            DisposableEffect(dedupLifecycleOwner, dedupViewModel) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        dedupViewModel.refresh()
+                    }
+                }
+                dedupLifecycleOwner.lifecycle.addObserver(observer)
+                onDispose {
+                    dedupLifecycleOwner.lifecycle.removeObserver(observer)
+                }
+            }
 
             takagi.ru.monica.ui.screens.DedupEngineScreen(
                 uiState = uiState,
@@ -3378,47 +3412,23 @@ fun MonicaContent(
                 onRefresh = {
                     dedupViewModel.refresh()
                 },
-                onPreferredSourceChange = { source ->
-                    dedupViewModel.updatePreferredSource(source)
+                onToggleSource = { sourceKey ->
+                    dedupViewModel.toggleMergeSource(sourceKey)
                 },
-                onPreferredKeepassDatabaseChange = { databaseId ->
-                    dedupViewModel.updatePreferredKeepassDatabase(databaseId)
+                onSelectAllSources = {
+                    dedupViewModel.selectAllSources()
                 },
-                onPreferredBitwardenVaultChange = { vaultId ->
-                    dedupViewModel.updatePreferredBitwardenVault(vaultId)
+                onClearSources = {
+                    dedupViewModel.clearSources()
                 },
-                onScopeChange = { scope ->
-                    dedupViewModel.updateScope(scope)
+                onSelectTarget = { target ->
+                    dedupViewModel.selectMergeTarget(target)
                 },
-                onScopeKeepassDatabaseChange = { databaseId ->
-                    dedupViewModel.updateSelectedKeepassDatabase(databaseId)
+                onCreateMdbxTarget = {
+                    navController.navigate(Screen.MdbxLocalCreate.route)
                 },
-                onScopeBitwardenVaultChange = { vaultId ->
-                    dedupViewModel.updateSelectedBitwardenVault(vaultId)
-                },
-                onTypeChange = { type ->
-                    dedupViewModel.updateType(type)
-                },
-                onClusterAction = { cluster, action ->
-                    dedupViewModel.performAction(cluster, action)
-                },
-                onEnterSelectionMode = {
-                    dedupViewModel.enterSelectionMode()
-                },
-                onExitSelectionMode = {
-                    dedupViewModel.exitSelectionMode()
-                },
-                onToggleClusterSelection = { clusterId ->
-                    dedupViewModel.toggleClusterSelection(clusterId)
-                },
-                onSelectAllVisible = { clusterIds ->
-                    dedupViewModel.selectAll(clusterIds)
-                },
-                onClearSelected = {
-                    dedupViewModel.clearSelected()
-                },
-                onBatchAction = { clusters, action ->
-                    dedupViewModel.performBatchAction(clusters, action)
+                onExecuteMerge = {
+                    dedupViewModel.executeMerge()
                 },
                 onConsumeMessage = {
                     dedupViewModel.consumeMessage()
