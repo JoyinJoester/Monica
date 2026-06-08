@@ -16,9 +16,12 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
+import takagi.ru.monica.repository.MdbxRepository
+import takagi.ru.monica.repository.MdbxVaultStore
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.data.OperationLogItemType
+import takagi.ru.monica.mdbx.MdbxDiagLogger
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.KeePassRestoreTarget
@@ -55,10 +58,28 @@ data class TrashCategory(
 class TrashViewModel(application: Application) : AndroidViewModel(application) {
     
     private val database = PasswordDatabase.getDatabase(application)
-    private val passwordRepository = PasswordRepository(database.passwordEntryDao())
-    private val secureItemRepository = SecureItemRepository(database.secureItemDao())
-    private val bitwardenRepository = BitwardenRepository.getInstance(application)
     private val securityManager = SecurityManager(application)
+    private val mdbxRepository: MdbxRepository = MdbxVaultStore(
+        context = application.applicationContext,
+        databaseDao = database.localMdbxDatabaseDao(),
+        securityManager = securityManager,
+        remoteSourceDao = database.mdbxRemoteSourceDao(),
+        passwordEntryDao = database.passwordEntryDao(),
+        secureItemDao = database.secureItemDao(),
+        customFieldDao = database.customFieldDao(),
+    )
+    private val passwordRepository = PasswordRepository(
+        passwordEntryDao = database.passwordEntryDao(),
+        categoryDao = database.categoryDao(),
+        bitwardenFolderDao = database.bitwardenFolderDao(),
+        secureItemDao = database.secureItemDao(),
+        passkeyDao = database.passkeyDao(),
+        passwordArchiveSyncMetaDao = database.passwordArchiveSyncMetaDao(),
+        passwordHistoryDao = database.passwordHistoryDao(),
+        mdbxRepository = mdbxRepository,
+    )
+    private val secureItemRepository = SecureItemRepository(database.secureItemDao(), mdbxRepository)
+    private val bitwardenRepository = BitwardenRepository.getInstance(application)
     private val keepassBridge = KeePassCompatibilityBridge(
         KeePassWorkspaceRepository(application, database.localKeePassDatabaseDao(), securityManager)
     )
@@ -560,32 +581,78 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         when (data) {
             is PasswordEntry -> {
                 val resolvedTarget = restoreTarget ?: KeePassRestoreTarget(data.keepassGroupPath, data.keepassGroupUuid)
-                database.passwordEntryDao().update(
-                    buildRestoredPasswordEntry(
-                        entry = data,
-                        restoreTarget = resolvedTarget,
-                        restoreOutcome = restoreOutcome
-                    )
+                val restoredEntry = buildRestoredPasswordEntry(
+                    entry = data,
+                    restoreTarget = resolvedTarget,
+                    restoreOutcome = restoreOutcome
                 )
+                logMdbxTrashPasswordRestore(
+                    op = "apply",
+                    before = data,
+                    after = restoredEntry
+                )
+                passwordRepository.updatePasswordEntry(restoredEntry)
             }
             is SecureItem -> {
                 val resolvedTarget = restoreTarget ?: KeePassRestoreTarget(data.keepassGroupPath, data.keepassGroupUuid)
-                database.secureItemDao().update(
-                    buildRestoredSecureItem(
-                        item = data,
-                        restoreTarget = resolvedTarget,
-                        restoreOutcome = restoreOutcome
-                    )
+                val restoredItem = buildRestoredSecureItem(
+                    item = data,
+                    restoreTarget = resolvedTarget,
+                    restoreOutcome = restoreOutcome
                 )
+                logMdbxTrashSecureItemRestore(
+                    op = "apply",
+                    before = data,
+                    after = restoredItem
+                )
+                secureItemRepository.updateItem(restoredItem)
             }
         }
     }
 
     private suspend fun rollbackLocalRestore(data: Any) {
         when (data) {
-            is PasswordEntry -> database.passwordEntryDao().update(data.copy(updatedAt = Date()))
-            is SecureItem -> database.secureItemDao().update(data.copy(updatedAt = Date()))
+            is PasswordEntry -> {
+                val rollbackEntry = data.copy(updatedAt = Date())
+                logMdbxTrashPasswordRestore(
+                    op = "rollback",
+                    before = data,
+                    after = rollbackEntry
+                )
+                passwordRepository.updatePasswordEntry(rollbackEntry)
+            }
+            is SecureItem -> {
+                val rollbackItem = data.copy(updatedAt = Date())
+                logMdbxTrashSecureItemRestore(
+                    op = "rollback",
+                    before = data,
+                    after = rollbackItem
+                )
+                secureItemRepository.updateItem(rollbackItem)
+            }
         }
+    }
+
+    private fun logMdbxTrashPasswordRestore(
+        op: String,
+        before: PasswordEntry,
+        after: PasswordEntry
+    ) {
+        val databaseId = after.mdbxDatabaseId ?: before.mdbxDatabaseId ?: return
+        MdbxDiagLogger.append(
+            "[MDBX][trash-restore] type=password op=$op databaseId=$databaseId roomId=${before.id} beforeEntryId=${before.replicaGroupId ?: "-"} afterEntryId=${after.replicaGroupId ?: "-"} beforeDeleted=${before.isDeleted} afterDeleted=${after.isDeleted} beforeUpdatedAt=${before.updatedAt.time} afterUpdatedAt=${after.updatedAt.time} beforeDeletedAt=${before.deletedAt?.time ?: "-"} afterDeletedAt=${after.deletedAt?.time ?: "-"}"
+        )
+    }
+
+    private fun logMdbxTrashSecureItemRestore(
+        op: String,
+        before: SecureItem,
+        after: SecureItem
+    ) {
+        val databaseId = after.mdbxDatabaseId ?: before.mdbxDatabaseId ?: return
+        MdbxDiagLogger.append(
+            "[MDBX][trash-restore] type=secure_item op=$op databaseId=$databaseId roomId=${before.id} itemType=${before.itemType} beforeEntryId=${before.replicaGroupId ?: "-"} afterEntryId=${after.replicaGroupId ?: "-"} beforeDeleted=${before.isDeleted} afterDeleted=${after.isDeleted} beforeUpdatedAt=${before.updatedAt.time} afterUpdatedAt=${after.updatedAt.time} beforeDeletedAt=${before.deletedAt?.time ?: "-"} afterDeletedAt=${after.deletedAt?.time ?: "-"}"
+        )
     }
 
     private fun needsKeepassRestore(data: Any): Boolean = when (data) {

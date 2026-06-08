@@ -252,11 +252,45 @@ interface PasswordEntryDao {
         updateGroupCoverStatus(id, true)
     }
 
-    @Query("UPDATE password_entries SET appPackageName = :packageName, appName = :appName WHERE website = :website AND website != ''")
-    suspend fun updateAppAssociationByWebsite(website: String, packageName: String, appName: String)
+    @Query("UPDATE password_entries SET appPackageName = :packageName, appName = :appName, updatedAt = :now WHERE website = :website AND website != ''")
+    suspend fun updateAppAssociationByWebsite(
+        website: String,
+        packageName: String,
+        appName: String,
+        now: Long = System.currentTimeMillis()
+    )
 
-    @Query("UPDATE password_entries SET appPackageName = :packageName, appName = :appName WHERE title = :title AND title != ''")
-    suspend fun updateAppAssociationByTitle(title: String, packageName: String, appName: String)
+    @Query("UPDATE password_entries SET appPackageName = :packageName, appName = :appName, updatedAt = :now WHERE title = :title AND title != ''")
+    suspend fun updateAppAssociationByTitle(
+        title: String,
+        packageName: String,
+        appName: String,
+        now: Long = System.currentTimeMillis()
+    )
+
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE website = :website
+          AND website != ''
+          AND mdbx_database_id IS NOT NULL
+          AND isDeleted = 0
+          AND isArchived = 0
+        """
+    )
+    suspend fun getActiveMdbxEntriesByWebsite(website: String): List<PasswordEntry>
+
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE title = :title
+          AND title != ''
+          AND mdbx_database_id IS NOT NULL
+          AND isDeleted = 0
+          AND isArchived = 0
+        """
+    )
+    suspend fun getActiveMdbxEntriesByTitle(title: String): List<PasswordEntry>
 
     /**
      * 更新绑定的验证器密钥

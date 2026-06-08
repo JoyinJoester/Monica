@@ -7,338 +7,209 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import takagi.ru.monica.data.LocalKeePassDatabase
-import takagi.ru.monica.data.LocalKeePassDatabaseDao
-import takagi.ru.monica.data.bitwarden.BitwardenVault
-import takagi.ru.monica.data.bitwarden.BitwardenVaultDao
-import takagi.ru.monica.data.dedup.DedupAction
-import takagi.ru.monica.data.dedup.DedupCluster
-import takagi.ru.monica.data.dedup.DedupClusterType
-import takagi.ru.monica.data.dedup.DedupEngine
-import takagi.ru.monica.data.dedup.DedupPreferredSource
-import takagi.ru.monica.data.dedup.DedupScope
+import takagi.ru.monica.data.dedup.DedupMergeExecutionResult
+import takagi.ru.monica.data.dedup.DedupMergePlan
+import takagi.ru.monica.data.dedup.DedupMergeService
+import takagi.ru.monica.data.dedup.DedupMergeSourceOption
+import takagi.ru.monica.data.dedup.DedupMergeTarget
+import takagi.ru.monica.data.dedup.DedupMergeTargetOption
 
 data class DedupEngineUiState(
     val isLoading: Boolean = true,
-    val selectedScope: DedupScope = DedupScope.ALL,
-    val preferredSource: DedupPreferredSource = DedupPreferredSource.MONICA_LOCAL,
-    val selectedKeepassDatabaseId: Long? = null,
-    val selectedBitwardenVaultId: Long? = null,
-    val preferredKeepassDatabaseId: Long? = null,
-    val preferredBitwardenVaultId: Long? = null,
-    val selectedType: DedupClusterType? = null,
-    val keepassDatabases: List<LocalKeePassDatabase> = emptyList(),
-    val bitwardenVaults: List<BitwardenVault> = emptyList(),
-    val clusters: List<DedupCluster> = emptyList(),
-    val selectionMode: Boolean = false,
-    val selectedClusterIds: Set<String> = emptySet(),
+    val isAnalyzing: Boolean = false,
+    val isExecutingMerge: Boolean = false,
+    val sourceOptions: List<DedupMergeSourceOption> = emptyList(),
+    val selectedMergeSourceKeys: Set<String> = emptySet(),
+    val targetOptions: List<DedupMergeTargetOption> = emptyList(),
+    val selectedMergeTarget: DedupMergeTarget? = null,
+    val mergePlan: DedupMergePlan = DedupMergePlan(),
+    val executionResult: DedupMergeExecutionResult? = null,
     val error: String? = null,
     val message: String? = null
 )
 
 class DedupEngineViewModel(
-    private val dedupEngine: DedupEngine,
-    private val localKeePassDatabaseDao: LocalKeePassDatabaseDao,
-    private val bitwardenVaultDao: BitwardenVaultDao
+    private val mergeService: DedupMergeService
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DedupEngineUiState())
     val uiState: StateFlow<DedupEngineUiState> = _uiState.asStateFlow()
-    private var latestRequestId: Long = 0L
-    private var activeRefreshJob: Job? = null
+
+    private var refreshJob: Job? = null
+    private var analyzeJob: Job? = null
 
     init {
-        observeSourceCatalogs()
         refresh()
     }
 
     fun refresh() {
-        val scope = _uiState.value.selectedScope
-        val requestId = nextRequestId()
-        activeRefreshJob?.cancel()
-        activeRefreshJob = viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
             runCatching {
-                scanInBackground(scope)
-            }.onSuccess { clusters ->
-                if (isLatestRequest(requestId)) {
-                    val selectedType = _uiState.value.selectedType.takeIf { type ->
-                        type == null || clusters.any { it.type == type }
-                    }
-                    val validIds = clusters.map { it.id }.toSet()
-                    _uiState.value = _uiState.value.copy(
+                withContext(Dispatchers.Default) {
+                    mergeService.getSourceOptions() to mergeService.getTargetOptions()
+                }
+            }.onSuccess { (sources, targets) ->
+                val current = _uiState.value
+                val validSourceKeys = sources.map { it.key }.toSet()
+                val selectedKeys = current.selectedMergeSourceKeys.intersect(validSourceKeys)
+                val selectedTarget = current.selectedMergeTarget?.takeIf { target ->
+                    targets.any { it.target == target }
+                }
+                _uiState.update {
+                    it.copy(
                         isLoading = false,
-                        clusters = clusters,
-                        selectedType = selectedType,
-                        selectedClusterIds = _uiState.value.selectedClusterIds.intersect(validIds),
+                        sourceOptions = sources,
+                        selectedMergeSourceKeys = selectedKeys,
+                        targetOptions = targets,
+                        selectedMergeTarget = selectedTarget,
                         error = null
                     )
                 }
+                rebuildPlan()
             }.onFailure { throwable ->
-                if (isLatestRequest(requestId)) {
-                    _uiState.value = _uiState.value.copy(
+                _uiState.update {
+                    it.copy(
                         isLoading = false,
-                        error = throwable.message ?: "Unknown error"
+                        error = throwable.message ?: "去重引擎加载失败"
                     )
                 }
             }
         }
     }
 
-    fun updateScope(scope: DedupScope) {
-        if (_uiState.value.selectedScope == scope) return
-        _uiState.value = _uiState.value.copy(
-            selectedScope = scope,
-            isLoading = true,
-            error = null,
-            selectionMode = false,
-            selectedClusterIds = emptySet()
-        )
-        refresh()
-    }
-
-    fun updateType(type: DedupClusterType?) {
-        _uiState.value = _uiState.value.copy(selectedType = type)
-    }
-
-    fun updatePreferredSource(source: DedupPreferredSource) {
-        if (_uiState.value.preferredSource == source) return
-        _uiState.value = _uiState.value.copy(preferredSource = source)
-    }
-
-    fun updateSelectedKeepassDatabase(databaseId: Long?) {
-        if (_uiState.value.selectedKeepassDatabaseId == databaseId) return
-        _uiState.value = _uiState.value.copy(
-            selectedKeepassDatabaseId = databaseId,
-            isLoading = true,
-            error = null,
-            selectionMode = false,
-            selectedClusterIds = emptySet()
-        )
-        refresh()
-    }
-
-    fun updateSelectedBitwardenVault(vaultId: Long?) {
-        if (_uiState.value.selectedBitwardenVaultId == vaultId) return
-        _uiState.value = _uiState.value.copy(
-            selectedBitwardenVaultId = vaultId,
-            isLoading = true,
-            error = null,
-            selectionMode = false,
-            selectedClusterIds = emptySet()
-        )
-        refresh()
-    }
-
-    fun updatePreferredKeepassDatabase(databaseId: Long?) {
-        if (_uiState.value.preferredKeepassDatabaseId == databaseId) return
-        _uiState.value = _uiState.value.copy(preferredKeepassDatabaseId = databaseId)
-    }
-
-    fun updatePreferredBitwardenVault(vaultId: Long?) {
-        if (_uiState.value.preferredBitwardenVaultId == vaultId) return
-        _uiState.value = _uiState.value.copy(preferredBitwardenVaultId = vaultId)
-    }
-
-    fun enterSelectionMode() {
-        if (_uiState.value.selectionMode) return
-        _uiState.value = _uiState.value.copy(selectionMode = true, selectedClusterIds = emptySet())
-    }
-
-    fun exitSelectionMode() {
-        if (!_uiState.value.selectionMode && _uiState.value.selectedClusterIds.isEmpty()) return
-        _uiState.value = _uiState.value.copy(
-            selectionMode = false,
-            selectedClusterIds = emptySet()
-        )
-    }
-
-    fun toggleClusterSelection(clusterId: String) {
-        val current = _uiState.value
-        val nextIds = current.selectedClusterIds.toMutableSet().apply {
-            if (!add(clusterId)) remove(clusterId)
+    fun toggleMergeSource(sourceKey: String) {
+        _uiState.update { state ->
+            val next = state.selectedMergeSourceKeys.toMutableSet().apply {
+                if (!add(sourceKey)) remove(sourceKey)
+            }
+            state.copy(
+                selectedMergeSourceKeys = next,
+                executionResult = null,
+                message = null,
+                error = null
+            )
         }
-        _uiState.value = current.copy(
-            selectionMode = true,
-            selectedClusterIds = nextIds
-        )
+        rebuildPlan()
     }
 
-    fun selectAll(clusterIds: List<String>) {
-        _uiState.value = _uiState.value.copy(
-            selectionMode = true,
-            selectedClusterIds = clusterIds.toSet()
-        )
+    fun selectAllSources() {
+        _uiState.update { state ->
+            state.copy(
+                selectedMergeSourceKeys = state.sourceOptions.map { it.key }.toSet(),
+                executionResult = null,
+                message = null,
+                error = null
+            )
+        }
+        rebuildPlan()
     }
 
-    fun clearSelected() {
-        if (_uiState.value.selectedClusterIds.isEmpty()) return
-        _uiState.value = _uiState.value.copy(selectedClusterIds = emptySet())
+    fun clearSources() {
+        _uiState.update {
+            it.copy(
+                selectedMergeSourceKeys = emptySet(),
+                mergePlan = DedupMergePlan(target = it.selectedMergeTarget),
+                executionResult = null,
+                message = null,
+                error = null
+            )
+        }
     }
 
-    fun performAction(cluster: DedupCluster, action: DedupAction) {
-        val requestId = nextRequestId()
+    fun selectMergeTarget(target: DedupMergeTarget) {
+        _uiState.update {
+            it.copy(
+                selectedMergeTarget = target,
+                executionResult = null,
+                message = null,
+                error = null
+            )
+        }
+        rebuildPlan()
+    }
+
+    fun executeMerge() {
+        val plan = _uiState.value.mergePlan
+        if (plan.selectedSources.isEmpty() || plan.target == null || plan.writableItems <= 0) {
+            _uiState.update {
+                it.copy(message = "没有可写入的合并结果")
+            }
+            return
+        }
+
         viewModelScope.launch {
-            val preferredSource = _uiState.value.preferredSource
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.update { it.copy(isExecutingMerge = true, error = null, message = null) }
             runCatching {
-                executeInBackground(cluster, action, preferredSource)
+                withContext(Dispatchers.IO) {
+                    mergeService.executePlan(plan)
+                }
             }.onSuccess { result ->
-                runCatching { scanInBackground(_uiState.value.selectedScope) }
-                    .onSuccess { clusters ->
-                        if (isLatestRequest(requestId)) {
-                            val nextSelectedType = _uiState.value.selectedType.takeIf { type ->
-                                type == null || clusters.any { it.type == type }
-                            }
-                            _uiState.value = _uiState.value.copy(
-                                isLoading = false,
-                                clusters = clusters,
-                                selectedType = nextSelectedType,
-                                message = result.message,
-                                error = null
-                            )
-                        }
-                    }
-                    .onFailure { throwable ->
-                        if (isLatestRequest(requestId)) {
-                            _uiState.value = _uiState.value.copy(
-                                isLoading = false,
-                                message = result.message,
-                                error = throwable.message ?: "Unknown error"
-                            )
-                        }
-                    }
+                _uiState.update {
+                    it.copy(
+                        isExecutingMerge = false,
+                        executionResult = result,
+                        message = result.toMessage(),
+                        error = null
+                    )
+                }
+                refresh()
             }.onFailure { throwable ->
-                if (isLatestRequest(requestId)) {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = throwable.message ?: "Unknown error"
+                _uiState.update {
+                    it.copy(
+                        isExecutingMerge = false,
+                        error = throwable.message ?: "合并写入失败"
                     )
                 }
             }
-        }
-    }
-
-    fun performBatchAction(clusters: List<DedupCluster>, action: DedupAction) {
-        if (clusters.isEmpty()) return
-        val requestId = nextRequestId()
-        viewModelScope.launch {
-            val preferredSource = _uiState.value.preferredSource
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            var changedCount = 0
-            var successCount = 0
-            var failureCount = 0
-
-            clusters.forEach { cluster ->
-                runCatching {
-                    executeInBackground(cluster, action, preferredSource)
-                }.onSuccess { result ->
-                    successCount++
-                    changedCount += result.changedCount
-                }.onFailure {
-                    failureCount++
-                }
-            }
-
-            runCatching { scanInBackground(_uiState.value.selectedScope) }
-                .onSuccess { refreshedClusters ->
-                    if (isLatestRequest(requestId)) {
-                        val nextSelectedType = _uiState.value.selectedType.takeIf { type ->
-                            type == null || refreshedClusters.any { it.type == type }
-                        }
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            clusters = refreshedClusters,
-                            selectedType = nextSelectedType,
-                            selectionMode = false,
-                            selectedClusterIds = emptySet(),
-                            message = when {
-                                failureCount == 0 ->
-                                    "已批量处理 $successCount 个分组，变更 $changedCount 项"
-                                successCount > 0 ->
-                                    "已处理 $successCount 个分组，$failureCount 个失败，变更 $changedCount 项"
-                                else ->
-                                    "批量操作未成功执行"
-                            },
-                            error = null
-                        )
-                    }
-                }
-                .onFailure { throwable ->
-                    if (isLatestRequest(requestId)) {
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = throwable.message ?: "Unknown error"
-                        )
-                    }
-                }
         }
     }
 
     fun consumeMessage() {
         if (_uiState.value.message == null) return
-        _uiState.value = _uiState.value.copy(message = null)
+        _uiState.update { it.copy(message = null) }
     }
 
-    private suspend fun scanInBackground(scope: DedupScope): List<DedupCluster> {
-        return withContext(Dispatchers.Default) {
-            dedupEngine.scan(
-                scope = scope,
-                keepassDatabaseId = _uiState.value.selectedKeepassDatabaseId,
-                bitwardenVaultId = _uiState.value.selectedBitwardenVaultId
-            )
-        }
-    }
-
-    private suspend fun executeInBackground(
-        cluster: DedupCluster,
-        action: DedupAction,
-        preferredSource: DedupPreferredSource
-    ) = withContext(Dispatchers.Default) {
-        dedupEngine.execute(
-            cluster = cluster,
-            action = action,
-            preferredSource = preferredSource,
-            preferredKeepassDatabaseId = _uiState.value.preferredKeepassDatabaseId,
-            preferredBitwardenVaultId = _uiState.value.preferredBitwardenVaultId
-        )
-    }
-
-    private fun observeSourceCatalogs() {
-        viewModelScope.launch {
-            localKeePassDatabaseDao.getAllDatabases().collect { databases ->
-                _uiState.update { state ->
-                    val validIds = databases.map { it.id }.toSet()
-                    state.copy(
-                        keepassDatabases = databases,
-                        selectedKeepassDatabaseId = state.selectedKeepassDatabaseId?.takeIf { it in validIds },
-                        preferredKeepassDatabaseId = state.preferredKeepassDatabaseId?.takeIf { it in validIds }
+    private fun rebuildPlan() {
+        analyzeJob?.cancel()
+        analyzeJob = viewModelScope.launch {
+            val selectedKeys = _uiState.value.selectedMergeSourceKeys
+            val selectedTarget = _uiState.value.selectedMergeTarget
+            _uiState.update { it.copy(isAnalyzing = true, error = null) }
+            runCatching {
+                withContext(Dispatchers.Default) {
+                    mergeService.buildPlan(selectedKeys, selectedTarget)
+                }
+            }.onSuccess { plan ->
+                _uiState.update {
+                    it.copy(
+                        isAnalyzing = false,
+                        mergePlan = plan,
+                        error = null
                     )
                 }
-            }
-        }
-
-        viewModelScope.launch {
-            bitwardenVaultDao.getAllVaultsFlow().collect { vaults ->
-                _uiState.update { state ->
-                    val validIds = vaults.map { it.id }.toSet()
-                    state.copy(
-                        bitwardenVaults = vaults,
-                        selectedBitwardenVaultId = state.selectedBitwardenVaultId?.takeIf { it in validIds },
-                        preferredBitwardenVaultId = state.preferredBitwardenVaultId?.takeIf { it in validIds }
+            }.onFailure { throwable ->
+                _uiState.update {
+                    it.copy(
+                        isAnalyzing = false,
+                        error = throwable.message ?: "合并计划生成失败"
                     )
                 }
             }
         }
     }
+}
 
-    private fun nextRequestId(): Long {
-        latestRequestId += 1
-        return latestRequestId
-    }
-
-    private fun isLatestRequest(requestId: Long): Boolean = requestId == latestRequestId
+private fun DedupMergeExecutionResult.toMessage(): String {
+    val details = buildList {
+        if (insertedPasswords > 0) add("密码 $insertedPasswords")
+        if (insertedSecureItems > 0) add("安全项 $insertedSecureItems")
+        if (failedPasswords > 0 || failedSecureItems > 0) add("失败 ${failedPasswords + failedSecureItems}")
+        if (skippedExistingItems > 0) add("跳过已有 $skippedExistingItems")
+        if (skippedUnsupportedPasskeys > 0) add("通行密钥未复制 $skippedUnsupportedPasskeys")
+    }.joinToString("，")
+    return "已向 $targetLabel 写入 $insertedItems 条" + details.takeIf { it.isNotBlank() }?.let { "（$it）" }.orEmpty()
 }

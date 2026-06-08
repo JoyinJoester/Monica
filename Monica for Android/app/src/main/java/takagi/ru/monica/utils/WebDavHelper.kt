@@ -2226,6 +2226,20 @@ class WebDavHelper(
             android.util.Log.d("WebDavHelper", "Backup file created: ${backupFile.length() / 1024}KB")
 
             try {
+                if (!report.success || report.failedItems.isNotEmpty()) {
+                    android.util.Log.e(
+                        "WebDavHelper",
+                        "Backup upload blocked because generated backup is incomplete: " +
+                            "failures=${report.failedItems.size}, " +
+                            "passwords=${report.successItems.passwords}/${report.totalItems.passwords}, " +
+                            "totp=${report.successItems.totp}/${report.totalItems.totp}, " +
+                            "notes=${report.successItems.notes}/${report.totalItems.notes}"
+                    )
+                    return@withContext Result.failure(
+                        Exception("备份文件不完整，已阻止上传覆盖远端备份")
+                    )
+                }
+
                 // 上传
                 val uploadResult = uploadBackup(backupFile, isPermanent)
                 
@@ -2421,6 +2435,27 @@ class WebDavHelper(
         return entries.toList()
     }
 
+    private suspend fun clearLocalDataForOverwriteRestore(backupFileName: String): Result<Unit> {
+        return try {
+            android.util.Log.d(
+                "WebDavHelper",
+                "Overwrite restore validated, clearing Monica local data only: file=$backupFileName"
+            )
+            val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+            database.passwordEntryDao().deleteAllLocalPasswordEntries()
+            database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.TOTP)
+            database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.BANK_CARD)
+            database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.DOCUMENT)
+            database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.NOTE)
+            database.passkeyDao().deleteAllLocalPasskeys()
+            android.util.Log.d("WebDavHelper", "Monica local data cleared successfully for overwrite restore")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            android.util.Log.e("WebDavHelper", "Failed to clear Monica local data: ${e.message}")
+            Result.failure(Exception("无法清除 Monica 本地数据: ${e.message}"))
+        }
+    }
+
     /**
      * 从备份文件恢复数据 (通用方法，用于 WebDAV 下载后恢复和本地导入)
      * @param backupFile 本地备份文件（ZIP）
@@ -2495,24 +2530,6 @@ class WebDavHelper(
                 warnings.add("已跳过 Monica 配置恢复: ${detectedMonicaConfigEntries.size}项")
             }
 
-            // P0修复: 如果需要覆盖，先执行清除操作
-            if (overwrite) {
-                try {
-                    android.util.Log.d("WebDavHelper", "Overwrite mode enabled: clearing Monica local data only...")
-                    val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
-                    database.passwordEntryDao().deleteAllLocalPasswordEntries()
-                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.TOTP)
-                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.BANK_CARD)
-                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.DOCUMENT)
-                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.NOTE)
-                    database.passkeyDao().deleteAllLocalPasskeys()
-                    android.util.Log.d("WebDavHelper", "Monica local data cleared successfully")
-                } catch (e: Exception) {
-                    android.util.Log.e("WebDavHelper", "Failed to clear Monica local data: ${e.message}")
-                    return@withContext Result.failure(Exception("无法清除 Monica 本地数据: ${e.message}"))
-                }
-            }
-            
             try {
                 val passwordsWithMetadata = mutableListOf<Pair<PasswordEntry, String?>>()  // ✅ 存储密码和分类名称
                 val notesWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
@@ -3734,6 +3751,33 @@ class WebDavHelper(
 
                 if (backupPasskeyCount > 0) {
                     warnings.add("通行密钥恢复: $restoredPasskeyCount/$backupPasskeyCount")
+                }
+
+                val hasRestorableCoreData =
+                    passwords.isNotEmpty() ||
+                        normalizedSecureItems.isNotEmpty() ||
+                        passkeys.isNotEmpty()
+
+                if (overwrite) {
+                    android.util.Log.d(
+                        "WebDavHelper",
+                        "Overwrite restore requested after parse: file=${backupFile.name}, " +
+                            "passwords=${passwords.size}, secureItems=${normalizedSecureItems.size}, " +
+                            "passkeys=${passkeys.size}, failedItems=${failedItems.size}, warnings=${warnings.size}"
+                    )
+                    if (failedItems.isNotEmpty()) {
+                        return@withContext Result.failure(
+                            Exception("备份解析存在失败项，已阻止替换本地数据以避免数据丢失")
+                        )
+                    }
+                    if (!hasRestorableCoreData) {
+                        return@withContext Result.failure(
+                            Exception("备份中没有可恢复的数据，已阻止替换本地数据以避免数据丢失")
+                        )
+                    }
+                    clearLocalDataForOverwriteRestore(backupFile.name).getOrElse { error ->
+                        return@withContext Result.failure(error)
+                    }
                 }
                 
                 val report = RestoreReport(

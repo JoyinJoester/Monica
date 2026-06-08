@@ -122,6 +122,8 @@ fun AddEditTotpScreen(
     ) -> Unit,
     onNavigateBack: () -> Unit,
     onScanQrCode: () -> Unit,
+    pendingQrResult: String? = null,
+    onConsumePendingQrResult: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val resolvedInitialData = remember(initialData) {
@@ -511,6 +513,12 @@ fun AddEditTotpScreen(
                 ).show()
             }
         }
+    }
+
+    LaunchedEffect(pendingQrResult) {
+        val qrValue = pendingQrResult ?: return@LaunchedEffect
+        onConsumePendingQrResult()
+        importTotpFromUri(qrValue)
     }
 
     val canSave = title.isNotBlank() && secret.isNotBlank()

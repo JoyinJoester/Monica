@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,11 +31,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.mdbx.MdbxDiagLogger
 import takagi.ru.monica.repository.CustomFieldRepository
+import takagi.ru.monica.repository.MdbxRepository
+import takagi.ru.monica.repository.MdbxVaultStore
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
@@ -72,10 +77,28 @@ class AutofillSaveTransparentActivity : ComponentActivity() {
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
         val appName = resolveAppName(packageName)
 
-        val database = PasswordDatabase.getDatabase(applicationContext)
-        val repository = PasswordRepository(database.passwordEntryDao())
         val securityManager = SecurityManager(applicationContext)
-        val secureItemRepository = SecureItemRepository(database.secureItemDao())
+        val database = PasswordDatabase.getDatabase(applicationContext)
+        val mdbxRepository: MdbxRepository = MdbxVaultStore(
+            context = applicationContext,
+            databaseDao = database.localMdbxDatabaseDao(),
+            securityManager = securityManager,
+            remoteSourceDao = database.mdbxRemoteSourceDao(),
+            passwordEntryDao = database.passwordEntryDao(),
+            secureItemDao = database.secureItemDao(),
+            customFieldDao = database.customFieldDao(),
+        )
+        val repository = PasswordRepository(
+            passwordEntryDao = database.passwordEntryDao(),
+            categoryDao = database.categoryDao(),
+            bitwardenFolderDao = database.bitwardenFolderDao(),
+            secureItemDao = database.secureItemDao(),
+            passkeyDao = database.passkeyDao(),
+            passwordArchiveSyncMetaDao = database.passwordArchiveSyncMetaDao(),
+            passwordHistoryDao = database.passwordHistoryDao(),
+            mdbxRepository = mdbxRepository,
+        )
+        val secureItemRepository = SecureItemRepository(database.secureItemDao(), mdbxRepository)
         val customFieldRepository = CustomFieldRepository(database.customFieldDao())
         val application = applicationContext as Application
 
@@ -86,6 +109,19 @@ class AutofillSaveTransparentActivity : ComponentActivity() {
             val autoSaveAppInfoEnabled by autofillPreferences.isAutoSaveAppInfoEnabled.collectAsState(initial = true)
             val autoSaveWebsiteInfoEnabled by autofillPreferences.isAutoSaveWebsiteInfoEnabled.collectAsState(initial = true)
             val smartTitleGenerationEnabled by autofillPreferences.isSmartTitleGenerationEnabled.collectAsState(initial = true)
+            val initialTarget by produceState<AutofillSaveInitialTarget?>(
+                initialValue = null,
+                key1 = settingsManager,
+                key2 = database
+            ) {
+                val settingsSnapshot = settingsManager.settingsFlow.first()
+                val mdbxDatabases = database.localMdbxDatabaseDao().getAllDatabasesSnapshot()
+                value = resolveAutofillSaveInitialTarget(settingsSnapshot, mdbxDatabases).also { target ->
+                    MdbxDiagLogger.append(
+                        "[MDBX][autofill-save-open] source=transparent target=${target.diagnosticLabel()} mdbxDatabases=${target.mdbxDatabasesFallback.size}"
+                    )
+                }
+            }
 
             val isSystemDark = isSystemInDarkTheme()
             val darkTheme = when (settings.themeMode) {
@@ -168,30 +204,39 @@ class AutofillSaveTransparentActivity : ComponentActivity() {
                 customNeutralVariantColor = settings.customNeutralVariantColor,
             ) {
                 Box {
-                    AddEditPasswordScreen(
-                        viewModel = passwordViewModel,
-                        localKeePassViewModel = localKeePassViewModel,
-                        passwordId = null,
-                        initialDraft = AddEditPasswordInitialDraft(
-                            title = initialTitle,
-                            website = effectiveWebsite,
-                            username = username,
-                            password = password,
-                            appPackageName = effectivePackageName,
-                            appName = effectiveAppName,
-                        ),
-                        forceShowAppBinding = true,
-                        onSaveCompleted = {
-                            didSave = true
-                            setResult(RESULT_SAVED)
-                        },
-                        onNavigateBack = {
-                            if (!didSave) {
-                                setResult(Activity.RESULT_CANCELED)
-                            }
-                            finish()
-                        },
-                    )
+                    val resolvedInitialTarget = initialTarget
+                    if (resolvedInitialTarget != null) {
+                        AddEditPasswordScreen(
+                            viewModel = passwordViewModel,
+                            localKeePassViewModel = localKeePassViewModel,
+                            mdbxDatabasesFallback = resolvedInitialTarget.mdbxDatabasesFallback,
+                            passwordId = null,
+                            initialDraft = AddEditPasswordInitialDraft(
+                                title = initialTitle,
+                                website = effectiveWebsite,
+                                username = username,
+                                password = password,
+                                appPackageName = effectivePackageName,
+                                appName = effectiveAppName,
+                            ),
+                            forceShowAppBinding = true,
+                            initialMdbxDatabaseId = resolvedInitialTarget.mdbxDatabaseId,
+                            initialMdbxFolderId = resolvedInitialTarget.mdbxFolderId,
+                            onSaveCompleted = { savedId ->
+                                didSave = true
+                                MdbxDiagLogger.append(
+                                    "[MDBX][autofill-save-complete] source=transparent target=${resolvedInitialTarget.diagnosticLabel()} roomId=${savedId ?: "-"}"
+                                )
+                                setResult(RESULT_SAVED)
+                            },
+                            onNavigateBack = {
+                                if (!didSave) {
+                                    setResult(Activity.RESULT_CANCELED)
+                                }
+                                finish()
+                            },
+                        )
+                    }
 
                     TextButton(
                         onClick = {

@@ -1,89 +1,70 @@
-@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-
 package takagi.ru.monica.ui.screens
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Password
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Merge
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.SelectAll
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import takagi.ru.monica.R
-import takagi.ru.monica.data.LocalKeePassDatabase
-import takagi.ru.monica.data.bitwarden.BitwardenVault
-import takagi.ru.monica.data.dedup.DedupAction
-import takagi.ru.monica.data.dedup.DedupCluster
-import takagi.ru.monica.data.dedup.DedupClusterType
-import takagi.ru.monica.data.dedup.DedupEntityRef
-import takagi.ru.monica.data.dedup.DedupPreferredSource
-import takagi.ru.monica.data.dedup.DedupScope
-import takagi.ru.monica.data.dedup.DedupSourceKind
+import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.dedup.DedupMergePlan
+import takagi.ru.monica.data.dedup.DedupMergeSourceKind
+import takagi.ru.monica.data.dedup.DedupMergeSourceOption
+import takagi.ru.monica.data.dedup.DedupMergeTarget
+import takagi.ru.monica.data.dedup.DedupMergeTargetOption
+import takagi.ru.monica.data.dedup.DedupResolvedPassword
+import takagi.ru.monica.data.dedup.DedupResolvedSecureItem
 import takagi.ru.monica.viewmodel.DedupEngineUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,55 +73,15 @@ fun DedupEngineScreen(
     uiState: DedupEngineUiState,
     onNavigateBack: () -> Unit,
     onRefresh: () -> Unit,
-    onPreferredSourceChange: (DedupPreferredSource) -> Unit,
-    onPreferredKeepassDatabaseChange: (Long?) -> Unit,
-    onPreferredBitwardenVaultChange: (Long?) -> Unit,
-    onScopeChange: (DedupScope) -> Unit,
-    onScopeKeepassDatabaseChange: (Long?) -> Unit,
-    onScopeBitwardenVaultChange: (Long?) -> Unit,
-    onTypeChange: (DedupClusterType?) -> Unit,
-    onClusterAction: (DedupCluster, DedupAction) -> Unit,
-    onEnterSelectionMode: () -> Unit,
-    onExitSelectionMode: () -> Unit,
-    onToggleClusterSelection: (String) -> Unit,
-    onSelectAllVisible: (List<String>) -> Unit,
-    onClearSelected: () -> Unit,
-    onBatchAction: (List<DedupCluster>, DedupAction) -> Unit,
+    onToggleSource: (String) -> Unit,
+    onSelectAllSources: () -> Unit,
+    onClearSources: () -> Unit,
+    onSelectTarget: (DedupMergeTarget) -> Unit,
+    onCreateMdbxTarget: () -> Unit,
+    onExecuteMerge: () -> Unit,
     onConsumeMessage: () -> Unit
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
-    val filteredClusters = uiState.clusters.filter { cluster ->
-        uiState.selectedType == null || cluster.type == uiState.selectedType
-    }
-    val typeCounts = uiState.clusters.groupingBy { it.type }.eachCount()
-    val selectedClusters = filteredClusters.filter { it.id in uiState.selectedClusterIds }
-    val commonBatchActions = selectedClusters
-        .map { it.supportedActions.toSet() }
-        .reduceOrNull { acc, set -> acc intersect set }
-        .orEmpty()
-        .toList()
-    val actionableCount = filteredClusters.count {
-        it.supportedActions.any { action -> action != DedupAction.IGNORE_CLUSTER }
-    }
-    val sourceCount = filteredClusters
-        .flatMap { cluster -> cluster.sourceDescriptors }
-        .distinctBy { descriptor -> descriptor.instanceKey }
-        .size
-    val activeTypeCount = typeCounts.count { it.value > 0 }
-    val scopeSummary = scopeSummaryLabel(
-        scope = uiState.selectedScope,
-        keepassDatabaseId = uiState.selectedKeepassDatabaseId,
-        bitwardenVaultId = uiState.selectedBitwardenVaultId,
-        keepassDatabases = uiState.keepassDatabases,
-        bitwardenVaults = uiState.bitwardenVaults
-    )
-    val preferredSummary = preferredSourceSummaryLabel(
-        source = uiState.preferredSource,
-        keepassDatabaseId = uiState.preferredKeepassDatabaseId,
-        bitwardenVaultId = uiState.preferredBitwardenVaultId,
-        keepassDatabases = uiState.keepassDatabases,
-        bitwardenVaults = uiState.bitwardenVaults
-    )
 
     LaunchedEffect(uiState.message) {
         val message = uiState.message ?: return@LaunchedEffect
@@ -153,27 +94,9 @@ fun DedupEngineScreen(
             TopAppBar(
                 title = {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("去重合并", fontWeight = FontWeight.Bold)
                         Text(
-                            text = if (uiState.selectionMode) {
-                                stringResource(
-                                    R.string.dedup_engine_selection_title,
-                                    uiState.selectedClusterIds.size
-                                )
-                            } else {
-                                stringResource(R.string.dedup_engine_title)
-                            },
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = if (uiState.selectionMode) {
-                                stringResource(
-                                    R.string.dedup_engine_batch_desc,
-                                    selectedClusters.size,
-                                    filteredClusters.size
-                                )
-                            } else {
-                                stringResource(R.string.dedup_engine_desc)
-                            },
+                            text = "选择源数据库，预览后写入目标库",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -182,23 +105,13 @@ fun DedupEngineScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (uiState.selectionMode) onExitSelectionMode() else onNavigateBack()
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.go_back)
-                        )
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
                 actions = {
                     IconButton(onClick = onRefresh) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = stringResource(R.string.refresh)
-                        )
+                        Icon(Icons.Default.Refresh, contentDescription = "刷新")
                     }
                 }
             )
@@ -210,907 +123,262 @@ fun DedupEngineScreen(
                 .fillMaxSize()
                 .padding(paddingValues),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item {
-                DedupMissionPanel(
-                    clusterCount = filteredClusters.size,
-                    actionableCount = actionableCount,
-                    sourceCount = sourceCount,
-                    activeTypeCount = activeTypeCount,
-                    isLoading = uiState.isLoading,
-                    selectedScopeLabel = scopeSummary,
-                    preferredSourceLabel = preferredSummary,
-                    selectionMode = uiState.selectionMode,
-                    selectedCount = uiState.selectedClusterIds.size,
-                    onRefresh = onRefresh,
-                    onToggleSelectionMode = {
-                        if (uiState.selectionMode) onExitSelectionMode() else onEnterSelectionMode()
-                    }
-                )
-            }
-
-            if (uiState.selectionMode) {
-                item {
-                    DedupSelectionWorkbench(
-                        selectedCount = selectedClusters.size,
-                        visibleCount = filteredClusters.size,
-                        preferredSource = uiState.preferredSource,
-                        commonBatchActions = commonBatchActions,
-                        onSelectAllVisible = {
-                            onSelectAllVisible(filteredClusters.map { it.id })
-                        },
-                        onClearSelected = onClearSelected,
-                        onExitSelectionMode = onExitSelectionMode,
-                        onBatchAction = { action -> onBatchAction(selectedClusters, action) }
-                    )
-                }
+            if (uiState.isLoading) {
+                item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
             }
 
             item {
-                DedupStrategyPanel(
-                    uiState = uiState,
-                    preferredSource = uiState.preferredSource,
-                    selectedScope = uiState.selectedScope,
-                    selectedType = uiState.selectedType,
-                    typeCounts = typeCounts,
-                    onPreferredSourceChange = onPreferredSourceChange,
-                    onPreferredKeepassDatabaseChange = onPreferredKeepassDatabaseChange,
-                    onPreferredBitwardenVaultChange = onPreferredBitwardenVaultChange,
-                    onScopeChange = onScopeChange,
-                    onScopeKeepassDatabaseChange = onScopeKeepassDatabaseChange,
-                    onScopeBitwardenVaultChange = onScopeBitwardenVaultChange,
-                    onTypeChange = onTypeChange
+                MergeSummaryCard(
+                    plan = uiState.mergePlan,
+                    isAnalyzing = uiState.isAnalyzing,
+                    isExecuting = uiState.isExecutingMerge
                 )
             }
 
-            if (!uiState.isLoading && filteredClusters.isNotEmpty()) {
-                item {
-                    DedupIssueRadar(
-                        typeCounts = typeCounts,
-                        selectedType = uiState.selectedType,
-                        onTypeChange = onTypeChange
-                    )
-                }
+            item {
+                SourceSelectionCard(
+                    sources = uiState.sourceOptions,
+                    selectedKeys = uiState.selectedMergeSourceKeys,
+                    onToggleSource = onToggleSource,
+                    onSelectAllSources = onSelectAllSources,
+                    onClearSources = onClearSources
+                )
+            }
+
+            item {
+                TargetSelectionCard(
+                    targets = uiState.targetOptions,
+                    selectedTarget = uiState.selectedMergeTarget,
+                    onSelectTarget = onSelectTarget,
+                    onCreateMdbxTarget = onCreateMdbxTarget
+                )
             }
 
             if (uiState.error != null) {
-                item { ErrorCard(message = uiState.error) }
+                item { StatusCard(icon = Icons.Default.Warning, tint = MaterialTheme.colorScheme.error, text = uiState.error) }
+            }
+
+            if (uiState.mergePlan.warnings.isNotEmpty()) {
+                item {
+                    WarningListCard(warnings = uiState.mergePlan.warnings)
+                }
             }
 
             item {
-                DedupSectionHeader(
-                    title = stringResource(R.string.dedup_engine_worklist_title),
-                    subtitle = if (uiState.isLoading) {
-                        stringResource(R.string.dedup_engine_scanning)
-                    } else {
-                        stringResource(
-                            R.string.dedup_engine_worklist_desc,
-                            filteredClusters.size
-                        )
-                    }
+                MergeActionCard(
+                    plan = uiState.mergePlan,
+                    isExecuting = uiState.isExecutingMerge,
+                    onExecuteMerge = onExecuteMerge
                 )
             }
 
-            if (uiState.isLoading) {
-                item { LoadingCard() }
-            } else if (filteredClusters.isEmpty()) {
-                item { EmptyCard() }
-            } else {
-                items(filteredClusters, key = { it.id }) { cluster ->
-                    DedupClusterCard(
-                        cluster = cluster,
-                        preferredSource = uiState.preferredSource,
-                        selected = cluster.id in uiState.selectedClusterIds,
-                        selectionMode = uiState.selectionMode,
-                        onClusterAction = onClusterAction,
-                        onToggleSelection = { onToggleClusterSelection(cluster.id) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DedupMissionPanel(
-    clusterCount: Int,
-    actionableCount: Int,
-    sourceCount: Int,
-    activeTypeCount: Int,
-    isLoading: Boolean,
-    selectedScopeLabel: String,
-    preferredSourceLabel: String,
-    selectionMode: Boolean,
-    selectedCount: Int,
-    onRefresh: () -> Unit,
-    onToggleSelectionMode: () -> Unit
-) {
-    ElevatedCard(
-        shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(22.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        modifier = Modifier.padding(14.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.dedup_engine_overview_title),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Black
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = stringResource(R.string.dedup_engine_overview_desc),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                MissionTonePill(
-                    icon = Icons.Default.Tune,
-                    text = selectedScopeLabel
-                )
-                MissionTonePill(
-                    icon = Icons.Default.CheckCircle,
-                    text = preferredSourceLabel
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                InsightStatCard(
-                    modifier = Modifier.weight(1f),
-                    label = stringResource(R.string.dedup_engine_cluster_count, clusterCount),
-                    value = if (isLoading) "..." else clusterCount.toString(),
-                    accentColor = MaterialTheme.colorScheme.primary
-                )
-                InsightStatCard(
-                    modifier = Modifier.weight(1f),
-                    label = stringResource(R.string.dedup_engine_overview_actionable),
-                    value = if (selectionMode) selectedCount.toString() else actionableCount.toString(),
-                    accentColor = MaterialTheme.colorScheme.tertiary
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                InsightStatCard(
-                    modifier = Modifier.weight(1f),
-                    label = stringResource(R.string.dedup_engine_overview_types),
-                    value = activeTypeCount.toString(),
-                    accentColor = MaterialTheme.colorScheme.secondary
-                )
-                InsightStatCard(
-                    modifier = Modifier.weight(1f),
-                    label = stringResource(R.string.dedup_engine_overview_sources),
-                    value = sourceCount.toString(),
-                    accentColor = MaterialTheme.colorScheme.primary
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = onToggleSelectionMode,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(20.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
-                ) {
-                    Icon(
-                        imageVector = if (selectionMode) {
-                            Icons.Default.CheckCircle
-                        } else {
-                            Icons.Default.DoneAll
-                        },
-                        contentDescription = null
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (selectionMode) {
-                            stringResource(R.string.dedup_engine_exit_batch)
-                        } else {
-                            stringResource(R.string.dedup_engine_batch_mode)
-                        }
-                    )
-                }
-                OutlinedButton(
-                    onClick = onRefresh,
-                    shape = RoundedCornerShape(20.dp),
-                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = stringResource(R.string.refresh)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MissionTonePill(
-    icon: ImageVector,
-    text: String
-) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-private fun InsightStatCard(
-    label: String,
-    value: String,
-    accentColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.16f))
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Box(modifier = Modifier.size(10.dp)) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    shape = CircleShape,
-                    color = accentColor
-                ) {}
-            }
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-private fun DedupStrategyPanel(
-    uiState: DedupEngineUiState,
-    preferredSource: DedupPreferredSource,
-    selectedScope: DedupScope,
-    selectedType: DedupClusterType?,
-    typeCounts: Map<DedupClusterType, Int>,
-    onPreferredSourceChange: (DedupPreferredSource) -> Unit,
-    onPreferredKeepassDatabaseChange: (Long?) -> Unit,
-    onPreferredBitwardenVaultChange: (Long?) -> Unit,
-    onScopeChange: (DedupScope) -> Unit,
-    onScopeKeepassDatabaseChange: (Long?) -> Unit,
-    onScopeBitwardenVaultChange: (Long?) -> Unit,
-    onTypeChange: (DedupClusterType?) -> Unit
-) {
-    var advancedExpanded by rememberSaveable { mutableStateOf(false) }
-
-    ElevatedCard(
-        shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .animateContentSize()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            DedupSectionHeader(
-                title = stringResource(R.string.dedup_engine_strategy_title),
-                subtitle = stringResource(R.string.dedup_engine_strategy_desc)
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = stringResource(R.string.dedup_engine_preferred_source_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = stringResource(R.string.dedup_engine_preferred_source_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(DedupPreferredSource.entries) { source ->
-                        CompactSegmentChip(
-                            selected = preferredSource == source,
-                            label = preferredSourceLabel(source),
-                            accentColor = sourceAccentColor(source.toSourceKind()),
-                            onClick = { onPreferredSourceChange(source) }
-                        )
-                    }
-                }
-
-                when (preferredSource) {
-                    DedupPreferredSource.KEEPASS -> {
-                        SpecificSourceRow(
-                            title = stringResource(R.string.dedup_engine_specific_source_title),
-                            description = stringResource(R.string.dedup_engine_specific_source_desc),
-                            allLabel = stringResource(R.string.dedup_engine_specific_keepass_all),
-                            selectedKey = uiState.preferredKeepassDatabaseId?.toString(),
-                            options = uiState.keepassDatabases.map { database ->
-                                SpecificSourceOption(
-                                    key = database.id.toString(),
-                                    title = database.name,
-                                    subtitle = null
-                                )
-                            },
-                            accentColor = sourceAccentColor(DedupSourceKind.KEEPASS),
-                            onSelect = { key ->
-                                onPreferredKeepassDatabaseChange(key?.toLongOrNull())
-                            }
-                        )
-                    }
-                    DedupPreferredSource.BITWARDEN -> {
-                        SpecificSourceRow(
-                            title = stringResource(R.string.dedup_engine_specific_source_title),
-                            description = stringResource(R.string.dedup_engine_specific_source_desc),
-                            allLabel = stringResource(R.string.dedup_engine_specific_bitwarden_all),
-                            selectedKey = uiState.preferredBitwardenVaultId?.toString(),
-                            options = uiState.bitwardenVaults.map { vault ->
-                                SpecificSourceOption(
-                                    key = vault.id.toString(),
-                                    title = vaultPrimaryLabel(vault),
-                                    subtitle = vaultSecondaryLabel(vault)
-                                )
-                            },
-                            accentColor = sourceAccentColor(DedupSourceKind.BITWARDEN),
-                            onSelect = { key ->
-                                onPreferredBitwardenVaultChange(key?.toLongOrNull())
-                            }
-                        )
-                    }
-                    DedupPreferredSource.MONICA_LOCAL -> Unit
-                }
-            }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = stringResource(R.string.dedup_engine_scope_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = stringResource(R.string.dedup_engine_controls_scope_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(DedupScope.entries) { scope ->
-                        CompactSegmentChip(
-                            selected = selectedScope == scope,
-                            label = scopeLabel(scope),
-                            accentColor = sourceAccentColor(scopeToSourceKind(scope)),
-                            onClick = { onScopeChange(scope) }
-                        )
-                    }
-                }
-
-                when (selectedScope) {
-                    DedupScope.KEEPASS -> {
-                        SpecificSourceRow(
-                            title = stringResource(R.string.dedup_engine_specific_scope_title),
-                            description = stringResource(R.string.dedup_engine_specific_scope_desc),
-                            allLabel = stringResource(R.string.dedup_engine_specific_keepass_all),
-                            selectedKey = uiState.selectedKeepassDatabaseId?.toString(),
-                            options = uiState.keepassDatabases.map { database ->
-                                SpecificSourceOption(
-                                    key = database.id.toString(),
-                                    title = database.name,
-                                    subtitle = null
-                                )
-                            },
-                            accentColor = sourceAccentColor(DedupSourceKind.KEEPASS),
-                            onSelect = { key ->
-                                onScopeKeepassDatabaseChange(key?.toLongOrNull())
-                            }
-                        )
-                    }
-                    DedupScope.BITWARDEN -> {
-                        SpecificSourceRow(
-                            title = stringResource(R.string.dedup_engine_specific_scope_title),
-                            description = stringResource(R.string.dedup_engine_specific_scope_desc),
-                            allLabel = stringResource(R.string.dedup_engine_specific_bitwarden_all),
-                            selectedKey = uiState.selectedBitwardenVaultId?.toString(),
-                            options = uiState.bitwardenVaults.map { vault ->
-                                SpecificSourceOption(
-                                    key = vault.id.toString(),
-                                    title = vaultPrimaryLabel(vault),
-                                    subtitle = vaultSecondaryLabel(vault)
-                                )
-                            },
-                            accentColor = sourceAccentColor(DedupSourceKind.BITWARDEN),
-                            onSelect = { key ->
-                                onScopeBitwardenVaultChange(key?.toLongOrNull())
-                            }
-                        )
-                    }
-                    else -> Unit
-                }
-            }
-
-            TextButton(
-                modifier = Modifier.align(Alignment.End),
-                onClick = { advancedExpanded = !advancedExpanded }
-            ) {
+            item {
                 Text(
-                    if (advancedExpanded) {
-                        stringResource(R.string.dedup_engine_controls_collapse)
-                    } else {
-                        stringResource(R.string.dedup_engine_controls_expand)
-                    }
+                    text = "预览",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
 
-            if (advancedExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (uiState.mergePlan.previewPasswords.isEmpty() && uiState.mergePlan.previewSecureItems.isEmpty()) {
+                item {
+                    StatusCard(
+                        icon = Icons.Default.Info,
+                        tint = MaterialTheme.colorScheme.primary,
+                        text = "选择源数据库和目标数据库后会在这里显示合并预览"
+                    )
+                }
+            } else {
+                items(uiState.mergePlan.previewPasswords.take(80), key = { it.mergeKey }) { resolved ->
+                    ResolvedPasswordPreviewCard(resolved)
+                }
+                items(uiState.mergePlan.previewSecureItems.take(80), key = { "secure:${it.mergeKey}" }) { resolved ->
+                    ResolvedSecureItemPreviewCard(resolved)
+                }
+                val hiddenCount = (uiState.mergePlan.previewPasswords.size - 80).coerceAtLeast(0) +
+                    (uiState.mergePlan.previewSecureItems.size - 80).coerceAtLeast(0)
+                if (hiddenCount > 0) {
+                    item {
                         Text(
-                            text = stringResource(R.string.dedup_engine_type_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = stringResource(R.string.dedup_engine_controls_type_desc),
+                            text = "还有 $hiddenCount 条未显示，执行时会一起处理",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        item {
-                            FilterOptionButton(
-                            selected = selectedType == null,
-                            label = stringResource(R.string.dedup_engine_type_all),
-                            trailing = typeCounts.values.sum().toString(),
-                            onClick = { onTypeChange(null) }
-                        )
-                        }
-                        DedupClusterType.entries.forEach { type ->
-                            val count = typeCounts[type] ?: 0
-                            if (count <= 0) return@forEach
-                            item {
-                                FilterOptionButton(
-                                selected = selectedType == type,
-                                label = typeLabel(type),
-                                trailing = count.toString(),
-                                onClick = { onTypeChange(type) }
-                            )
-                            }
-                        }
-                    }
                 }
             }
         }
     }
 }
 
-private data class SpecificSourceOption(
-    val key: String,
-    val title: String,
-    val subtitle: String?
-)
-
 @Composable
-private fun CompactSegmentChip(
-    selected: Boolean,
-    label: String,
-    accentColor: Color,
-    onClick: () -> Unit
+private fun MergeSummaryCard(
+    plan: DedupMergePlan,
+    isAnalyzing: Boolean,
+    isExecuting: Boolean
 ) {
-    Surface(
-        modifier = Modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        color = if (selected) {
-            accentColor.copy(alpha = 0.16f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        border = BorderStroke(
-            if (selected) 1.4.dp else 1.dp,
-            if (selected) accentColor else MaterialTheme.colorScheme.outlineVariant
-        )
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) accentColor else MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.SemiBold
-        )
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("合并计划", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = when {
+                            isExecuting -> "正在写入目标数据库"
+                            isAnalyzing -> "正在分析重复项"
+                            else -> "源库只读，结果只写入目标库"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (isAnalyzing || isExecuting) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Default.Merge, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SummaryChip("源条目", plan.totalSourceItems.toString())
+                SummaryChip("密码", plan.totalSourcePasswords.toString())
+                SummaryChip("安全项", plan.totalSourceSecureItems.toString())
+                SummaryChip("去重后", (plan.uniquePasswords + plan.uniqueSecureItems).toString())
+                SummaryChip("重复组", (plan.duplicateGroups + plan.duplicateSecureItemGroups).toString())
+                SummaryChip("将写入", plan.writableItems.toString())
+                SummaryChip("跳过", plan.skippedItems.toString())
+            }
+        }
     }
 }
 
 @Composable
-private fun SpecificSourceRow(
-    title: String,
-    description: String,
-    allLabel: String,
-    selectedKey: String?,
-    options: List<SpecificSourceOption>,
-    accentColor: Color,
-    onSelect: (String?) -> Unit
+private fun SourceSelectionCard(
+    sources: List<DedupMergeSourceOption>,
+    selectedKeys: Set<String>,
+    onToggleSource: (String) -> Unit,
+    onSelectAllSources: () -> Unit,
+    onClearSources: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionHeader(title = "源数据库", subtitle = "可多选，源数据库不会被修改")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onSelectAllSources) { Text("全选") }
+                TextButton(onClick = onClearSources) { Text("清空") }
+            }
+            if (sources.isEmpty()) {
+                Text("暂无可比对的数据库", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                sources.forEach { source ->
+                    SelectableSourceRow(
+                        source = source,
+                        selected = source.key in selectedKeys,
+                        onClick = { onToggleSource(source.key) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TargetSelectionCard(
+    targets: List<DedupMergeTargetOption>,
+    selectedTarget: DedupMergeTarget?,
+    onSelectTarget: (DedupMergeTarget) -> Unit,
+    onCreateMdbxTarget: () -> Unit
+) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionHeader(title = "目标数据库", subtitle = "合并后的条目会新增到这里")
+            targets.forEach { target ->
+                SelectableTargetRow(
+                    target = target,
+                    selected = target.target == selectedTarget,
+                    onClick = { onSelectTarget(target.target) }
+                )
+            }
+            OutlinedButton(onClick = onCreateMdbxTarget, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.size(8.dp))
+                Text("新建 MDBX 目标库")
+            }
+        }
+    }
+}
+
+@Composable
+private fun MergeActionCard(
+    plan: DedupMergePlan,
+    isExecuting: Boolean,
+    onExecuteMerge: () -> Unit
+) {
+    val canExecute = plan.selectedSources.isNotEmpty() && plan.target != null && plan.writableItems > 0 && !isExecuting
+    ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("执行合并", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = description,
+                text = "只会新增到目标库。目标库已有的同类条目会跳过，不会覆盖。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        }
-
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            item {
-                SourceChoiceCard(
-                    modifier = Modifier.width(180.dp),
-                    title = allLabel,
-                    subtitle = null,
-                    accentColor = accentColor,
-                    selected = selectedKey == null,
-                    onClick = { onSelect(null) }
-                )
-            }
-            items(options, key = { it.key }) { option ->
-                SourceChoiceCard(
-                    modifier = Modifier.width(200.dp),
-                    title = option.title,
-                    subtitle = option.subtitle,
-                    accentColor = accentColor,
-                    selected = selectedKey == option.key,
-                    onClick = { onSelect(option.key) }
-                )
+            Button(
+                onClick = onExecuteMerge,
+                enabled = canExecute,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isExecuting) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.size(8.dp))
+                }
+                Text(if (isExecuting) "正在合并" else "写入 ${plan.writableItems} 条")
             }
         }
     }
 }
 
 @Composable
-private fun SourceChoiceCard(
-    title: String,
-    subtitle: String?,
-    accentColor: Color,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val containerColor by animateColorAsState(
-        targetValue = if (selected) {
-            accentColor.copy(alpha = 0.16f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        animationSpec = spring(),
-        label = "source_choice_container"
-    )
-    val borderColor by animateColorAsState(
-        targetValue = if (selected) accentColor else MaterialTheme.colorScheme.outlineVariant,
-        animationSpec = spring(),
-        label = "source_choice_border"
-    )
-
-    Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(22.dp),
-        color = containerColor,
-        border = BorderStroke(if (selected) 1.6.dp else 1.dp, borderColor)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (subtitle != null) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DedupSelectionWorkbench(
-    selectedCount: Int,
-    visibleCount: Int,
-    preferredSource: DedupPreferredSource,
-    commonBatchActions: List<DedupAction>,
-    onSelectAllVisible: () -> Unit,
-    onClearSelected: () -> Unit,
-    onExitSelectionMode: () -> Unit,
-    onBatchAction: (DedupAction) -> Unit
-) {
-    ElevatedCard(
-        shape = RoundedCornerShape(30.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.10f)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Tune,
-                        contentDescription = null,
-                        modifier = Modifier.padding(12.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.dedup_engine_batch_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Text(
-                        text = stringResource(
-                            R.string.dedup_engine_batch_desc,
-                            selectedCount,
-                            visibleCount
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.84f)
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                FilledTonalButton(
-                    modifier = Modifier.weight(1f),
-                    onClick = onSelectAllVisible,
-                    shape = RoundedCornerShape(18.dp)
-                ) {
-                    Icon(Icons.Default.SelectAll, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.dedup_engine_select_all_visible))
-                }
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    onClick = onClearSelected,
-                    shape = RoundedCornerShape(18.dp)
-                ) {
-                    Text(stringResource(R.string.dedup_engine_clear_selection))
-                }
-            }
-
-            if (commonBatchActions.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.dedup_engine_batch_no_common_action),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f)
-                )
-            } else {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    commonBatchActions.forEach { action ->
-                        Button(
-                            onClick = { onBatchAction(action) },
-                            shape = RoundedCornerShape(18.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                contentColor = MaterialTheme.colorScheme.onSurface
-                            )
-                        ) {
-                            Text(batchActionLabel(action, preferredSource))
-                        }
-                    }
-                }
-            }
-
-            TextButton(
-                modifier = Modifier.align(Alignment.End),
-                onClick = onExitSelectionMode
-            ) {
-                Text(
-                    text = stringResource(R.string.dedup_engine_exit_batch),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DedupIssueRadar(
-    typeCounts: Map<DedupClusterType, Int>,
-    selectedType: DedupClusterType?,
-    onTypeChange: (DedupClusterType?) -> Unit
-) {
-    ElevatedCard(
-        shape = RoundedCornerShape(30.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            DedupSectionHeader(
-                title = stringResource(R.string.dedup_engine_radar_title),
-                subtitle = stringResource(R.string.dedup_engine_radar_desc)
-            )
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                item {
-                    RadarTypeCard(
-                        type = null,
-                        count = typeCounts.values.sum(),
-                        selected = selectedType == null,
-                        onClick = { onTypeChange(null) }
-                    )
-                }
-                DedupClusterType.entries.forEach { type ->
-                    val count = typeCounts[type] ?: 0
-                    if (count <= 0) return@forEach
-                    item {
-                        RadarTypeCard(
-                            type = type,
-                            count = count,
-                            selected = selectedType == type,
-                            onClick = { onTypeChange(type) }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RadarTypeCard(
-    type: DedupClusterType?,
-    count: Int,
+private fun SelectableSourceRow(
+    source: DedupMergeSourceOption,
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val accentColor = type?.let { sourceAccentColorForType(it) } ?: MaterialTheme.colorScheme.primary
-    Surface(
-        modifier = Modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(22.dp),
-        color = if (selected) {
-            accentColor.copy(alpha = 0.15f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        border = BorderStroke(
-            if (selected) 1.6.dp else 1.dp,
-            if (selected) accentColor else MaterialTheme.colorScheme.outlineVariant
-        )
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, if (selected) sourceColor(source.kind) else MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = accentColor.copy(alpha = 0.16f)
-            ) {
-                Icon(
-                    imageVector = type?.let { typeIcon(it) } ?: Icons.Default.AutoAwesome,
-                    contentDescription = null,
-                    modifier = Modifier.padding(8.dp),
-                    tint = accentColor
-                )
-            }
-            Column {
+            Checkbox(checked = selected, onCheckedChange = { onClick() })
+            SourceIcon(source.kind)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(source.label, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    text = type?.let { typeLabel(it) } ?: stringResource(R.string.dedup_engine_type_all),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = count.toString(),
-                    style = MaterialTheme.typography.labelMedium,
+                    text = "${source.kind.label()} · ${source.countSummary()}",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -1119,672 +387,263 @@ private fun RadarTypeCard(
 }
 
 @Composable
-private fun DedupSectionHeader(
-    title: String,
-    subtitle: String
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun FilterOptionButton(
+private fun SelectableTargetRow(
+    target: DedupMergeTargetOption,
     selected: Boolean,
-    label: String,
-    modifier: Modifier = Modifier,
-    trailing: String? = null,
     onClick: () -> Unit
 ) {
-    Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        border = BorderStroke(
-            if (selected) 1.4.dp else 1.dp,
-            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-        )
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                fontWeight = FontWeight.SemiBold
-            )
-            if (trailing != null) {
-                Text(
-                    text = trailing,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.84f)
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DedupClusterCard(
-    cluster: DedupCluster,
-    preferredSource: DedupPreferredSource,
-    selected: Boolean,
-    selectionMode: Boolean,
-    onClusterAction: (DedupCluster, DedupAction) -> Unit,
-    onToggleSelection: () -> Unit
-) {
-    val accentColor = sourceAccentColorForType(cluster.type)
-    val containerColor by animateColorAsState(
-        targetValue = if (selected) {
-            accentColor.copy(alpha = 0.11f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerLow
-        },
-        animationSpec = spring(),
-        label = "dedup_cluster_container"
-    )
-    val borderColor by animateColorAsState(
-        targetValue = if (selected) accentColor else MaterialTheme.colorScheme.outlineVariant,
-        animationSpec = spring(),
-        label = "dedup_cluster_border"
-    )
-
-    ElevatedCard(
+    OutlinedCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = selectionMode, onClick = onToggleSelection),
-        shape = RoundedCornerShape(30.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = containerColor),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (selected) 3.dp else 1.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
     ) {
-        Surface(
-            shape = RoundedCornerShape(30.dp),
-            color = Color.Transparent,
-            border = BorderStroke(if (selected) 1.8.dp else 1.dp, borderColor)
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(18.dp),
-                        color = accentColor.copy(alpha = 0.14f)
-                    ) {
-                        Icon(
-                            imageVector = typeIcon(cluster.type),
-                            contentDescription = null,
-                            modifier = Modifier.padding(12.dp),
-                            tint = accentColor
-                        )
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = typeLabel(cluster.type),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = cluster.keyLabel,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CountBadge(
-                            count = cluster.itemCount,
-                            accentColor = accentColor
-                        )
-                        if (selectionMode) {
-                            SelectionStateChip(
-                                selected = selected,
-                                accentColor = accentColor,
-                                onClick = onToggleSelection
-                            )
-                        }
-                    }
-                }
-
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    cluster.sourceDescriptors.forEach { descriptor ->
-                        SourcePill(
-                            label = descriptor.label,
-                            sourceKind = descriptor.kind
-                        )
-                    }
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(22.dp),
-                    color = accentColor.copy(alpha = 0.10f)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.dedup_engine_recommendation_title),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = accentColor,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = clusterRecommendationText(cluster, preferredSource),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(22.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainer
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.dedup_engine_items_title),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        cluster.items.take(3).forEach { ref ->
-                            ClusterItemPreview(ref = ref)
-                        }
-                        if (cluster.items.size > 3) {
-                            Text(
-                                text = stringResource(
-                                    R.string.dedup_engine_more_items,
-                                    cluster.items.size - 3
-                                ),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = accentColor,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
-
-                if (!selectionMode) {
-                    HorizontalDivider()
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        cluster.supportedActions
-                            .filter { it != DedupAction.IGNORE_CLUSTER }
-                            .forEach { action ->
-                                FilledTonalButton(
-                                    onClick = { onClusterAction(cluster, action) },
-                                    shape = RoundedCornerShape(18.dp)
-                                ) {
-                                    Text(actionLabel(action, cluster, preferredSource))
-                                }
-                            }
-                        if (DedupAction.IGNORE_CLUSTER in cluster.supportedActions) {
-                            OutlinedButton(
-                                onClick = { onClusterAction(cluster, DedupAction.IGNORE_CLUSTER) },
-                                shape = RoundedCornerShape(18.dp)
-                            ) {
-                                Text(actionLabel(DedupAction.IGNORE_CLUSTER, cluster, preferredSource))
-                            }
-                        }
-                    }
-                }
+            RadioButton(selected = selected, onClick = onClick)
+            Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(target.label, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = target.countSummary(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
 }
 
 @Composable
-private fun CountBadge(
-    count: Int,
-    accentColor: Color
-) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = accentColor.copy(alpha = 0.16f)
-    ) {
-        Text(
-            text = count.toString(),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelLarge,
-            color = accentColor,
-            fontWeight = FontWeight.Bold
+private fun ResolvedSecureItemPreviewCard(resolved: DedupResolvedSecureItem) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = if (resolved.existsInTarget) {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
         )
-    }
-}
-
-@Composable
-private fun ClusterItemPreview(ref: DedupEntityRef) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            SourcePill(
-                label = ref.sourceLabel,
-                sourceKind = ref.sourceKind
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = ref.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (ref.subtitle.isNotBlank()) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(resolved.item.title.ifBlank { resolved.item.itemType.label() }, fontWeight = FontWeight.SemiBold)
                     Text(
-                        text = ref.subtitle,
+                        text = resolved.item.itemType.label(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                AssistChip(
+                    onClick = {},
+                    label = { Text(if (resolved.existsInTarget) "跳过" else "写入") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (resolved.existsInTarget) Icons.Default.Info else Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                )
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                resolved.sourceLabels.forEach { label -> AssistChip(onClick = {}, label = { Text(label) }) }
+                if (resolved.sourceItemIds.size > 1) AssistChip(onClick = {}, label = { Text("${resolved.sourceItemIds.size} 个副本") })
+            }
+            if (resolved.conflictFields.isNotEmpty()) {
+                HorizontalDivider()
+                Text(
+                    text = "冲突字段：${resolved.conflictFields.joinToString("、")}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SourcePill(
-    label: String,
-    sourceKind: DedupSourceKind
-) {
-    val accentColor = sourceAccentColor(sourceKind)
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = accentColor.copy(alpha = 0.14f)
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = accentColor,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun SelectionStateChip(
-    selected: Boolean,
-    accentColor: Color,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = Modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
-        color = if (selected) {
-            accentColor.copy(alpha = 0.16f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        border = BorderStroke(
-            1.dp,
-            if (selected) accentColor else MaterialTheme.colorScheme.outlineVariant
-        )
-    ) {
-        Text(
-            text = if (selected) {
-                stringResource(R.string.dedup_engine_selected_short)
+private fun ResolvedPasswordPreviewCard(resolved: DedupResolvedPassword) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = if (resolved.existsInTarget) {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
             } else {
-                stringResource(R.string.dedup_engine_select_short)
-            },
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color = if (selected) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = FontWeight.SemiBold
+                MaterialTheme.colorScheme.surface
+            }
         )
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(resolved.entry.title.ifBlank { "未命名密码" }, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = listOf(resolved.entry.username, resolved.entry.website).filter { it.isNotBlank() }.joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                AssistChip(
+                    onClick = {},
+                    label = { Text(if (resolved.existsInTarget) "跳过" else "写入") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (resolved.existsInTarget) Icons.Default.Info else Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                )
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                resolved.sourceLabels.forEach { label -> AssistChip(onClick = {}, label = { Text(label) }) }
+                if (resolved.sourceEntryIds.size > 1) AssistChip(onClick = {}, label = { Text("${resolved.sourceEntryIds.size} 个副本") })
+                if (resolved.customFields.isNotEmpty()) AssistChip(onClick = {}, label = { Text("${resolved.customFields.size} 个自定义字段") })
+            }
+            if (resolved.conflictFields.isNotEmpty()) {
+                HorizontalDivider()
+                Text(
+                    text = "冲突字段：${resolved.conflictFields.joinToString("、")}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun LoadingCard() {
-    ElevatedCard(shape = RoundedCornerShape(28.dp)) {
+private fun WarningListCard(warnings: List<String>) {
+    OutlinedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            warnings.forEach { warning ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp))
+                    Text(warning, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusCard(icon: ImageVector, tint: Color, text: String) {
+    OutlinedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-            Text(
-                text = stringResource(R.string.dedup_engine_scanning),
-                style = MaterialTheme.typography.bodyMedium
-            )
+            Icon(icon, contentDescription = null, tint = tint)
+            Text(text, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
 
 @Composable
-private fun EmptyCard() {
-    ElevatedCard(shape = RoundedCornerShape(28.dp)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.dedup_engine_empty_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = stringResource(R.string.dedup_engine_empty_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+private fun SectionHeader(title: String, subtitle: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun ErrorCard(message: String) {
-    Surface(
-        shape = RoundedCornerShape(26.dp),
-        color = MaterialTheme.colorScheme.errorContainer
-    ) {
-        Text(
-            text = message,
-            modifier = Modifier.padding(16.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onErrorContainer
-        )
-    }
+private fun SummaryChip(label: String, value: String) {
+    FilterChip(
+        selected = false,
+        onClick = {},
+        label = { Text("$label $value") }
+    )
 }
 
 @Composable
-private fun scopeLabel(scope: DedupScope): String {
-    return when (scope) {
-        DedupScope.ALL -> stringResource(R.string.dedup_scope_all)
-        DedupScope.MONICA_LOCAL -> stringResource(R.string.dedup_scope_local)
-        DedupScope.KEEPASS -> stringResource(R.string.dedup_scope_keepass)
-        DedupScope.BITWARDEN -> stringResource(R.string.dedup_scope_bitwarden)
-    }
+private fun SourceIcon(kind: DedupMergeSourceKind) {
+    Icon(
+        imageVector = Icons.Default.Storage,
+        contentDescription = null,
+        tint = sourceColor(kind),
+        modifier = Modifier.size(22.dp)
+    )
 }
 
 @Composable
-private fun typeLabel(type: DedupClusterType): String {
-    return when (type) {
-        DedupClusterType.EXACT_PASSWORD_DUPLICATE -> stringResource(R.string.dedup_type_exact_password)
-        DedupClusterType.CROSS_SOURCE_PASSWORD_MIRROR -> stringResource(R.string.dedup_type_cross_source_password)
-        DedupClusterType.DUPLICATE_TOTP -> stringResource(R.string.dedup_type_totp)
-        DedupClusterType.DUPLICATE_BANK_CARD -> stringResource(R.string.dedup_type_bank_card)
-        DedupClusterType.DUPLICATE_DOCUMENT -> stringResource(R.string.dedup_type_document)
-        DedupClusterType.PASSKEY_ACCOUNT_CONFLICT -> stringResource(R.string.dedup_type_passkey)
+private fun sourceColor(kind: DedupMergeSourceKind): Color {
+    return when (kind) {
+        DedupMergeSourceKind.MONICA_LOCAL -> MaterialTheme.colorScheme.primary
+        DedupMergeSourceKind.MDBX -> MaterialTheme.colorScheme.tertiary
+        DedupMergeSourceKind.KEEPASS -> MaterialTheme.colorScheme.secondary
+        DedupMergeSourceKind.BITWARDEN -> MaterialTheme.colorScheme.error
     }
 }
 
-@Composable
-private fun typeIcon(type: DedupClusterType): ImageVector = when (type) {
-    DedupClusterType.EXACT_PASSWORD_DUPLICATE -> Icons.Default.ContentCopy
-    DedupClusterType.CROSS_SOURCE_PASSWORD_MIRROR -> Icons.Default.Password
-    DedupClusterType.DUPLICATE_TOTP -> Icons.Default.Key
-    DedupClusterType.DUPLICATE_BANK_CARD -> Icons.Default.CreditCard
-    DedupClusterType.DUPLICATE_DOCUMENT -> Icons.Default.Description
-    DedupClusterType.PASSKEY_ACCOUNT_CONFLICT -> Icons.Default.Security
-}
-
-@Composable
-private fun sourceLabel(sourceKind: DedupSourceKind): String {
-    return when (sourceKind) {
-        DedupSourceKind.MONICA_LOCAL -> stringResource(R.string.dedup_source_local)
-        DedupSourceKind.KEEPASS -> stringResource(R.string.dedup_source_keepass)
-        DedupSourceKind.BITWARDEN -> stringResource(R.string.dedup_source_bitwarden)
-    }
-}
-
-@Composable
-private fun preferredSourceLabel(source: DedupPreferredSource): String {
-    return when (source) {
-        DedupPreferredSource.MONICA_LOCAL -> stringResource(R.string.dedup_source_local)
-        DedupPreferredSource.KEEPASS -> stringResource(R.string.dedup_source_keepass)
-        DedupPreferredSource.BITWARDEN -> stringResource(R.string.dedup_source_bitwarden)
-    }
-}
-
-@Composable
-private fun scopeSummaryLabel(
-    scope: DedupScope,
-    keepassDatabaseId: Long?,
-    bitwardenVaultId: Long?,
-    keepassDatabases: List<LocalKeePassDatabase>,
-    bitwardenVaults: List<BitwardenVault>
-): String {
-    return when (scope) {
-        DedupScope.ALL -> scopeLabel(scope)
-        DedupScope.MONICA_LOCAL -> scopeLabel(scope)
-        DedupScope.KEEPASS -> keepassDatabaseId?.let { id ->
-            keepassDatabases.find { it.id == id }?.name?.let { name ->
-                "${scopeLabel(scope)} · $name"
-            }
-        } ?: stringResource(R.string.dedup_engine_specific_keepass_all)
-        DedupScope.BITWARDEN -> bitwardenVaultId?.let { id ->
-            bitwardenVaults.find { it.id == id }?.let { vault ->
-                "${scopeLabel(scope)} · ${vaultPrimaryLabel(vault)}"
-            }
-        } ?: stringResource(R.string.dedup_engine_specific_bitwarden_all)
-    }
-}
-
-@Composable
-private fun preferredSourceSummaryLabel(
-    source: DedupPreferredSource,
-    keepassDatabaseId: Long?,
-    bitwardenVaultId: Long?,
-    keepassDatabases: List<LocalKeePassDatabase>,
-    bitwardenVaults: List<BitwardenVault>
-): String {
-    return when (source) {
-        DedupPreferredSource.MONICA_LOCAL -> preferredSourceLabel(source)
-        DedupPreferredSource.KEEPASS -> keepassDatabaseId?.let { id ->
-            keepassDatabases.find { it.id == id }?.name?.let { name ->
-                "${preferredSourceLabel(source)} · $name"
-            }
-        } ?: stringResource(R.string.dedup_engine_specific_keepass_all)
-        DedupPreferredSource.BITWARDEN -> bitwardenVaultId?.let { id ->
-            bitwardenVaults.find { it.id == id }?.let { vault ->
-                "${preferredSourceLabel(source)} · ${vaultPrimaryLabel(vault)}"
-            }
-        } ?: stringResource(R.string.dedup_engine_specific_bitwarden_all)
-    }
-}
-
-@Composable
-private fun batchActionLabel(
-    action: DedupAction,
-    preferredSource: DedupPreferredSource
-): String {
-    return when (action) {
-        DedupAction.APPLY_PASSWORD_PREFERENCE -> stringResource(
-            R.string.dedup_action_keep_source_archive_others,
-            preferredSourceLabel(preferredSource)
-        )
-        DedupAction.MOVE_LOCAL_SECURE_ITEM_COPIES_TO_TRASH -> stringResource(
-            R.string.dedup_action_keep_one_local_item
-        )
-        DedupAction.IGNORE_CLUSTER -> stringResource(R.string.dedup_action_ignore)
-    }
-}
-
-@Composable
-private fun actionLabel(
-    action: DedupAction,
-    cluster: DedupCluster,
-    preferredSource: DedupPreferredSource
-): String {
-    return when (action) {
-        DedupAction.APPLY_PASSWORD_PREFERENCE -> {
-            if (cluster.type == DedupClusterType.EXACT_PASSWORD_DUPLICATE) {
-                stringResource(
-                    R.string.dedup_action_keep_one_source_password,
-                    cluster.sourceDescriptors.firstOrNull()?.label
-                        ?: sourceLabel(cluster.sources.firstOrNull() ?: DedupSourceKind.MONICA_LOCAL)
-                )
-            } else {
-                stringResource(
-                    R.string.dedup_action_keep_source_archive_others,
-                    preferredPasswordSourceLabel(cluster, preferredSource)
-                )
-            }
-        }
-        DedupAction.MOVE_LOCAL_SECURE_ITEM_COPIES_TO_TRASH -> stringResource(
-            R.string.dedup_action_keep_one_local_item
-        )
-        DedupAction.IGNORE_CLUSTER -> stringResource(R.string.dedup_action_ignore)
-    }
-}
-
-@Composable
-private fun clusterSupportingText(cluster: DedupCluster): String {
-    val sourceSummary = cluster.sourceDescriptors.joinToString(" / ") { descriptor -> descriptor.label }
-
-    return when (cluster.type) {
-        DedupClusterType.EXACT_PASSWORD_DUPLICATE -> stringResource(R.string.dedup_cluster_exact_password_desc, sourceSummary)
-        DedupClusterType.CROSS_SOURCE_PASSWORD_MIRROR -> stringResource(R.string.dedup_cluster_cross_source_password_desc, sourceSummary)
-        DedupClusterType.DUPLICATE_TOTP -> stringResource(R.string.dedup_cluster_totp_desc, sourceSummary)
-        DedupClusterType.DUPLICATE_BANK_CARD -> stringResource(R.string.dedup_cluster_bank_card_desc, sourceSummary)
-        DedupClusterType.DUPLICATE_DOCUMENT -> stringResource(R.string.dedup_cluster_document_desc, sourceSummary)
-        DedupClusterType.PASSKEY_ACCOUNT_CONFLICT -> stringResource(R.string.dedup_cluster_passkey_desc, sourceSummary)
-    }
-}
-
-@Composable
-private fun clusterRecommendationText(
-    cluster: DedupCluster,
-    preferredSource: DedupPreferredSource
-): String {
-    return when (cluster.type) {
-        DedupClusterType.EXACT_PASSWORD_DUPLICATE -> stringResource(
-            R.string.dedup_cluster_exact_password_recommendation,
-            cluster.sourceDescriptors.firstOrNull()?.label
-                ?: sourceLabel(cluster.sources.firstOrNull() ?: DedupSourceKind.MONICA_LOCAL)
-        )
-        DedupClusterType.CROSS_SOURCE_PASSWORD_MIRROR -> {
-            val preferredLabel = preferredPasswordSourceLabel(cluster, preferredSource)
-            if (cluster.sources.any { it == preferredSource.toSourceKind() }) {
-                stringResource(
-                    R.string.dedup_cluster_cross_source_password_recommendation,
-                    preferredLabel
-                )
-            } else {
-                stringResource(
-                    R.string.dedup_cluster_cross_source_password_fallback,
-                    preferredSourceLabel(preferredSource),
-                    preferredLabel
-                )
-            }
-        }
-        else -> clusterSupportingText(cluster)
-    }
-}
-
-@Composable
-private fun preferredPasswordSourceLabel(
-    cluster: DedupCluster,
-    preferredSource: DedupPreferredSource
-): String {
-    val preferredKind = preferredSource.toSourceKind()
-    return if (cluster.sources.any { it == preferredKind }) {
-        sourceLabel(preferredKind)
-    } else {
-        sourceLabel(cluster.sources.firstOrNull() ?: preferredKind)
-    }
-}
-
-@Composable
-private fun sourceAccentColor(sourceKind: DedupSourceKind): Color {
-    return when (sourceKind) {
-        DedupSourceKind.MONICA_LOCAL -> MaterialTheme.colorScheme.primary
-        DedupSourceKind.KEEPASS -> MaterialTheme.colorScheme.tertiary
-        DedupSourceKind.BITWARDEN -> MaterialTheme.colorScheme.secondary
-    }
-}
-
-@Composable
-private fun sourceAccentColorForType(type: DedupClusterType): Color {
-    return when (type) {
-        DedupClusterType.EXACT_PASSWORD_DUPLICATE -> MaterialTheme.colorScheme.secondary
-        DedupClusterType.CROSS_SOURCE_PASSWORD_MIRROR -> MaterialTheme.colorScheme.primary
-        DedupClusterType.DUPLICATE_TOTP -> MaterialTheme.colorScheme.tertiary
-        DedupClusterType.DUPLICATE_BANK_CARD -> MaterialTheme.colorScheme.secondary
-        DedupClusterType.DUPLICATE_DOCUMENT -> MaterialTheme.colorScheme.tertiary
-        DedupClusterType.PASSKEY_ACCOUNT_CONFLICT -> MaterialTheme.colorScheme.primary
-    }
-}
-
-private fun DedupPreferredSource.toSourceKind(): DedupSourceKind {
+private fun DedupMergeSourceKind.label(): String {
     return when (this) {
-        DedupPreferredSource.MONICA_LOCAL -> DedupSourceKind.MONICA_LOCAL
-        DedupPreferredSource.KEEPASS -> DedupSourceKind.KEEPASS
-        DedupPreferredSource.BITWARDEN -> DedupSourceKind.BITWARDEN
+        DedupMergeSourceKind.MONICA_LOCAL -> "Monica"
+        DedupMergeSourceKind.MDBX -> "MDBX"
+        DedupMergeSourceKind.KEEPASS -> "KeePass"
+        DedupMergeSourceKind.BITWARDEN -> "Bitwarden"
     }
 }
 
-private fun scopeToSourceKind(scope: DedupScope): DedupSourceKind {
-    return when (scope) {
-        DedupScope.ALL -> DedupSourceKind.MONICA_LOCAL
-        DedupScope.MONICA_LOCAL -> DedupSourceKind.MONICA_LOCAL
-        DedupScope.KEEPASS -> DedupSourceKind.KEEPASS
-        DedupScope.BITWARDEN -> DedupSourceKind.BITWARDEN
+private val DedupMergePlan.skippedItems: Int
+    get() = targetExistingDuplicates + targetExistingSecureItems + unsupportedSourcePasskeys
+
+private fun DedupMergeSourceOption.countSummary(): String {
+    return itemCountParts(
+        passwordCount = passwordCount,
+        secureItemCount = secureItemCount,
+        passkeyCount = passkeyCount
+    )
+}
+
+private fun DedupMergeTargetOption.countSummary(): String {
+    return itemCountParts(
+        passwordCount = passwordCount,
+        secureItemCount = secureItemCount,
+        passkeyCount = passkeyCount
+    )
+}
+
+private fun itemCountParts(
+    passwordCount: Int,
+    secureItemCount: Int,
+    passkeyCount: Int
+): String {
+    return buildList {
+        add("$passwordCount 条密码")
+        if (secureItemCount > 0) add("$secureItemCount 个安全项")
+        if (passkeyCount > 0) add("$passkeyCount 个通行密钥")
+    }.joinToString(" · ")
+}
+
+private fun ItemType.label(): String {
+    return when (this) {
+        ItemType.PASSWORD -> "密码"
+        ItemType.TOTP -> "验证器"
+        ItemType.BANK_CARD -> "银行卡"
+        ItemType.DOCUMENT -> "证件"
+        ItemType.NOTE -> "笔记"
     }
-}
-
-private fun vaultPrimaryLabel(vault: BitwardenVault): String {
-    return vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email
-}
-
-private fun vaultSecondaryLabel(vault: BitwardenVault): String? {
-    return vault.email.takeIf { vault.displayName?.isNotBlank() == true && it != vault.displayName }
 }

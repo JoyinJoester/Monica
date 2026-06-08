@@ -35,7 +35,9 @@ private data class OneDriveDriveItemDto(
 
 @Serializable
 private data class OneDriveChildrenResponseDto(
-    val value: List<OneDriveDriveItemDto> = emptyList()
+    val value: List<OneDriveDriveItemDto> = emptyList(),
+    @SerialName("@odata.nextLink")
+    val nextLink: String? = null
 )
 
 @Serializable
@@ -175,12 +177,18 @@ class OneDriveKeePassFileSource(
         val normalizedDirectoryPath = normalizeOptionalRemotePath(directoryPath)
         val token = authManager.acquireAccessToken(accountIdentifier).accessToken
             ?: throw IOException("OneDrive 访问令牌为空")
-        val payload = executeJsonRequest(
-            relativeUrl = buildChildrenRelativeUrl(normalizedDirectoryPath),
-            accessToken = token
-        )
-        json.decodeFromString<OneDriveChildrenResponseDto>(payload)
-            .value
+        val items = mutableListOf<OneDriveDriveItemDto>()
+        var nextUrl: String? = buildChildrenRelativeUrl(normalizedDirectoryPath)
+        while (nextUrl != null) {
+            val payload = executeJsonRequest(
+                relativeUrl = nextUrl,
+                accessToken = token
+            )
+            val page = json.decodeFromString<OneDriveChildrenResponseDto>(payload)
+            items += page.value
+            nextUrl = page.nextLink
+        }
+        items
             .map { item ->
                 FileSourceEntry(
                     id = item.id,
@@ -406,7 +414,7 @@ class OneDriveKeePassFileSource(
     ): String {
         val requestBody = body?.toRequestBody(contentType.toMediaType())
         val requestBuilder = Request.Builder()
-            .url("$GRAPH_BASE_URL$relativeUrl")
+            .url(resolveGraphUrl(relativeUrl))
             .header("Authorization", "Bearer $accessToken")
             .method(method, requestBody)
         headers.forEach { (name, value) ->
@@ -424,6 +432,14 @@ class OneDriveKeePassFileSource(
                 )
             }
             return responseBody
+        }
+    }
+
+    private fun resolveGraphUrl(relativeOrAbsoluteUrl: String): String {
+        return if (relativeOrAbsoluteUrl.startsWith("https://", ignoreCase = true)) {
+            relativeOrAbsoluteUrl
+        } else {
+            "$GRAPH_BASE_URL$relativeOrAbsoluteUrl"
         }
     }
 

@@ -236,14 +236,12 @@ fun WebDavBackupScreen(
         // 加载备份偏好设置
         backupPreferences = webDavHelper.getBackupPreferences()
         
-        // WebDAV 备份是跨端完整备份，数量展示需要和 ALL_OFFLINE 打包范围一致。
-        val allPasswordsForBackupCount = passwordRepository.getAllPasswordEntries().first()
-        val allSecureItemsForBackupCount = secureItemRepository.getAllItems().first()
-        passwordCount = allPasswordsForBackupCount.size
-        authenticatorCount = allSecureItemsForBackupCount.count { it.itemType == takagi.ru.monica.data.ItemType.TOTP }
-        documentCount = allSecureItemsForBackupCount.count { it.itemType == takagi.ru.monica.data.ItemType.DOCUMENT }
-        bankCardCount = allSecureItemsForBackupCount.count { it.itemType == takagi.ru.monica.data.ItemType.BANK_CARD }
-        noteCount = allSecureItemsForBackupCount.count { it.itemType == takagi.ru.monica.data.ItemType.NOTE }
+        // WebDAV 主备份只备份 Monica 本地库；外部来源有各自的同步/备份入口。
+        passwordCount = passwordRepository.getLocalEntriesCount()
+        authenticatorCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.TOTP)
+        documentCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.DOCUMENT)
+        bankCardCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.BANK_CARD)
+        noteCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.NOTE)
         
         // 获取本地回收站数量（排除 KeePass 和 Bitwarden 的数据）
         val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
@@ -774,13 +772,13 @@ fun WebDavBackupScreen(
                         errorMessage = ""
                         coroutineScope.launch {
                             try {
-                                // 获取所有密码数据
-                                val allPasswords = passwordRepository.getAllPasswordEntries().first()
+                                // 获取 Monica 本地密码数据
+                                val localPasswords = passwordRepository.getAllLocalPasswordEntries()
                                 
                                 // WebDAV 是跨端备份；如果 Android 本机密钥不可用，不能把设备密文写进备份。
                                 val securityManager = takagi.ru.monica.security.SecurityManager(context)
                                 val failedPasswordTitles = mutableListOf<String>()
-                                val decryptedPasswords = allPasswords.map { entry ->
+                                val decryptedPasswords = localPasswords.map { entry ->
                                     try {
                                         entry.copy(password = securityManager.decryptData(entry.password))
                                     } catch (e: Exception) {
@@ -795,17 +793,17 @@ fun WebDavBackupScreen(
                                     )
                                 }
                                 
-                                // 获取所有其他数据(TOTP、银行卡、证件)
-                                val allSecureItems = secureItemRepository.getAllItems().first()
+                                // 获取 Monica 本地其他数据(TOTP、银行卡、证件、笔记)
+                                val localSecureItems = secureItemRepository.getAllLocalItems()
                                 
                                 // 创建并上传永久备份
                                 val result = webDavHelper.createAndUploadBackup(
                                     passwords = decryptedPasswords, 
-                                    secureItems = allSecureItems,
+                                    secureItems = localSecureItems,
                                     preferences = backupPreferences,
                                     isPermanent = true, // Manual backups are permanent
                                     isManualTrigger = true,
-                                    contentScope = BackupContentScope.ALL_OFFLINE
+                                    contentScope = BackupContentScope.MONICA_LOCAL_ONLY
                                 )
                                 
                                 if (result.isSuccess) {

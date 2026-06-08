@@ -1880,6 +1880,8 @@ class MdbxVaultStore(
             .put("room_id", entry.id)
             .put("website", entry.website)
             .put("username", entry.username)
+            .put("app_package_name", entry.appPackageName)
+            .put("app_name", entry.appName)
             .put(
                 "password_plain",
                 runCatching { securityManager.decryptData(entry.password) }.getOrDefault(entry.password)

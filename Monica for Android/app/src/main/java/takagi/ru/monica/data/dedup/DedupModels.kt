@@ -1,106 +1,102 @@
 package takagi.ru.monica.data.dedup
 
-import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.CustomField
+import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.SecureItem
 
-enum class DedupScope {
-    ALL,
+enum class DedupMergeSourceKind {
     MONICA_LOCAL,
+    MDBX,
     KEEPASS,
     BITWARDEN
 }
 
-enum class DedupClusterType {
-    EXACT_PASSWORD_DUPLICATE,
-    CROSS_SOURCE_PASSWORD_MIRROR,
-    DUPLICATE_TOTP,
-    DUPLICATE_BANK_CARD,
-    DUPLICATE_DOCUMENT,
-    PASSKEY_ACCOUNT_CONFLICT
-}
-
-enum class DedupAction {
-    APPLY_PASSWORD_PREFERENCE,
-    MOVE_LOCAL_SECURE_ITEM_COPIES_TO_TRASH,
-    IGNORE_CLUSTER
-}
-
-enum class DedupSourceKind {
-    MONICA_LOCAL,
-    KEEPASS,
-    BITWARDEN
-}
-
-enum class DedupPreferredSource {
-    MONICA_LOCAL,
-    KEEPASS,
-    BITWARDEN
-}
-
-data class DedupSourceDescriptor(
-    val instanceKey: String,
-    val kind: DedupSourceKind,
-    val label: String
+data class DedupMergeSourceOption(
+    val key: String,
+    val kind: DedupMergeSourceKind,
+    val label: String,
+    val passwordCount: Int,
+    val secureItemCount: Int = 0,
+    val passkeyCount: Int = 0
 )
 
-sealed interface DedupEntityRef {
-    val stableId: String
-    val title: String
-    val subtitle: String
-    val sourceKind: DedupSourceKind
-    val sourceLabel: String
-    val sourceInstanceKey: String
-    val isLocal: Boolean
-
-    data class PasswordRef(
-        val entryId: Long,
-        override val title: String,
-        override val subtitle: String,
-        override val sourceKind: DedupSourceKind,
-        override val sourceLabel: String,
-        override val sourceInstanceKey: String,
-        override val isLocal: Boolean
-    ) : DedupEntityRef {
-        override val stableId: String = "password:$entryId"
-    }
-
-    data class SecureItemRef(
-        val itemId: Long,
-        val itemType: ItemType,
-        override val title: String,
-        override val subtitle: String,
-        override val sourceKind: DedupSourceKind,
-        override val sourceLabel: String,
-        override val sourceInstanceKey: String,
-        override val isLocal: Boolean
-    ) : DedupEntityRef {
-        override val stableId: String = "secure:${itemType.name}:$itemId"
-    }
-
-    data class PasskeyRef(
-        val credentialId: String,
-        override val title: String,
-        override val subtitle: String,
-        override val sourceKind: DedupSourceKind,
-        override val sourceLabel: String,
-        override val sourceInstanceKey: String,
-        override val isLocal: Boolean
-    ) : DedupEntityRef {
-        override val stableId: String = "passkey:$credentialId"
-    }
+sealed class DedupMergeTarget {
+    data object MonicaLocal : DedupMergeTarget()
+    data class MdbxDatabase(
+        val databaseId: Long,
+        val label: String
+    ) : DedupMergeTarget()
 }
 
-data class DedupCluster(
-    val id: String,
-    val type: DedupClusterType,
-    val keyLabel: String,
-    val itemCount: Int,
-    val items: List<DedupEntityRef>,
-    val sources: Set<DedupSourceKind>,
-    val sourceDescriptors: List<DedupSourceDescriptor>,
-    val supportedActions: List<DedupAction>
+data class DedupMergeTargetOption(
+    val target: DedupMergeTarget,
+    val label: String,
+    val passwordCount: Int,
+    val secureItemCount: Int = 0,
+    val passkeyCount: Int = 0
 )
 
-data class DedupActionResult(
-    val message: String,
-    val changedCount: Int = 0
+data class DedupResolvedPassword(
+    val mergeKey: String,
+    val entry: PasswordEntry,
+    val customFields: List<CustomField>,
+    val sourceEntryIds: List<Long>,
+    val sourceLabels: List<String>,
+    val conflictFields: Set<String>,
+    val existsInTarget: Boolean = false
 )
+
+data class DedupResolvedSecureItem(
+    val mergeKey: String,
+    val item: SecureItem,
+    val sourceItemIds: List<Long>,
+    val sourceLabels: List<String>,
+    val conflictFields: Set<String>,
+    val existsInTarget: Boolean = false
+)
+
+data class DedupMergePlan(
+    val selectedSources: List<DedupMergeSourceOption> = emptyList(),
+    val target: DedupMergeTarget? = null,
+    val totalSourcePasswords: Int = 0,
+    val totalSourceSecureItems: Int = 0,
+    val unsupportedSourcePasskeys: Int = 0,
+    val uniquePasswords: Int = 0,
+    val uniqueSecureItems: Int = 0,
+    val duplicateGroups: Int = 0,
+    val duplicateSecureItemGroups: Int = 0,
+    val targetExistingDuplicates: Int = 0,
+    val targetExistingSecureItems: Int = 0,
+    val previewPasswords: List<DedupResolvedPassword> = emptyList(),
+    val previewSecureItems: List<DedupResolvedSecureItem> = emptyList(),
+    val warnings: List<String> = emptyList()
+) {
+    val writablePasswords: Int
+        get() = (uniquePasswords - targetExistingDuplicates).coerceAtLeast(0)
+
+    val writableSecureItems: Int
+        get() = (uniqueSecureItems - targetExistingSecureItems).coerceAtLeast(0)
+
+    val writableItems: Int
+        get() = writablePasswords + writableSecureItems
+
+    val totalSourceItems: Int
+        get() = totalSourcePasswords + totalSourceSecureItems + unsupportedSourcePasskeys
+}
+
+data class DedupMergeExecutionResult(
+    val insertedPasswords: Int,
+    val insertedSecureItems: Int = 0,
+    val skippedExistingPasswords: Int,
+    val skippedExistingSecureItems: Int = 0,
+    val skippedUnsupportedPasskeys: Int = 0,
+    val failedPasswords: Int,
+    val failedSecureItems: Int = 0,
+    val targetLabel: String
+) {
+    val insertedItems: Int
+        get() = insertedPasswords + insertedSecureItems
+
+    val skippedExistingItems: Int
+        get() = skippedExistingPasswords + skippedExistingSecureItems
+}

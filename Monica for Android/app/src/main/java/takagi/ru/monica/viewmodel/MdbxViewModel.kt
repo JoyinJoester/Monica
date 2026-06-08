@@ -1871,6 +1871,8 @@ class MdbxViewModel(
 
     private suspend fun importEntriesFromVault(databaseId: Long) {
         invalidateMdbxViewCaches(databaseId)
+        val database = databaseDao.getDatabaseById(databaseId)
+            ?: throw IllegalStateException("Vault not found")
         var entries: List<MdbxStoredVaultEntry> = emptyList()
         val readMs = measureTimeMillis {
             entries = vaultStore.readStoredEntries(databaseId)
@@ -1878,7 +1880,20 @@ class MdbxViewModel(
         val payloadByEntryId = mutableMapOf<String, JSONObject>()
         val importedPasswordIds = mutableMapOf<String, Long>()
         val importedSecureItemIds = mutableMapOf<String, Long>()
-        val existingPasswordsByEntryId = passwordEntryDao.getByMdbxDatabaseIdSync(databaseId)
+        val remotePasswordRoomIdsByEntryId = entries
+            .filter { !it.deleted && it.entryType == "login" }
+            .mapNotNull { stored ->
+                runCatching { JSONObject(stored.payloadJson) }
+                    .getOrNull()
+                    ?.optLong("room_id", 0L)
+                    ?.takeIf { it > 0L }
+                    ?.let { roomId -> stored.entryId to roomId }
+            }
+            .toMap()
+        val existingPasswordsByEntryId = normalizeLegacyMdbxPasswordRows(
+            databaseId = databaseId,
+            remoteRoomIdsByEntryId = remotePasswordRoomIdsByEntryId
+        )
             .dedupeMdbxPasswordRowsByEntryId()
             .mapNotNull { entry -> entry.replicaGroupId?.let { it to entry } }
             .toMap()
@@ -1896,6 +1911,27 @@ class MdbxViewModel(
         val activePasswordEntryIds = mutableSetOf<String>()
         val activeSecureItemEntryIds = mutableSetOf<String>()
         val activePasskeyEntryIds = mutableSetOf<String>()
+        val deletedPasswordEntryIds = entries
+            .filter { it.deleted && it.entryType == "login" }
+            .map { it.entryId }
+            .toSet()
+        val deletedSecureItemEntryIds = entries
+            .filter { it.deleted && it.entryType in mdbxSecureItemEntryTypes }
+            .map { it.entryId }
+            .toSet()
+        val deletedPasskeyEntryIds = entries
+            .filter { it.deleted && it.entryType == "passkey" }
+            .map { it.entryId }
+            .toSet()
+        val vaultActivePasswordEntryIds = entries
+            .filter { !it.deleted && it.entryType == "login" }
+            .map { it.entryId }
+        val vaultActiveSecureItemEntryIds = entries
+            .filter { !it.deleted && it.entryType in mdbxSecureItemEntryTypes }
+            .map { it.entryId }
+        MdbxDiagLogger.append(
+            "[MDBX][import-scan] databaseId=$databaseId entries=${entries.size} activePasswords=${vaultActivePasswordEntryIds.size} deletedPasswords=${deletedPasswordEntryIds.size} activeSecureItems=${vaultActiveSecureItemEntryIds.size} deletedSecureItems=${deletedSecureItemEntryIds.size} existingPasswordRows=${existingPasswordsByEntryId.size} existingSecureItemRows=${existingSecureItemsByEntryId.size} activePasswordEntryIds=${summarizeDiagValues(vaultActivePasswordEntryIds)} deletedPasswordEntryIds=${summarizeDiagValues(deletedPasswordEntryIds)} existingPasswordEntryIds=${summarizeDiagValues(existingPasswordsByEntryId.keys)} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+        )
         val reconcileMs = measureTimeMillis {
         }
         val importMs = measureTimeMillis {
@@ -1945,19 +1981,65 @@ class MdbxViewModel(
                 .filterKeys { it !in activePasswordEntryIds }
                 .values
                 .let { orphanedRows ->
-                    softDeleteMdbxPasswordRows(
-                        rows = orphanedRows,
-                        reason = "orphaned_remote_entry"
+                    val (remoteDeletedRows, missingRemoteRows) = orphanedRows.partition {
+                        it.replicaGroupId in deletedPasswordEntryIds
+                    }
+                    if (orphanedRows.isNotEmpty()) {
+                        MdbxDiagLogger.append(
+                            "[MDBX][orphan-classify] type=password databaseId=$databaseId orphanCount=${orphanedRows.size} remoteDeletedCount=${remoteDeletedRows.size} missingRemoteCount=${missingRemoteRows.size} remoteDeleted=${summarizeDiagValues(remoteDeletedRows.map { it.mdbxPasswordDiagLabel() })} missingRemote=${summarizeDiagValues(missingRemoteRows.map { it.mdbxPasswordDiagLabel() })} deletedEntryIds=${summarizeDiagValues(deletedPasswordEntryIds)} activeEntryIds=${summarizeDiagValues(activePasswordEntryIds)} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+                        )
+                    }
+                    rescueMissingRemoteMdbxPasswordRows(
+                        database = database,
+                        rows = missingRemoteRows
+                    )
+                    rescueRemoteDeletedMdbxPasswordRows(
+                        database = database,
+                        rows = remoteDeletedRows
                     )
                 }
             existingSecureItemsByEntryId
                 .filterKeys { it !in activeSecureItemEntryIds }
                 .values
-                .forEach { secureItemDao.deleteItemById(it.id) }
+                .let { orphanedItems ->
+                    val (remoteDeletedItems, missingRemoteItems) = orphanedItems.partition {
+                        it.mdbxPrimaryImportEntryId() in deletedSecureItemEntryIds
+                    }
+                    if (orphanedItems.isNotEmpty()) {
+                        MdbxDiagLogger.append(
+                            "[MDBX][orphan-classify] type=secure_item databaseId=$databaseId orphanCount=${orphanedItems.size} remoteDeletedCount=${remoteDeletedItems.size} missingRemoteCount=${missingRemoteItems.size} remoteDeleted=${summarizeDiagValues(remoteDeletedItems.map { it.mdbxSecureItemDiagLabel() })} missingRemote=${summarizeDiagValues(missingRemoteItems.map { it.mdbxSecureItemDiagLabel() })} deletedEntryIds=${summarizeDiagValues(deletedSecureItemEntryIds)} activeEntryIds=${summarizeDiagValues(activeSecureItemEntryIds)} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+                        )
+                    }
+                    rescueMissingRemoteMdbxSecureItemRows(
+                        database = database,
+                        items = missingRemoteItems
+                    )
+                    rescueRemoteDeletedMdbxSecureItemRows(
+                        database = database,
+                        items = remoteDeletedItems
+                    )
+                }
             existingPasskeysByEntryId
                 .filterKeys { it !in activePasskeyEntryIds }
                 .values
-                .forEach { passkeyDao.deleteByRecordId(it.id) }
+                .let { orphanedPasskeys ->
+                    val (remoteDeletedPasskeys, missingRemotePasskeys) = orphanedPasskeys.partition {
+                        "passkey:${it.credentialId}" in deletedPasskeyEntryIds
+                    }
+                    if (orphanedPasskeys.isNotEmpty()) {
+                        MdbxDiagLogger.append(
+                            "[MDBX][orphan-classify] type=passkey databaseId=$databaseId orphanCount=${orphanedPasskeys.size} remoteDeletedCount=${remoteDeletedPasskeys.size} missingRemoteCount=${missingRemotePasskeys.size} remoteDeleted=${summarizeDiagValues(remoteDeletedPasskeys.map { it.mdbxPasskeyDiagLabel() })} missingRemote=${summarizeDiagValues(missingRemotePasskeys.map { it.mdbxPasskeyDiagLabel() })} deletedEntryIds=${summarizeDiagValues(deletedPasskeyEntryIds)} activeEntryIds=${summarizeDiagValues(activePasskeyEntryIds)} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+                        )
+                    }
+                    rescueMissingRemoteMdbxPasskeyRows(
+                        database = database,
+                        passkeys = missingRemotePasskeys
+                    )
+                    rescueRemoteDeletedMdbxPasskeyRows(
+                        database = database,
+                        passkeys = remoteDeletedPasskeys
+                    )
+                }
         }
         val attachmentMs = measureTimeMillis {
             importAttachmentsFromVault(databaseId, importedPasswordIds)
@@ -1967,37 +2049,226 @@ class MdbxViewModel(
         )
     }
 
+    private val mdbxSecureItemEntryTypes = setOf("note", "totp", "card", "document-ref")
+
+    private fun summarizeDiagValues(values: Iterable<Any?>, limit: Int = 20): String {
+        val list = values.map { it?.toString() ?: "-" }
+        if (list.size <= limit) return list.toString()
+        return "${list.take(limit)}...(+${list.size - limit})"
+    }
+
+    private fun PasswordEntry.mdbxPasswordDiagLabel(): String =
+        "room=$id entry=${replicaGroupId ?: "-"} deleted=$isDeleted updatedAt=${updatedAt.time} deletedAt=${deletedAt?.time ?: "-"}"
+
+    private fun SecureItem.mdbxSecureItemDiagLabel(): String =
+        "room=$id type=$itemType entry=${mdbxPrimaryImportEntryId() ?: "-"} deleted=$isDeleted updatedAt=${updatedAt.time} deletedAt=${deletedAt?.time ?: "-"}"
+
+    private fun PasskeyEntry.mdbxPasskeyDiagLabel(): String =
+        "room=$id entry=passkey:$credentialId rp=$rpId lastUsedAt=$lastUsedAt createdAt=$createdAt"
+
+    private suspend fun rescueMissingRemoteMdbxPasswordRows(
+        database: LocalMdbxDatabase,
+        rows: Collection<PasswordEntry>
+    ) {
+        val rowsToRescue = rows
+            .filterNot { it.isDeleted }
+            .map { it.withNormalizedMdbxPasswordEntryId() }
+            .toList()
+        if (rowsToRescue.isEmpty()) return
+
+        try {
+            passwordEntryDao.updatePasswordEntries(rowsToRescue)
+            vaultStore.upsertPasswords(rowsToRescue)
+            MdbxDiagLogger.append(
+                "[MDBX][orphan-rescue] type=password reason=missing_remote_entry databaseId=${database.id} count=${rowsToRescue.size} ids=${rowsToRescue.map { it.id }} entryIds=${rowsToRescue.map { it.replicaGroupId ?: "-" }} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+            )
+        } catch (e: Exception) {
+            MdbxDiagLogger.append(
+                "[MDBX][orphan-rescue] failure type=password reason=missing_remote_entry databaseId=${database.id} count=${rowsToRescue.size} ids=${rowsToRescue.map { it.id }} entryIds=${rowsToRescue.map { it.replicaGroupId ?: "-" }} error=${e::class.java.simpleName}:${e.message}"
+            )
+            throw IllegalStateException(
+                "Active local MDBX password rows are missing from the vault and could not be written back; refusing to delete them during sync.",
+                e
+            )
+        }
+    }
+
+    private suspend fun rescueMissingRemoteMdbxSecureItemRows(
+        database: LocalMdbxDatabase,
+        items: Collection<SecureItem>
+    ) {
+        val itemsToRescue = items
+            .filterNot { it.isDeleted }
+            .toList()
+        if (itemsToRescue.isEmpty()) return
+
+        try {
+            vaultStore.upsertSecureItems(itemsToRescue)
+            MdbxDiagLogger.append(
+                "[MDBX][orphan-rescue] type=secure_item reason=missing_remote_entry databaseId=${database.id} count=${itemsToRescue.size} ids=${itemsToRescue.map { it.id }} entryIds=${itemsToRescue.map { it.mdbxPrimaryImportEntryId() ?: "-" }} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+            )
+        } catch (e: Exception) {
+            MdbxDiagLogger.append(
+                "[MDBX][orphan-rescue] failure type=secure_item reason=missing_remote_entry databaseId=${database.id} count=${itemsToRescue.size} ids=${itemsToRescue.map { it.id }} entryIds=${itemsToRescue.map { it.mdbxPrimaryImportEntryId() ?: "-" }} error=${e::class.java.simpleName}:${e.message}"
+            )
+            throw IllegalStateException(
+                "Active local MDBX secure-item rows are missing from the vault and could not be written back; refusing to delete them during sync.",
+                e
+            )
+        }
+    }
+
+    private suspend fun rescueRemoteDeletedMdbxPasswordRows(
+        database: LocalMdbxDatabase,
+        rows: Collection<PasswordEntry>
+    ) {
+        val rowsToRescue = rows
+            .filterNot { it.isDeleted }
+            .map { it.withNormalizedMdbxPasswordEntryId() }
+            .toList()
+        if (rowsToRescue.isEmpty()) return
+
+        try {
+            passwordEntryDao.updatePasswordEntries(rowsToRescue)
+            vaultStore.upsertPasswords(rowsToRescue)
+            MdbxDiagLogger.append(
+                "[MDBX][orphan-rescue] type=password reason=remote_deleted_local_active databaseId=${database.id} count=${rowsToRescue.size} rows=${summarizeDiagValues(rowsToRescue.map { it.mdbxPasswordDiagLabel() })} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+            )
+        } catch (e: Exception) {
+            MdbxDiagLogger.append(
+                "[MDBX][orphan-rescue] failure type=password reason=remote_deleted_local_active databaseId=${database.id} count=${rowsToRescue.size} rows=${summarizeDiagValues(rowsToRescue.map { it.mdbxPasswordDiagLabel() })} error=${e::class.java.simpleName}:${e.message}"
+            )
+            throw IllegalStateException(
+                "Active local MDBX password rows have remote tombstones and could not be written back; refusing to delete them during sync.",
+                e
+            )
+        }
+    }
+
+    private suspend fun rescueRemoteDeletedMdbxSecureItemRows(
+        database: LocalMdbxDatabase,
+        items: Collection<SecureItem>
+    ) {
+        val itemsToRescue = items
+            .filterNot { it.isDeleted }
+            .toList()
+        if (itemsToRescue.isEmpty()) return
+
+        try {
+            vaultStore.upsertSecureItems(itemsToRescue)
+            MdbxDiagLogger.append(
+                "[MDBX][orphan-rescue] type=secure_item reason=remote_deleted_local_active databaseId=${database.id} count=${itemsToRescue.size} rows=${summarizeDiagValues(itemsToRescue.map { it.mdbxSecureItemDiagLabel() })} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+            )
+        } catch (e: Exception) {
+            MdbxDiagLogger.append(
+                "[MDBX][orphan-rescue] failure type=secure_item reason=remote_deleted_local_active databaseId=${database.id} count=${itemsToRescue.size} rows=${summarizeDiagValues(itemsToRescue.map { it.mdbxSecureItemDiagLabel() })} error=${e::class.java.simpleName}:${e.message}"
+            )
+            throw IllegalStateException(
+                "Active local MDBX secure-item rows have remote tombstones and could not be written back; refusing to delete them during sync.",
+                e
+            )
+        }
+    }
+
+    private suspend fun rescueMissingRemoteMdbxPasskeyRows(
+        database: LocalMdbxDatabase,
+        passkeys: Collection<PasskeyEntry>
+    ) {
+        val passkeysToRescue = passkeys.toList()
+        if (passkeysToRescue.isEmpty()) return
+
+        try {
+            vaultStore.upsertPasskeys(passkeysToRescue)
+            MdbxDiagLogger.append(
+                "[MDBX][orphan-rescue] type=passkey reason=missing_remote_entry databaseId=${database.id} count=${passkeysToRescue.size} rows=${summarizeDiagValues(passkeysToRescue.map { it.mdbxPasskeyDiagLabel() })} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+            )
+        } catch (e: Exception) {
+            MdbxDiagLogger.append(
+                "[MDBX][orphan-rescue] failure type=passkey reason=missing_remote_entry databaseId=${database.id} count=${passkeysToRescue.size} rows=${summarizeDiagValues(passkeysToRescue.map { it.mdbxPasskeyDiagLabel() })} error=${e::class.java.simpleName}:${e.message}"
+            )
+            throw IllegalStateException(
+                "Active local MDBX passkey rows are missing from the vault and could not be written back; refusing to delete them during sync.",
+                e
+            )
+        }
+    }
+
+    private suspend fun rescueRemoteDeletedMdbxPasskeyRows(
+        database: LocalMdbxDatabase,
+        passkeys: Collection<PasskeyEntry>
+    ) {
+        val passkeysToRescue = passkeys.toList()
+        if (passkeysToRescue.isEmpty()) return
+
+        try {
+            vaultStore.upsertPasskeys(passkeysToRescue)
+            MdbxDiagLogger.append(
+                "[MDBX][orphan-rescue] type=passkey reason=remote_deleted_local_active databaseId=${database.id} count=${passkeysToRescue.size} rows=${summarizeDiagValues(passkeysToRescue.map { it.mdbxPasskeyDiagLabel() })} lastSyncedAt=${database.lastSyncedAt ?: "-"}"
+            )
+        } catch (e: Exception) {
+            MdbxDiagLogger.append(
+                "[MDBX][orphan-rescue] failure type=passkey reason=remote_deleted_local_active databaseId=${database.id} count=${passkeysToRescue.size} rows=${summarizeDiagValues(passkeysToRescue.map { it.mdbxPasskeyDiagLabel() })} error=${e::class.java.simpleName}:${e.message}"
+            )
+            throw IllegalStateException(
+                "Active local MDBX passkey rows have remote tombstones and could not be written back; refusing to delete them during sync.",
+                e
+            )
+        }
+    }
+
     private suspend fun clearImportedEntries(databaseId: Long) {
         passwordEntryDao.deleteAllByMdbxDatabaseId(databaseId)
         secureItemDao.deleteAllByMdbxDatabaseId(databaseId)
         passkeyDao.deleteAllByMdbxDatabaseId(databaseId)
     }
 
-    private suspend fun softDeleteMdbxPasswordRows(
-        rows: Collection<PasswordEntry>,
-        reason: String
-    ) {
-        if (rows.isEmpty()) return
-        val now = Date()
-        val updates = rows
-            .filterNot { it.isDeleted }
-            .map { entry ->
-                entry.copy(
-                    isDeleted = true,
-                    deletedAt = entry.deletedAt ?: now,
-                    isArchived = false,
-                    archivedAt = null,
-                    updatedAt = now
-                )
+    private suspend fun normalizeLegacyMdbxPasswordRows(
+        databaseId: Long,
+        remoteRoomIdsByEntryId: Map<String, Long>
+    ): List<PasswordEntry> {
+        val rows = passwordEntryDao.getByMdbxDatabaseIdSync(databaseId)
+        if (rows.isEmpty()) return rows
+
+        val normalizedRows = rows.map { it.withNormalizedMdbxPasswordEntryId() }
+        val rowsNeedingReplicaUpdate = normalizedRows.filterIndexed { index, row ->
+            row.replicaGroupId != rows[index].replicaGroupId
+        }
+        if (rowsNeedingReplicaUpdate.isNotEmpty()) {
+            passwordEntryDao.updatePasswordEntries(rowsNeedingReplicaUpdate)
+            MdbxDiagLogger.append(
+                "[MDBX][legacy-normalize] type=password databaseId=$databaseId count=${rowsNeedingReplicaUpdate.size} rows=${summarizeDiagValues(rowsNeedingReplicaUpdate.map { it.mdbxPasswordDiagLabel() })}"
+            )
+        }
+
+        val duplicateRowsToDelete = normalizedRows
+            .mapNotNull { row -> row.replicaGroupId?.takeIf(String::isNotBlank)?.let { it to row } }
+            .groupBy({ it.first }, { it.second })
+            .flatMap { (entryId, groupedRows) ->
+                if (groupedRows.size <= 1) {
+                    emptyList()
+                } else {
+                    val keeper = remoteRoomIdsByEntryId[entryId]
+                        ?.let { roomId -> groupedRows.firstOrNull { it.id == roomId } }
+                        ?: groupedRows.maxWithOrNull(
+                            compareBy<PasswordEntry> { it.updatedAt.time }
+                                .thenBy { it.id }
+                        )
+                        ?: return@flatMap emptyList()
+                    groupedRows.filterNot { it.id == keeper.id }
+                }
             }
-        if (updates.isEmpty()) return
-        passwordEntryDao.updatePasswordEntries(updates)
-        MdbxDiagLogger.append(
-            "[MDBX][password-soft-delete] reason=$reason count=${updates.size} ids=${updates.map { it.id }}"
-        )
+        val duplicateIdsToDelete = duplicateRowsToDelete.map { it.id }.toSet()
+        if (duplicateIdsToDelete.isNotEmpty()) {
+            duplicateIdsToDelete.forEach { passwordEntryDao.deletePasswordEntryById(it) }
+            MdbxDiagLogger.append(
+                "[MDBX][duplicate-local-delete] type=password databaseId=$databaseId count=${duplicateIdsToDelete.size} rows=${summarizeDiagValues(duplicateRowsToDelete.map { it.mdbxPasswordDiagLabel() })}"
+            )
+        }
+
+        return normalizedRows.filterNot { it.id in duplicateIdsToDelete }
     }
 
-    private suspend fun List<PasswordEntry>.dedupeMdbxPasswordRowsByEntryId(): List<PasswordEntry> {
+    private fun List<PasswordEntry>.dedupeMdbxPasswordRowsByEntryId(): List<PasswordEntry> {
         if (isEmpty()) return this
         val keepIds = mutableSetOf<Long>()
         groupBy { it.replicaGroupId?.takeIf(String::isNotBlank) }.forEach { (entryId, rows) ->
@@ -2007,15 +2278,27 @@ class MdbxViewModel(
             }
             val keeper = rows.maxByOrNull { it.updatedAt.time } ?: return@forEach
             keepIds += keeper.id
-            softDeleteMdbxPasswordRows(
-                rows = rows.filterNot { it.id == keeper.id },
-                reason = "duplicate_mdbx_entry_id"
-            )
+            if (rows.size > 1) {
+                MdbxDiagLogger.append(
+                    "[MDBX][duplicate-preserve] type=password entryId=$entryId keeper=${keeper.mdbxPasswordDiagLabel()} duplicates=${summarizeDiagValues(rows.filterNot { it.id == keeper.id }.map { it.mdbxPasswordDiagLabel() })}"
+                )
+            }
         }
         return filter { it.id in keepIds }
     }
 
-    private suspend fun List<SecureItem>.dedupeMdbxSecureItemRowsByEntryId(): List<SecureItem> {
+    private fun PasswordEntry.withNormalizedMdbxPasswordEntryId(): PasswordEntry {
+        val normalizedEntryId = replicaGroupId
+            ?.takeIf { it.isMdbxPasswordObjectId() }
+            ?: id.takeIf { it > 0L }?.let { "password:$it" }
+            ?: return this
+        return if (replicaGroupId == normalizedEntryId) this else copy(replicaGroupId = normalizedEntryId)
+    }
+
+    private fun String.isMdbxPasswordObjectId(): Boolean =
+        startsWith("password:") && length > "password:".length
+
+    private fun List<SecureItem>.dedupeMdbxSecureItemRowsByEntryId(): List<SecureItem> {
         if (isEmpty()) return this
         val keepIds = mutableSetOf<Long>()
         groupBy { it.mdbxPrimaryImportEntryId() }.forEach { (entryId, rows) ->
@@ -2025,8 +2308,10 @@ class MdbxViewModel(
             }
             val keeper = rows.maxByOrNull { it.updatedAt.time } ?: return@forEach
             keepIds += keeper.id
-            rows.filterNot { it.id == keeper.id }.forEach { duplicate ->
-                secureItemDao.deleteItemById(duplicate.id)
+            if (rows.size > 1) {
+                MdbxDiagLogger.append(
+                    "[MDBX][duplicate-preserve] type=secure_item entryId=$entryId keeper=${keeper.mdbxSecureItemDiagLabel()} duplicates=${summarizeDiagValues(rows.filterNot { it.id == keeper.id }.map { it.mdbxSecureItemDiagLabel() })}"
+                )
             }
         }
         return filter { it.id in keepIds }
@@ -2095,6 +2380,16 @@ class MdbxViewModel(
             username = payload.optString("username"),
             password = securityManager.encryptData(plainPassword),
             notes = payload.optString("notes"),
+            appPackageName = payload.optStringPreservingExisting(
+                primaryKey = "app_package_name",
+                legacyKey = "appPackageName",
+                existingValue = existing?.appPackageName.orEmpty()
+            ),
+            appName = payload.optStringPreservingExisting(
+                primaryKey = "app_name",
+                legacyKey = "appName",
+                existingValue = existing?.appName.orEmpty()
+            ),
             categoryId = existing?.categoryId,
             mdbxDatabaseId = databaseId,
             mdbxFolderId = payload.optMdbxFolderId(),
@@ -2117,6 +2412,18 @@ class MdbxViewModel(
 
         restoreCustomFields(localPasswordId, payload)
         return localPasswordId
+    }
+
+    private fun JSONObject.optStringPreservingExisting(
+        primaryKey: String,
+        legacyKey: String,
+        existingValue: String
+    ): String {
+        return when {
+            has(primaryKey) && !isNull(primaryKey) -> optString(primaryKey)
+            has(legacyKey) && !isNull(legacyKey) -> optString(legacyKey)
+            else -> existingValue
+        }
     }
 
     private suspend fun restoreCustomFields(entryId: Long, payload: JSONObject) {

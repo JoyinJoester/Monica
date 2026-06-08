@@ -40,6 +40,10 @@ class PasswordRepository(
         // Keep semantic behavior the same but avoid the legacy generated callable index path.
         return passwordEntryDao.getActiveEntries()
     }
+
+    suspend fun getAllLocalPasswordEntries(): List<PasswordEntry> {
+        return passwordEntryDao.getAllLocalEntries()
+    }
     
     fun getPasswordEntriesByCategory(categoryId: Long): Flow<List<PasswordEntry>> {
         return passwordEntryDao.getPasswordEntriesByCategory(categoryId)
@@ -334,8 +338,12 @@ class PasswordRepository(
 
     private fun PasswordEntry.mdbxPasswordObjectId(): String =
         replicaGroupId
-            ?.takeIf { it.startsWith("password:") && it.length > "password:".length }
+            ?.takeIf { it.isMdbxPasswordObjectId() }
+            ?: id.takeIf { it > 0 }?.let { "password:$it" }
             ?: "password:${UUID.randomUUID()}"
+
+    private fun String.isMdbxPasswordObjectId(): Boolean =
+        startsWith("password:") && length > "password:".length
 
     suspend fun archivePasswordById(id: Long) {
         passwordEntryDao.archiveById(id)
@@ -545,10 +553,12 @@ class PasswordRepository(
 
     suspend fun updateAppAssociationByWebsite(website: String, packageName: String, appName: String) {
         passwordEntryDao.updateAppAssociationByWebsite(website, packageName, appName)
+        mdbxRepository?.upsertPasswords(passwordEntryDao.getActiveMdbxEntriesByWebsite(website))
     }
 
     suspend fun updateAppAssociationByTitle(title: String, packageName: String, appName: String) {
         passwordEntryDao.updateAppAssociationByTitle(title, packageName, appName)
+        mdbxRepository?.upsertPasswords(passwordEntryDao.getActiveMdbxEntriesByTitle(title))
     }
 
     /**

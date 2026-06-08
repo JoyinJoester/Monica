@@ -82,8 +82,8 @@ class AutoBackupWorker(
             val passwordRepo = PasswordRepository(database.passwordEntryDao())
             val secureItemRepo = SecureItemRepository(database.secureItemDao())
 
-            val passwords = passwordRepo.getAllPasswordEntries().first()
-            val secureItems = secureItemRepo.getAllItems().first()
+            val passwords = passwordRepo.getAllLocalPasswordEntries()
+            val secureItems = secureItemRepo.getAllLocalItems()
 
             val securityManager = takagi.ru.monica.security.SecurityManager(applicationContext)
             var failedPasswordDecryptCount = 0
@@ -108,7 +108,7 @@ class AutoBackupWorker(
 
             android.util.Log.d(
                 TAG,
-                "Creating backup with ${passwords.size} passwords and ${secureItems.size} secure items"
+                "Creating Monica-local backup with ${passwords.size} passwords and ${secureItems.size} secure items"
             )
 
             val backupResult = webDavHelper.createAndUploadBackup(
@@ -117,7 +117,7 @@ class AutoBackupWorker(
                 preferences = backupPreferences,
                 isPermanent = false,
                 isManualTrigger = isManualTrigger,
-                contentScope = BackupContentScope.ALL_OFFLINE
+                contentScope = BackupContentScope.MONICA_LOCAL_ONLY
             )
 
             if (backupResult.isSuccess) {

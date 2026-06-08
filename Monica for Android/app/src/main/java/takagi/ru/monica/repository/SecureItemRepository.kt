@@ -57,6 +57,16 @@ class SecureItemRepository(
     fun getAllItems(): Flow<List<SecureItem>> {
         return secureItemDao.getAllItems()
     }
+
+    suspend fun getAllLocalItems(): List<SecureItem> {
+        return ItemType.entries.flatMap { type ->
+            if (type == ItemType.PASSWORD) {
+                emptyList()
+            } else {
+                secureItemDao.getActiveLocalItemsByTypeSync(type)
+            }
+        }
+    }
     
     fun getItemsByType(type: ItemType): Flow<List<SecureItem>> {
         return secureItemDao.getItemsByType(type)

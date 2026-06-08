@@ -31,9 +31,13 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.addOrReplaceLinkedAppBinding
 import takagi.ru.monica.data.isLinkedToApp
+import takagi.ru.monica.mdbx.MdbxDiagLogger
+import takagi.ru.monica.repository.MdbxRepository
+import takagi.ru.monica.repository.MdbxVaultStore
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.theme.MonicaTheme
+import takagi.ru.monica.utils.SettingsManager
 import java.util.Date
 import takagi.ru.monica.ui.components.OutlinedTextField
 
@@ -52,14 +56,35 @@ class AutofillSaveActivity : ComponentActivity() {
     
     private lateinit var passwordRepository: PasswordRepository
     private lateinit var securityManager: SecurityManager
+    private lateinit var database: PasswordDatabase
+    private lateinit var settingsManager: SettingsManager
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         // 初始化 Repository
-        val database = PasswordDatabase.getDatabase(applicationContext)
-        passwordRepository = PasswordRepository(database.passwordEntryDao())
+        database = PasswordDatabase.getDatabase(applicationContext)
         securityManager = SecurityManager(applicationContext)
+        settingsManager = SettingsManager(applicationContext)
+        val mdbxRepository: MdbxRepository = MdbxVaultStore(
+            context = applicationContext,
+            databaseDao = database.localMdbxDatabaseDao(),
+            securityManager = securityManager,
+            remoteSourceDao = database.mdbxRemoteSourceDao(),
+            passwordEntryDao = database.passwordEntryDao(),
+            secureItemDao = database.secureItemDao(),
+            customFieldDao = database.customFieldDao(),
+        )
+        passwordRepository = PasswordRepository(
+            passwordEntryDao = database.passwordEntryDao(),
+            categoryDao = database.categoryDao(),
+            bitwardenFolderDao = database.bitwardenFolderDao(),
+            secureItemDao = database.secureItemDao(),
+            passkeyDao = database.passkeyDao(),
+            passwordArchiveSyncMetaDao = database.passwordArchiveSyncMetaDao(),
+            passwordHistoryDao = database.passwordHistoryDao(),
+            mdbxRepository = mdbxRepository,
+        )
         
         // 获取传递的数据
         val username = intent.getStringExtra(EXTRA_USERNAME) ?: ""
@@ -101,6 +126,7 @@ class AutofillSaveActivity : ComponentActivity() {
     ) {
         lifecycleScope.launch {
             try {
+                val initialTarget = resolveInitialTarget()
                 // 获取包名
                 val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: ""
                 
@@ -180,8 +206,16 @@ class AutofillSaveActivity : ComponentActivity() {
                         appName = appName,
                         createdAt = Date(),
                         updatedAt = Date()
+                    ).withAutofillSaveInitialTarget(initialTarget)
+                    val newId = if (initialTarget.isMdbx) {
+                        passwordRepository.insertPasswordEntries(listOf(newEntry)).singleOrNull()
+                            ?: throw IllegalStateException("MDBX autofill save did not create exactly one password row")
+                    } else {
+                        passwordRepository.insertPasswordEntry(newEntry)
+                    }
+                    MdbxDiagLogger.append(
+                        "[MDBX][autofill-save-complete] source=legacy target=${initialTarget.diagnosticLabel()} roomId=$newId"
                     )
-                    val newId = passwordRepository.insertPasswordEntry(newEntry)
                     
                     // 记录创建操作
                     takagi.ru.monica.utils.OperationLogger.logCreate(
@@ -198,6 +232,16 @@ class AutofillSaveActivity : ComponentActivity() {
                 setResult(RESULT_CANCELED)
                 finish()
             }
+        }
+    }
+
+    private suspend fun resolveInitialTarget(): AutofillSaveInitialTarget {
+        val settingsSnapshot = settingsManager.settingsFlow.first()
+        val mdbxDatabases = database.localMdbxDatabaseDao().getAllDatabasesSnapshot()
+        return resolveAutofillSaveInitialTarget(settingsSnapshot, mdbxDatabases).also { target ->
+            MdbxDiagLogger.append(
+                "[MDBX][autofill-save-open] source=legacy target=${target.diagnosticLabel()} mdbxDatabases=${target.mdbxDatabasesFallback.size}"
+            )
         }
     }
 
