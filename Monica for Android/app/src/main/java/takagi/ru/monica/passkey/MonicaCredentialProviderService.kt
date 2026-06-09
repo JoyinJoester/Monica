@@ -328,8 +328,7 @@ class MonicaCredentialProviderService : CredentialProviderService() {
     }
 
     private fun isUsablePasskey(passkey: takagi.ru.monica.data.PasskeyEntry): Boolean {
-        if (passkey.syncStatus == "REFERENCE") return false
-        return passkey.privateKeyAlias.isNotBlank()
+        return PasskeyCredentialDiscoveryPolicy.isUsable(passkey)
     }
 
     private suspend fun resolvePasskeys(
@@ -362,10 +361,11 @@ class MonicaCredentialProviderService : CredentialProviderService() {
             } else {
                 database.passkeyDao().getAllPasskeysSync()
             }
-            candidates.filter { passkey ->
-                val normalizedId = normalizeCredentialId(passkey.credentialId)
-                normalizedId != null && normalizedId in allowedCredentialIds
-            }
+            PasskeyCredentialDiscoveryPolicy.filterByAllowedCredentialIds(
+                candidates = candidates,
+                allowedCredentialIds = allowedCredentialIds,
+                normalizer = ::normalizeCredentialId,
+            )
         } else if (rpId.isNotBlank()) {
             rpIdCandidates()
         } else {

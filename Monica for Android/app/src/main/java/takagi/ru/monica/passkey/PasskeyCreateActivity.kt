@@ -894,7 +894,7 @@ class PasskeyCreateActivity : FragmentActivity() {
                         put("hybrid")
                     })
                 })
-                put("clientExtensionResults", JSONObject())
+                put("clientExtensionResults", buildClientExtensionResults(requestJson, discoverable))
             }
             
             Log.d(TAG, "Passkey created successfully: $credentialIdB64")
@@ -1333,14 +1333,16 @@ class PasskeyCreateActivity : FragmentActivity() {
     }
 
     private fun parseDiscoverable(requestJson: String): Boolean {
-        return try {
-            val json = JSONObject(requestJson)
-            val authSel = json.optJSONObject("authenticatorSelection")
-            val requireResidentKey = authSel?.optBoolean("requireResidentKey", false) ?: false
-            val residentKey = authSel?.optString("residentKey", "discouraged") ?: "discouraged"
-            requireResidentKey || residentKey == "required" || residentKey == "preferred"
-        } catch (e: Exception) {
-            false
+        return PasskeyDiscoverabilityResolver.isDiscoverableCreationRequest(requestJson)
+    }
+
+    private fun buildClientExtensionResults(requestJson: String, discoverable: Boolean): JSONObject {
+        return JSONObject().apply {
+            if (PasskeyDiscoverabilityResolver.isCredPropsRequested(requestJson)) {
+                put("credProps", JSONObject().apply {
+                    put("rk", discoverable)
+                })
+            }
         }
     }
     
