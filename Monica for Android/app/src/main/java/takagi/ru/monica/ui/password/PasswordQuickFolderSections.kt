@@ -58,6 +58,8 @@ import takagi.ru.monica.data.KeePassSyncPhase
 import takagi.ru.monica.data.KeePassSyncStatus
 import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.MdbxSyncStatus
+import takagi.ru.monica.sync.SyncErrorKind
+import takagi.ru.monica.sync.SyncPhase
 import takagi.ru.monica.ui.components.QuickStatusTransferBar
 import takagi.ru.monica.ui.components.QuickStatusTransferPhase
 import takagi.ru.monica.ui.components.QuickStatusTransferState
@@ -89,13 +91,21 @@ internal data class QuickStatusKeePassSyncState(
     val databaseName: String,
     val status: KeePassSyncStatus,
     val phase: KeePassSyncPhase?,
+    val coordinatorPhase: SyncPhase? = null,
+    val coordinatorErrorKind: SyncErrorKind? = null,
     val onSync: () -> Unit
 ) {
     val isRunning: Boolean
-        get() = status == KeePassSyncStatus.SYNCING ||
+        get() = coordinatorPhase == SyncPhase.RUNNING ||
+            status == KeePassSyncStatus.SYNCING ||
             phase == KeePassSyncPhase.UPLOADING ||
             phase == KeePassSyncPhase.DOWNLOADING ||
             phase == KeePassSyncPhase.COMPARING
+
+    val hasCoordinatorError: Boolean
+        get() = coordinatorPhase == SyncPhase.BLOCKED ||
+            coordinatorPhase == SyncPhase.FAILED ||
+            coordinatorPhase == SyncPhase.CONFLICT
 }
 
 internal fun LocalMdbxDatabase.mdbxPathPendingSyncCount(): Int {
@@ -228,18 +238,20 @@ private fun QuickStatusKeePassSyncBar(
             label = "keepass-quick-status-rotation"
         )
     val rotation = if (state.isRunning) spin else 0f
-    val containerColor = when (state.status) {
-        KeePassSyncStatus.CONFLICT,
-        KeePassSyncStatus.FAILED,
-        KeePassSyncStatus.REMOTE_CHANGED -> MaterialTheme.colorScheme.errorContainer
-        KeePassSyncStatus.PENDING_UPLOAD -> MaterialTheme.colorScheme.tertiaryContainer
+    val containerColor = when {
+        state.hasCoordinatorError -> MaterialTheme.colorScheme.errorContainer
+        state.status == KeePassSyncStatus.CONFLICT ||
+            state.status == KeePassSyncStatus.FAILED ||
+            state.status == KeePassSyncStatus.REMOTE_CHANGED -> MaterialTheme.colorScheme.errorContainer
+        state.status == KeePassSyncStatus.PENDING_UPLOAD -> MaterialTheme.colorScheme.tertiaryContainer
         else -> MaterialTheme.colorScheme.primaryContainer
     }
-    val contentColor = when (state.status) {
-        KeePassSyncStatus.CONFLICT,
-        KeePassSyncStatus.FAILED,
-        KeePassSyncStatus.REMOTE_CHANGED -> MaterialTheme.colorScheme.onErrorContainer
-        KeePassSyncStatus.PENDING_UPLOAD -> MaterialTheme.colorScheme.onTertiaryContainer
+    val contentColor = when {
+        state.hasCoordinatorError -> MaterialTheme.colorScheme.onErrorContainer
+        state.status == KeePassSyncStatus.CONFLICT ||
+            state.status == KeePassSyncStatus.FAILED ||
+            state.status == KeePassSyncStatus.REMOTE_CHANGED -> MaterialTheme.colorScheme.onErrorContainer
+        state.status == KeePassSyncStatus.PENDING_UPLOAD -> MaterialTheme.colorScheme.onTertiaryContainer
         else -> MaterialTheme.colorScheme.onPrimaryContainer
     }
     Row(
@@ -305,6 +317,19 @@ private fun QuickStatusKeePassSyncBar(
 }
 
 internal fun keepassQuickSyncStatusLabel(state: QuickStatusKeePassSyncState): String {
+    when (state.coordinatorPhase) {
+        SyncPhase.RUNNING -> return "正在同步"
+        SyncPhase.BLOCKED -> return when (state.coordinatorErrorKind) {
+            SyncErrorKind.NETWORK_UNAVAILABLE -> "网络不可用"
+            SyncErrorKind.WIFI_REQUIRED -> "需要 Wi-Fi"
+            SyncErrorKind.TARGET_LOCKED -> "数据库未解锁"
+            else -> "同步受阻"
+        }
+        SyncPhase.FAILED -> return "同步失败"
+        SyncPhase.CONFLICT -> return "同步冲突"
+        SyncPhase.CANCELED -> return "同步已取消"
+        else -> Unit
+    }
     if (state.isRunning) return "正在同步"
     return when (state.status) {
         KeePassSyncStatus.PENDING_UPLOAD -> "等待上传"

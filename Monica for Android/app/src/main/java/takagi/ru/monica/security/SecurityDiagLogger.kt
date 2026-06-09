@@ -7,8 +7,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
 import takagi.ru.monica.BuildConfig
+import takagi.ru.monica.utils.BoundedLogExecutorFactory
 
 /**
  * 安全链路持久化诊断日志。
@@ -24,9 +24,7 @@ object SecurityDiagLogger {
 
     private val fileLock = Any()
     private val routineLogLastWrittenAt = ConcurrentHashMap<String, Long>()
-    private val writeExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "monica-security-diag").apply { isDaemon = true }
-    }
+    private val writeExecutor = BoundedLogExecutorFactory.createSingleThreadExecutor("monica-security-diag")
     @Volatile
     private var persistentLogFile: File? = null
 

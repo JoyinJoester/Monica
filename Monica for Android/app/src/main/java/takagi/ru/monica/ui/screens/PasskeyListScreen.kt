@@ -60,6 +60,7 @@ import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.sync.isUserVisibleSyncInProgress
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.bitwarden.sync.syncForUserVisibleRequest
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.isKeePassOwned
@@ -182,7 +183,7 @@ fun PasskeyListScreen(
     }
     val categoryMap = remember(categories) { categories.associateBy { it.id } }
     LaunchedEffect(keepassDatabases.map { it.id }) {
-        viewModel.refreshKeePassPasskeys()
+        viewModel.refreshKeePassPasskeys(trigger = "PASSKEY_PAGE_ENTER")
     }
 
     val bindingPasskeys = remember(passwords, searchQuery) {
@@ -562,7 +563,10 @@ fun PasskeyListScreen(
                     return@launch
                 }
 
-                val syncResult = bitwardenRepository.sync(vaultId)
+                val syncResult = bitwardenRepository.syncForUserVisibleRequest(
+                    vaultId = vaultId,
+                    requestIdPrefix = "bw-passkey-list-vault"
+                )
                 when (syncResult) {
                     is BitwardenRepository.SyncResult.Success -> {
                         syncFeedbackIsSuccess = true

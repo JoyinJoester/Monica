@@ -92,7 +92,7 @@ class AutoBackupManager(private val context: Context) {
     /**
      * 立即执行一次备份（用于测试或用户主动触发）。
      *
-     * 使用 [ExistingWorkPolicy.REPLACE] 避免同一分钟内多次点击造成的重复任务堆积；
+     * 使用 [ExistingWorkPolicy.KEEP] 避免同一分钟内多次点击取消正在执行的备份；
      * 并在入队前检查 [WebDavBackoffState]，若目标主机仍处于 backoff 期，直接返回 false
      * 让 UI 提示用户稍后再试，而不是继续打穿服务器速率限制。
      *
@@ -127,13 +127,13 @@ class AutoBackupManager(private val context: Context) {
             .addTag("manual_backup")
             .build()
 
-        // REPLACE 策略：同一分钟内多次手动触发只保留最近一次，避免同时排队。
+        // KEEP 策略：同一分钟内多次手动触发复用已存在任务，避免取消正在执行的备份。
         workManager.enqueueUniqueWork(
             MANUAL_WORK_NAME,
-            ExistingWorkPolicy.REPLACE,
+            ExistingWorkPolicy.KEEP,
             workRequest
         )
-        android.util.Log.d("AutoBackupManager", "Immediate backup triggered (REPLACE)")
+        android.util.Log.d("AutoBackupManager", "Immediate backup triggered (KEEP)")
         return true
     }
     

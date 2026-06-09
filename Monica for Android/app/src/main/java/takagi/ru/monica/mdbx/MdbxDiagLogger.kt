@@ -7,8 +7,8 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.Executors
 import takagi.ru.monica.BuildConfig
+import takagi.ru.monica.utils.BoundedLogExecutorFactory
 
 /**
  * MDBX 持久化诊断日志。
@@ -24,9 +24,7 @@ object MdbxDiagLogger {
     private const val ROTATE_KEEP_LINES = 4000
 
     private val fileLock = Any()
-    private val writeExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "monica-mdbx-diag").apply { isDaemon = true }
-    }
+    private val writeExecutor = BoundedLogExecutorFactory.createSingleThreadExecutor("monica-mdbx-diag")
     @Volatile
     private var persistentLogFile: File? = null
 

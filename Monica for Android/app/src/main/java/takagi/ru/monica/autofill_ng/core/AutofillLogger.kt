@@ -5,7 +5,7 @@ import android.util.Log
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
-import java.util.concurrent.Executors
+import takagi.ru.monica.utils.BoundedLogExecutorFactory
 
 /**
  * 自动填充日志系统
@@ -59,9 +59,7 @@ object AutofillLogger {
     private val logs = mutableListOf<LogEntry>()
     private var isEnabled = true // 默认启用，生产环境可设置为 false
     private val fileLock = Any()
-    private val writeExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "monica-autofill-log").apply { isDaemon = true }
-    }
+    private val writeExecutor = BoundedLogExecutorFactory.createSingleThreadExecutor("monica-autofill-log")
     @Volatile
     private var persistentLogFile: File? = null
 

@@ -26,6 +26,7 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.utils.SettingsManager
 import kotlinx.coroutines.delay
 import takagi.ru.monica.ui.components.OutlinedTextField
+import takagi.ru.monica.ui.rememberTotpTickerMillis
 
 /**
  * TOTP验证器列表页面
@@ -50,6 +51,7 @@ fun TotpListScreen(
             delay(1000)
         }
     }
+    val sharedProgressTimeMillis = rememberTotpTickerMillis(settings.validatorSmoothProgress)
     var itemToDelete by remember { mutableStateOf<SecureItem?>(null) }
     var itemToShowQr by remember { mutableStateOf<SecureItem?>(null) }
     
@@ -104,6 +106,7 @@ fun TotpListScreen(
                         },
                         allowVibration = true,
                         sharedTickSeconds = sharedTickSeconds,
+                        sharedProgressTimeMillis = sharedProgressTimeMillis,
                         appSettings = settings,
                         modifier = Modifier.fillMaxWidth()
                     )

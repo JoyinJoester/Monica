@@ -318,6 +318,7 @@ dependencies {
     implementation libs.androidx.material3.window.size
     implementation "androidx.compose.animation:animation"
     implementation "androidx.compose.animation:animation-graphics"
+    implementation libs.haze.jetpack.compose
     
     // Navigation
     implementation libs.androidx.navigation.compose

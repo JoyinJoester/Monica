@@ -31,6 +31,14 @@ import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.sync.SyncItemKind
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncRequest
+import takagi.ru.monica.sync.SyncTarget
+import takagi.ru.monica.sync.SyncTaskRunner
+import takagi.ru.monica.sync.SyncTrigger
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.KeePassKdbxService
@@ -78,18 +86,86 @@ class BankCardViewModel(
 
     fun syncAllKeePassCards() {
         viewModelScope.launch {
-            val dao = localKeePassDatabaseDao ?: return@launch
+            SyncTaskRunner.request(
+                request = SyncRequest(
+                    requestId = SyncDiagnostics.nextTaskId("kp-card-all"),
+                    target = SyncTarget.KeePassCompatibilityIndex(
+                        databaseId = null,
+                        itemTypes = setOf(SyncItemKind.BANK_CARD)
+                    ),
+                    trigger = SyncTrigger.PAGE_VISIBLE,
+                    createdAtMillis = System.currentTimeMillis(),
+                    priority = SyncPriority.PAGE_VISIBLE,
+                    mode = SyncMode.SILENT,
+                    throttleMs = 30_000L
+                )
+            ) {
+                syncAllKeePassCardsNow()
+            }
+        }
+    }
+
+    suspend fun syncAllKeePassCardsNow() {
+        val taskId = SyncDiagnostics.nextTaskId("kp-card-all")
+        val target = "keepass_compat:bank_card:all"
+        val trigger = "CARD_WALLET_ENTER"
+        SyncDiagnostics.queued(taskId, target, trigger)
+        val startedAt = SyncDiagnostics.start(taskId, target, trigger)
+        try {
+            val dao = localKeePassDatabaseDao ?: run {
+                SyncDiagnostics.skipped(taskId, target, trigger, "dao_unavailable", startedAt)
+                return
+            }
             val dbs = withContext(Dispatchers.IO) { dao.getAllDatabasesSync() }
-            dbs.forEach { syncKeePassCards(it.id) }
+            dbs.forEach { syncKeePassCardsNow(it.id) }
+            SyncDiagnostics.success(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                startedAt = startedAt,
+                detail = "scheduledDatabases=${dbs.size}"
+            )
+        } catch (error: Exception) {
+            SyncDiagnostics.failed(taskId, target, trigger, startedAt, error)
+            throw error
         }
     }
 
     fun syncKeePassCards(databaseId: Long) {
         viewModelScope.launch {
+            SyncTaskRunner.request(
+                request = SyncRequest(
+                    requestId = SyncDiagnostics.nextTaskId("kp-card"),
+                    target = SyncTarget.KeePassCompatibilityIndex(
+                        databaseId = databaseId,
+                        itemTypes = setOf(SyncItemKind.BANK_CARD)
+                    ),
+                    trigger = SyncTrigger.PAGE_VISIBLE,
+                    createdAtMillis = System.currentTimeMillis(),
+                    priority = SyncPriority.PAGE_VISIBLE,
+                    mode = SyncMode.SILENT,
+                    throttleMs = 30_000L
+                )
+            ) {
+                syncKeePassCardsNow(databaseId)
+            }
+        }
+    }
+
+    suspend fun syncKeePassCardsNow(databaseId: Long) {
+        val taskId = SyncDiagnostics.nextTaskId("kp-card")
+        val target = "keepass_compat:bank_card:$databaseId"
+        val trigger = "READ_LEGACY_SECURE_ITEMS"
+        SyncDiagnostics.queued(taskId, target, trigger)
+        val startedAt = SyncDiagnostics.start(taskId, target, trigger)
+        try {
             val snapshots = keepassBridge
                 ?.readLegacySecureItems(databaseId, setOf(ItemType.BANK_CARD))
                 ?.getOrNull()
-                ?: return@launch
+                ?: run {
+                    SyncDiagnostics.skipped(taskId, target, trigger, "bridge_or_read_unavailable", startedAt)
+                    return
+                }
 
             val existingCards = repository.getItemsByType(ItemType.BANK_CARD).first()
             snapshots.forEach { snapshot ->
@@ -131,6 +207,16 @@ class BankCardViewModel(
                     )
                 }
             }
+            SyncDiagnostics.success(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                startedAt = startedAt,
+                detail = "items=${snapshots.size}"
+            )
+        } catch (error: Exception) {
+            SyncDiagnostics.failed(taskId, target, trigger, startedAt, error)
+            throw error
         }
     }
     

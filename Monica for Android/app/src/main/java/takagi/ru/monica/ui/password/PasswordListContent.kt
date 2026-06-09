@@ -98,11 +98,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -260,6 +258,10 @@ import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.sync.SyncKey
+import takagi.ru.monica.sync.SyncPhase
+import takagi.ru.monica.sync.SyncTarget
+import takagi.ru.monica.sync.SyncTaskRunner
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.ui.screens.AddEditTotpScreen
@@ -478,6 +480,23 @@ fun PasswordListContent(
         } ?: kotlinx.coroutines.flow.flowOf(null)
     }
     val selectedKeePassRemoteSyncState by selectedKeePassSyncStateFlow.collectAsState(initial = null)
+    val selectedKeePassCoordinatorStatusFlow = remember(selectedKeePassDatabaseId) {
+        if (selectedKeePassDatabaseId == null) {
+            kotlinx.coroutines.flow.flowOf(null)
+        } else {
+            SyncTaskRunner.observe(SyncKey("keepass_visible_remote"))
+        }
+    }
+    val visibleKeePassRemoteCoordinatorStatus by selectedKeePassCoordinatorStatusFlow.collectAsState(initial = null)
+    val selectedKeePassCoordinatorStatus = remember(
+        selectedKeePassDatabaseId,
+        visibleKeePassRemoteCoordinatorStatus
+    ) {
+        val selectedId = selectedKeePassDatabaseId ?: return@remember null
+        visibleKeePassRemoteCoordinatorStatus?.takeIf { status ->
+            (status.target as? SyncTarget.KeePassDatabase)?.databaseId == selectedId
+        }
+    }
     val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
     val selectedBitwardenFoldersFlow = remember(selectedBitwardenVaultId, viewModel) {
@@ -515,6 +534,7 @@ fun PasswordListContent(
     val quickStatusKeePassSyncState = remember(
         selectedKeePassDatabase,
         selectedKeePassRemoteSyncState,
+        selectedKeePassCoordinatorStatus,
         localKeePassViewModel
     ) {
         val database = selectedKeePassDatabase
@@ -522,6 +542,13 @@ fun PasswordListContent(
             null
         } else {
             val phase = selectedKeePassRemoteSyncState?.syncPhase
+            val coordinatorPhase = selectedKeePassCoordinatorStatus?.phase
+            val coordinatorShouldShow = coordinatorPhase in setOf(
+                SyncPhase.RUNNING,
+                SyncPhase.BLOCKED,
+                SyncPhase.FAILED,
+                SyncPhase.CONFLICT
+            )
             val shouldShow = database.lastSyncStatus in setOf(
                 KeePassSyncStatus.PENDING_UPLOAD,
                 KeePassSyncStatus.SYNCING,
@@ -532,7 +559,7 @@ fun PasswordListContent(
                 KeePassSyncPhase.COMPARING,
                 KeePassSyncPhase.DOWNLOADING,
                 KeePassSyncPhase.UPLOADING
-            )
+            ) || coordinatorShouldShow
             if (!shouldShow) {
                 null
             } else {
@@ -541,6 +568,8 @@ fun PasswordListContent(
                     databaseName = database.name,
                     status = database.lastSyncStatus,
                     phase = phase,
+                    coordinatorPhase = coordinatorPhase,
+                    coordinatorErrorKind = selectedKeePassCoordinatorStatus?.lastError?.kind,
                     onSync = {
                         localKeePassViewModel.syncRemoteDatabase(database.id)
                     }
@@ -585,6 +614,8 @@ fun PasswordListContent(
         quickStatusKeePassSyncState?.databaseId,
         quickStatusKeePassSyncState?.status,
         quickStatusKeePassSyncState?.phase,
+        quickStatusKeePassSyncState?.coordinatorPhase,
+        quickStatusKeePassSyncState?.coordinatorErrorKind,
         quickStatusBannerEnabled
     ) {
         val state = quickStatusKeePassSyncState
@@ -593,7 +624,7 @@ fun PasswordListContent(
             backgroundedKeePassSyncKey = null
             return@LaunchedEffect
         }
-        val stateKey = "${state.databaseId}:${state.status}:${state.phase}"
+        val stateKey = "${state.databaseId}:${state.status}:${state.phase}:${state.coordinatorPhase}:${state.coordinatorErrorKind}"
         if (!quickStatusBannerEnabled && stateKey != backgroundedKeePassSyncKey) {
             showQuickStatusKeePassSyncDialog = true
         }
@@ -1495,180 +1526,189 @@ fun PasswordListContent(
         }
     )
 
-    PasswordListTopSection(
-        currentFilter = currentFilter,
-        categories = categories,
-        keepassDatabases = keepassDatabases,
-        bitwardenVaults = bitwardenVaults,
-        mdbxDatabases = mdbxDatabases,
-        viewModel = viewModel,
-        localKeePassViewModel = localKeePassViewModel,
-        bitwardenViewModel = bitwardenViewModel,
-        mdbxViewModel = mdbxViewModel,
-        selectedBitwardenVaultId = selectedBitwardenVaultId,
-        selectedKeePassDatabaseId = selectedKeePassDatabaseId,
-        selectedMdbxDatabaseId = selectedMdbxDatabaseId,
-        selectedMdbxFolders = selectedMdbxFolders,
-        isTopBarSyncing = isTopBarSyncing,
-        isArchiveView = isArchiveView,
-        isKeePassDatabaseView = isKeePassDatabaseView,
-        searchQuery = searchQuery,
-        isSearchExpanded = isSearchExpanded,
-        onSearchExpandedChange = { isSearchExpanded = it },
-        onSearchQueryChange = viewModel::updateSearchQuery,
-        topActionsMenuExpanded = isAuthenticated && topActionsMenuExpanded,
-        onTopActionsMenuExpandedChange = { topActionsMenuExpanded = it },
-        showStandaloneSettingsEntry = showStandaloneSettingsEntry,
-        onOpenStandaloneSettings = onOpenStandaloneSettings,
-        isCategorySheetVisible = isCategorySheetVisible,
-        onCategorySheetVisibleChange = { isCategorySheetVisible = it },
-        categoryPillBoundsInWindow = categoryPillBoundsInWindow,
-        onCategoryPillBoundsChange = { categoryPillBoundsInWindow = it },
-        showDisplayOptionsSheet = showDisplayOptionsSheet,
-        onShowDisplayOptionsSheetChange = { showDisplayOptionsSheet = it },
-        configuredQuickFilterItems = configuredQuickFilterItems,
-        quickFilterFavorite = quickFilterFavorite,
-        onQuickFilterFavoriteChange = { quickFilterFavorite = it },
-        quickFilter2fa = quickFilter2fa,
-        onQuickFilter2faChange = { quickFilter2fa = it },
-        quickFilterNotes = quickFilterNotes,
-        onQuickFilterNotesChange = { quickFilterNotes = it },
-        quickFilterPasskey = quickFilterPasskey,
-        onQuickFilterPasskeyChange = { quickFilterPasskey = it },
-        quickFilterBoundNote = quickFilterBoundNote,
-        onQuickFilterBoundNoteChange = { quickFilterBoundNote = it },
-        quickFilterAttachments = quickFilterAttachments,
-        onQuickFilterAttachmentsChange = { quickFilterAttachments = it },
-        quickFilterUncategorized = quickFilterUncategorized,
-        onQuickFilterUncategorizedChange = { quickFilterUncategorized = it },
-        quickFilterLocalOnly = quickFilterLocalOnly,
-        onQuickFilterLocalOnlyChange = { quickFilterLocalOnly = it },
-        quickFilterManualStackOnly = quickFilterManualStackOnly,
-        onQuickFilterManualStackOnlyChange = { quickFilterManualStackOnly = it },
-        quickFilterNeverStack = quickFilterNeverStack,
-        onQuickFilterNeverStackChange = { quickFilterNeverStack = it },
-        quickFilterUnstacked = quickFilterUnstacked,
-        onQuickFilterUnstackedChange = { quickFilterUnstacked = it },
-        aggregateSelectedTypes = aggregateUiState.selectedContentTypes,
-        aggregateVisibleTypes = aggregateUiState.visibleContentTypes,
-        onToggleAggregateType = { type -> aggregateConfig?.onToggleContentType?.invoke(type) },
-        categoryMenuQuickFolderShortcuts = categoryMenuQuickFolderShortcuts,
-        stackCardMode = stackCardMode,
-        groupMode = groupMode,
-        passwordCardDisplayMode = appSettings.passwordCardDisplayMode,
-        settingsViewModel = settingsViewModel,
-        context = context,
-        activity = activity,
-        biometricHelper = biometricHelper,
-        canUseBiometric = canUseBiometric,
-        coroutineScope = coroutineScope,
-        bitwardenRepository = bitwardenRepository,
-        securityManager = securityManager,
-        onRenameCategory = onRenameCategory,
-        onDeleteCategory = onDeleteCategory,
-        onOpenCommonAccountTemplates = onOpenCommonAccountTemplates,
-        onOpenHistory = onOpenHistory,
-        onOpenTrash = onOpenTrash,
-        onScanFidoQr = onScanFidoQr
-    )
+    @Composable
+    fun RenderPasswordListTopSection() {
+        PasswordListTopSection(
+            currentFilter = currentFilter,
+            categories = categories,
+            keepassDatabases = keepassDatabases,
+            bitwardenVaults = bitwardenVaults,
+            mdbxDatabases = mdbxDatabases,
+            viewModel = viewModel,
+            localKeePassViewModel = localKeePassViewModel,
+            bitwardenViewModel = bitwardenViewModel,
+            mdbxViewModel = mdbxViewModel,
+            selectedBitwardenVaultId = selectedBitwardenVaultId,
+            selectedKeePassDatabaseId = selectedKeePassDatabaseId,
+            selectedMdbxDatabaseId = selectedMdbxDatabaseId,
+            selectedMdbxFolders = selectedMdbxFolders,
+            isTopBarSyncing = isTopBarSyncing,
+            isArchiveView = isArchiveView,
+            isKeePassDatabaseView = isKeePassDatabaseView,
+            searchQuery = searchQuery,
+            isSearchExpanded = isSearchExpanded,
+            onSearchExpandedChange = { isSearchExpanded = it },
+            onSearchQueryChange = viewModel::updateSearchQuery,
+            topActionsMenuExpanded = isAuthenticated && topActionsMenuExpanded,
+            onTopActionsMenuExpandedChange = { topActionsMenuExpanded = it },
+            showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+            onOpenStandaloneSettings = onOpenStandaloneSettings,
+            isCategorySheetVisible = isCategorySheetVisible,
+            onCategorySheetVisibleChange = { isCategorySheetVisible = it },
+            categoryPillBoundsInWindow = categoryPillBoundsInWindow,
+            onCategoryPillBoundsChange = { categoryPillBoundsInWindow = it },
+            showDisplayOptionsSheet = showDisplayOptionsSheet,
+            onShowDisplayOptionsSheetChange = { showDisplayOptionsSheet = it },
+            configuredQuickFilterItems = configuredQuickFilterItems,
+            quickFilterFavorite = quickFilterFavorite,
+            onQuickFilterFavoriteChange = { quickFilterFavorite = it },
+            quickFilter2fa = quickFilter2fa,
+            onQuickFilter2faChange = { quickFilter2fa = it },
+            quickFilterNotes = quickFilterNotes,
+            onQuickFilterNotesChange = { quickFilterNotes = it },
+            quickFilterPasskey = quickFilterPasskey,
+            onQuickFilterPasskeyChange = { quickFilterPasskey = it },
+            quickFilterBoundNote = quickFilterBoundNote,
+            onQuickFilterBoundNoteChange = { quickFilterBoundNote = it },
+            quickFilterAttachments = quickFilterAttachments,
+            onQuickFilterAttachmentsChange = { quickFilterAttachments = it },
+            quickFilterUncategorized = quickFilterUncategorized,
+            onQuickFilterUncategorizedChange = { quickFilterUncategorized = it },
+            quickFilterLocalOnly = quickFilterLocalOnly,
+            onQuickFilterLocalOnlyChange = { quickFilterLocalOnly = it },
+            quickFilterManualStackOnly = quickFilterManualStackOnly,
+            onQuickFilterManualStackOnlyChange = { quickFilterManualStackOnly = it },
+            quickFilterNeverStack = quickFilterNeverStack,
+            onQuickFilterNeverStackChange = { quickFilterNeverStack = it },
+            quickFilterUnstacked = quickFilterUnstacked,
+            onQuickFilterUnstackedChange = { quickFilterUnstacked = it },
+            aggregateSelectedTypes = aggregateUiState.selectedContentTypes,
+            aggregateVisibleTypes = aggregateUiState.visibleContentTypes,
+            onToggleAggregateType = { type -> aggregateConfig?.onToggleContentType?.invoke(type) },
+            categoryMenuQuickFolderShortcuts = categoryMenuQuickFolderShortcuts,
+            stackCardMode = stackCardMode,
+            groupMode = groupMode,
+            passwordCardDisplayMode = appSettings.passwordCardDisplayMode,
+            settingsViewModel = settingsViewModel,
+            context = context,
+            activity = activity,
+            biometricHelper = biometricHelper,
+            canUseBiometric = canUseBiometric,
+            coroutineScope = coroutineScope,
+            bitwardenRepository = bitwardenRepository,
+            securityManager = securityManager,
+            onRenameCategory = onRenameCategory,
+            onDeleteCategory = onDeleteCategory,
+            onOpenCommonAccountTemplates = onOpenCommonAccountTemplates,
+            onOpenHistory = onOpenHistory,
+            onOpenTrash = onOpenTrash,
+            onScanFidoQr = onScanFidoQr
+        )
+    }
 
-    PasswordListMainPaneHost(
-        canCollapseExpandedGroups = canCollapseExpandedGroups,
-        outsideTapInteractionSource = outsideTapInteractionSource,
-        onCollapseExpandedGroups = viewModel::clearExpandedGroups,
-        isBitwardenDatabaseView = isBitwardenDatabaseView,
-        pullAction = pullAction,
-        triggerDistance = triggerDistance,
-        syncTriggerDistance = syncTriggerDistance,
-        density = density,
-        showPinnedQuickFolderPathBanner = showPinnedQuickFolderPathBanner,
-        quickFolderBreadcrumbs = effectiveQuickFolderBreadcrumbs,
-        mdbxPathSyncState = mdbxPathSyncState,
-        quickStatusTransferState = quickStatusTransferState,
-        onShowQuickStatusTransferDialog = {
-            backgroundedTransferOperationId = null
-            showQuickStatusTransferDialog = true
-        },
-        quickStatusDeleteState = quickStatusDeleteState,
-        onShowQuickStatusDeleteDialog = {
-            backgroundedDeleteOperationId = null
-            showQuickStatusDeleteDialog = true
-        },
-        quickStatusBitwardenSyncState = quickStatusBitwardenSyncState,
-        quickStatusKeePassSyncState = quickStatusKeePassSyncState,
-        currentFilter = currentFilter,
-        onNavigateFilter = viewModel::setCategoryFilter,
-        shouldGateInitialPasswordFirstFrame = shouldGateInitialPasswordFirstFrame,
-        searchQuery = searchQuery,
-        isPasswordPageListModelReady = isPasswordPageListModelReady,
-        hasVisibleListItems = hasVisibleListItems,
-        showEmptyState = showEmptyStateWithHeaders,
-        hasScrollableHeaderContent = hasScrollableHeaderContent,
-        hasVisibleQuickFilters = hasVisibleQuickFilters,
-        hasVisibleCategoryQuickFilters = hasVisibleCategoryQuickFilters,
-        aggregateUiState = aggregateUiState,
-        emptyStateMessage = emptyStateMessage,
-        listState = listState,
-        appSettings = appSettings,
-        configuredQuickFilterItems = configuredQuickFilterItems,
-        quickFilterFavorite = quickFilterFavorite,
-        onQuickFilterFavoriteChange = { quickFilterFavorite = it },
-        quickFilter2fa = quickFilter2fa,
-        onQuickFilter2faChange = { quickFilter2fa = it },
-        quickFilterNotes = quickFilterNotes,
-        onQuickFilterNotesChange = { quickFilterNotes = it },
-        quickFilterPasskey = quickFilterPasskey,
-        onQuickFilterPasskeyChange = { quickFilterPasskey = it },
-        quickFilterBoundNote = quickFilterBoundNote,
-        onQuickFilterBoundNoteChange = { quickFilterBoundNote = it },
-        quickFilterAttachments = quickFilterAttachments,
-        onQuickFilterAttachmentsChange = { quickFilterAttachments = it },
-        quickFilterUncategorized = quickFilterUncategorized,
-        onQuickFilterUncategorizedChange = { quickFilterUncategorized = it },
-        quickFilterLocalOnly = quickFilterLocalOnly,
-        onQuickFilterLocalOnlyChange = { quickFilterLocalOnly = it },
-        quickFilterManualStackOnly = quickFilterManualStackOnly,
-        onQuickFilterManualStackOnlyChange = { quickFilterManualStackOnly = it },
-        quickFilterNeverStack = quickFilterNeverStack,
-        onQuickFilterNeverStackChange = { quickFilterNeverStack = it },
-        quickFilterUnstacked = quickFilterUnstacked,
-        onQuickFilterUnstackedChange = { quickFilterUnstacked = it },
-        quickFilterWifi = quickFilterWifi,
-        onQuickFilterWifiChange = { quickFilterWifi = it },
-        wifiQuickFilterVisible = hasAnyWifiEntry,
-        quickFilterSshKey = quickFilterSshKey,
-        onQuickFilterSshKeyChange = { quickFilterSshKey = it },
-        sshKeyQuickFilterVisible = hasAnySshKeyEntry,
-        quickFilterBarcode = quickFilterBarcode,
-        onQuickFilterBarcodeChange = { quickFilterBarcode = it },
-        barcodeQuickFilterVisible = hasAnyBarcodeEntry,
-        onToggleAggregateType = aggregateConfig?.onToggleContentType,
-        categoryQuickFilterShortcuts = effectiveCategoryQuickFilterShortcuts,
-        quickFolderShortcuts = effectiveQuickFolderCardShortcuts,
-        quickFolderStyle = quickFolderStyle,
-        passwordPageListItems = passwordPageListItems,
-        effectiveStackCardMode = effectiveStackCardMode,
-        expandedGroups = expandedGroups,
-        itemToDelete = itemToDelete,
-        onItemToDeleteChange = { itemToDelete = it },
-        isSelectionMode = isSelectionMode,
-        onSelectionModeChange = { isSelectionMode = it },
-        selectedItemKeys = selectedItemKeys,
-        onSelectedItemKeysChange = { selectedItemKeys = it },
-        swipeSelectionAnchorKey = swipeSelectionAnchorKey,
-        onSwipeSelectionAnchorKeyChange = { swipeSelectionAnchorKey = it },
-        selectedPasswords = selectedPasswords,
-        showBatchDeleteDialog = showBatchDeleteDialog,
-        onShowBatchDeleteDialogChange = { showBatchDeleteDialog = it },
-        viewModel = viewModel,
-        haptic = haptic,
-        onPasswordClick = onPasswordClick,
-        passwordPageListItemKeySet = passwordPageListItemKeySet,
-        coroutineScope = coroutineScope,
-        context = context,
-        passwordEntries = passwordEntries,
-        aggregateConfig = aggregateConfig
-    )
+    @Composable
+    fun RenderPasswordListMainPaneHost() {
+        PasswordListMainPaneHost(
+            canCollapseExpandedGroups = canCollapseExpandedGroups,
+            outsideTapInteractionSource = outsideTapInteractionSource,
+            onCollapseExpandedGroups = viewModel::clearExpandedGroups,
+            isBitwardenDatabaseView = isBitwardenDatabaseView,
+            pullAction = pullAction,
+            triggerDistance = triggerDistance,
+            syncTriggerDistance = syncTriggerDistance,
+            density = density,
+            showPinnedQuickFolderPathBanner = showPinnedQuickFolderPathBanner,
+            quickFolderBreadcrumbs = effectiveQuickFolderBreadcrumbs,
+            mdbxPathSyncState = mdbxPathSyncState,
+            quickStatusTransferState = quickStatusTransferState,
+            onShowQuickStatusTransferDialog = {
+                backgroundedTransferOperationId = null
+                showQuickStatusTransferDialog = true
+            },
+            quickStatusDeleteState = quickStatusDeleteState,
+            onShowQuickStatusDeleteDialog = {
+                backgroundedDeleteOperationId = null
+                showQuickStatusDeleteDialog = true
+            },
+            quickStatusBitwardenSyncState = quickStatusBitwardenSyncState,
+            quickStatusKeePassSyncState = quickStatusKeePassSyncState,
+            currentFilter = currentFilter,
+            onNavigateFilter = viewModel::setCategoryFilter,
+            shouldGateInitialPasswordFirstFrame = shouldGateInitialPasswordFirstFrame,
+            searchQuery = searchQuery,
+            isPasswordPageListModelReady = isPasswordPageListModelReady,
+            hasVisibleListItems = hasVisibleListItems,
+            showEmptyState = showEmptyStateWithHeaders,
+            hasScrollableHeaderContent = hasScrollableHeaderContent,
+            hasVisibleQuickFilters = hasVisibleQuickFilters,
+            hasVisibleCategoryQuickFilters = hasVisibleCategoryQuickFilters,
+            aggregateUiState = aggregateUiState,
+            emptyStateMessage = emptyStateMessage,
+            listState = listState,
+            appSettings = appSettings,
+            configuredQuickFilterItems = configuredQuickFilterItems,
+            quickFilterFavorite = quickFilterFavorite,
+            onQuickFilterFavoriteChange = { quickFilterFavorite = it },
+            quickFilter2fa = quickFilter2fa,
+            onQuickFilter2faChange = { quickFilter2fa = it },
+            quickFilterNotes = quickFilterNotes,
+            onQuickFilterNotesChange = { quickFilterNotes = it },
+            quickFilterPasskey = quickFilterPasskey,
+            onQuickFilterPasskeyChange = { quickFilterPasskey = it },
+            quickFilterBoundNote = quickFilterBoundNote,
+            onQuickFilterBoundNoteChange = { quickFilterBoundNote = it },
+            quickFilterAttachments = quickFilterAttachments,
+            onQuickFilterAttachmentsChange = { quickFilterAttachments = it },
+            quickFilterUncategorized = quickFilterUncategorized,
+            onQuickFilterUncategorizedChange = { quickFilterUncategorized = it },
+            quickFilterLocalOnly = quickFilterLocalOnly,
+            onQuickFilterLocalOnlyChange = { quickFilterLocalOnly = it },
+            quickFilterManualStackOnly = quickFilterManualStackOnly,
+            onQuickFilterManualStackOnlyChange = { quickFilterManualStackOnly = it },
+            quickFilterNeverStack = quickFilterNeverStack,
+            onQuickFilterNeverStackChange = { quickFilterNeverStack = it },
+            quickFilterUnstacked = quickFilterUnstacked,
+            onQuickFilterUnstackedChange = { quickFilterUnstacked = it },
+            quickFilterWifi = quickFilterWifi,
+            onQuickFilterWifiChange = { quickFilterWifi = it },
+            wifiQuickFilterVisible = hasAnyWifiEntry,
+            quickFilterSshKey = quickFilterSshKey,
+            onQuickFilterSshKeyChange = { quickFilterSshKey = it },
+            sshKeyQuickFilterVisible = hasAnySshKeyEntry,
+            quickFilterBarcode = quickFilterBarcode,
+            onQuickFilterBarcodeChange = { quickFilterBarcode = it },
+            barcodeQuickFilterVisible = hasAnyBarcodeEntry,
+            onToggleAggregateType = aggregateConfig?.onToggleContentType,
+            categoryQuickFilterShortcuts = effectiveCategoryQuickFilterShortcuts,
+            quickFolderShortcuts = effectiveQuickFolderCardShortcuts,
+            quickFolderStyle = quickFolderStyle,
+            passwordPageListItems = passwordPageListItems,
+            effectiveStackCardMode = effectiveStackCardMode,
+            expandedGroups = expandedGroups,
+            itemToDelete = itemToDelete,
+            onItemToDeleteChange = { itemToDelete = it },
+            isSelectionMode = isSelectionMode,
+            onSelectionModeChange = { isSelectionMode = it },
+            selectedItemKeys = selectedItemKeys,
+            onSelectedItemKeysChange = { selectedItemKeys = it },
+            swipeSelectionAnchorKey = swipeSelectionAnchorKey,
+            onSwipeSelectionAnchorKeyChange = { swipeSelectionAnchorKey = it },
+            selectedPasswords = selectedPasswords,
+            showBatchDeleteDialog = showBatchDeleteDialog,
+            onShowBatchDeleteDialogChange = { showBatchDeleteDialog = it },
+            viewModel = viewModel,
+            haptic = haptic,
+            onPasswordClick = onPasswordClick,
+            passwordPageListItemKeySet = passwordPageListItemKeySet,
+            coroutineScope = coroutineScope,
+            context = context,
+            passwordEntries = passwordEntries,
+            aggregateConfig = aggregateConfig
+        )
+    }
+
+    RenderPasswordListTopSection()
+    RenderPasswordListMainPaneHost()
 
     PasswordListQuickStatusDialogs(
         showQuickStatusTransferDialog = showQuickStatusTransferDialog,

@@ -23,10 +23,7 @@ import app.keemobile.kotpass.models.EntryValue
 import app.keemobile.kotpass.models.Group
 import app.keemobile.kotpass.models.Meta
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -58,6 +55,7 @@ import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
 import takagi.ru.monica.attachments.executor.KeePassAttachmentRef
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.sync.SyncDiagnostics
 import takagi.ru.monica.workers.KeePassRemoteUploadWorker
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -300,10 +298,8 @@ class KeePassKdbxService(
             Thread(runnable, "KeePassDecodeThread").apply { isDaemon = true }
         }
         private val decodeDispatcher = decodeExecutor.asCoroutineDispatcher()
-        private val remoteUploadExecutor = Executors.newSingleThreadExecutor { runnable ->
-            Thread(runnable, "KeePassRemoteUploadThread").apply { isDaemon = true }
-        }
-        private val remoteUploadScope = CoroutineScope(SupervisorJob() + remoteUploadExecutor.asCoroutineDispatcher())
+        // 同一个远端 KeePass 数据库只能有一个真实上传执行者。
+        private val remoteUploadMutexes = mutableMapOf<Long, Mutex>()
         // 写入采用“读-改-写”原子化；不同数据库可独立排队，跨库操作按 ID 顺序加锁。
         private val databaseMutationMutexes = mutableMapOf<Long, Mutex>()
         // 同一数据库首次打开时只允许一个入口执行解码，避免验证/读取并发触发重复开库。
@@ -327,6 +323,12 @@ class KeePassKdbxService(
         private fun loadMutexForDatabase(databaseId: Long): Mutex {
             return synchronized(databaseLoadMutexes) {
                 databaseLoadMutexes.getOrPut(databaseId) { Mutex() }
+            }
+        }
+
+        private fun remoteUploadMutex(databaseId: Long): Mutex {
+            return synchronized(remoteUploadMutexes) {
+                remoteUploadMutexes.getOrPut(databaseId) { Mutex() }
             }
         }
 
@@ -3636,7 +3638,7 @@ class KeePassKdbxService(
         var resolvedDatabase = keePassDatabase
         if (database.isRemoteSource()) {
             markRemoteWritePending(database, bytes)
-            enqueueRemoteWorkingCopyUpload(database.id, bytes)
+            enqueueRemoteWorkingCopyUpload(database.id)
         }
         val updatedSignature = currentSourceSignature(database)
         cacheLoadedDatabase(
@@ -3816,19 +3818,30 @@ class KeePassKdbxService(
         )
     }
 
-    private fun enqueueRemoteWorkingCopyUpload(
-        databaseId: Long,
-        expectedBytes: ByteArray
-    ) {
-        val expectedHash = GoogleDriveKeePassSupport.sha256Hex(expectedBytes)
+    private fun enqueueRemoteWorkingCopyUpload(databaseId: Long) {
+        val taskId = SyncDiagnostics.nextTaskId("kp-upload")
+        val target = "keepass:$databaseId"
+        val trigger = "REMOTE_WORKING_COPY_UPLOAD"
+        SyncDiagnostics.queued(
+            taskId = taskId,
+            target = target,
+            trigger = trigger,
+            detail = "worker=true"
+        )
+        val startedAt = SyncDiagnostics.start(
+            taskId = taskId,
+            target = target,
+            trigger = trigger,
+            detail = "worker=true"
+        )
         KeePassRemoteUploadWorker.enqueue(context, databaseId)
-        remoteUploadScope.launch {
-            runCatching {
-                uploadRemoteWorkingCopyIfCurrent(databaseId, expectedHash)
-            }.onFailure { error ->
-                Log.w(TAG, "Background remote working copy upload failed for db=$databaseId", error)
-            }
-        }
+        SyncDiagnostics.success(
+            taskId = taskId,
+            target = target,
+            trigger = trigger,
+            startedAt = startedAt,
+            detail = "worker_enqueued=true"
+        )
     }
 
     suspend fun flushPendingRemoteUpload(databaseId: Long): Boolean = withContext(Dispatchers.IO) {
@@ -3845,6 +3858,15 @@ class KeePassKdbxService(
     }
 
     private suspend fun uploadRemoteWorkingCopyIfCurrent(
+        databaseId: Long,
+        expectedHash: String
+    ) {
+        remoteUploadMutex(databaseId).withLock {
+            uploadRemoteWorkingCopyIfCurrentLocked(databaseId, expectedHash)
+        }
+    }
+
+    private suspend fun uploadRemoteWorkingCopyIfCurrentLocked(
         databaseId: Long,
         expectedHash: String
     ) {
@@ -3912,7 +3934,7 @@ class KeePassKdbxService(
                     baseHash = workingHash,
                     workingHash = latestHash
                 )
-                enqueueRemoteWorkingCopyUpload(database.id, latestBytes)
+                enqueueRemoteWorkingCopyUpload(database.id)
             }
         } catch (error: Exception) {
             val latestHash = readRemoteWorkingCopyBytes(database)

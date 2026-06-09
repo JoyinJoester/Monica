@@ -184,6 +184,7 @@ import takagi.ru.monica.ui.password.resolvePasswordPageDisplayedTypes
 import takagi.ru.monica.ui.password.resolvePasswordPageVisibleTypes
 import takagi.ru.monica.ui.password.sanitizeSelectedPasswordPageTypes
 import takagi.ru.monica.ui.password.rememberPasswordAuthenticatorDisplayState
+import takagi.ru.monica.ui.rememberTotpTickerMillis
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.DocumentViewModel
@@ -3672,23 +3673,7 @@ private fun rememberVaultV2TotpDisplayState(
 		totpData?.let(::normalizeVaultV2TotpData)
 	} ?: return null
 
-	val currentTimeMillis by produceState(
-		initialValue = System.currentTimeMillis(),
-		key1 = normalizedTotpData,
-		key2 = timeOffsetSeconds,
-		key3 = smoothProgress,
-	) {
-		while (true) {
-			val now = System.currentTimeMillis()
-			value = now
-			val waitMillis = if (smoothProgress) {
-				50L
-			} else {
-				(1000L - (now % 1000L)).coerceAtLeast(16L)
-			}
-			delay(waitMillis)
-		}
-	}
+	val currentTimeMillis = rememberTotpTickerMillis(smoothProgress)
 	val currentSeconds = currentTimeMillis / 1000L
 	val rawCode = remember(normalizedTotpData, currentSeconds, timeOffsetSeconds) {
 		when (normalizedTotpData.otpType) {

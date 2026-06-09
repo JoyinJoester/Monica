@@ -25,6 +25,8 @@ import takagi.ru.monica.data.BottomNavVisibility
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
+import takagi.ru.monica.data.MonicaBlurIntensity
+import takagi.ru.monica.data.MonicaBlurMode
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.PasswordListQuickFolderStyle
@@ -193,6 +195,11 @@ class SettingsManager(private val context: Context) {
         private val NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY = booleanPreferencesKey("notification_validator_auto_match")
         private val NOTIFICATION_VALIDATOR_ID_KEY = longPreferencesKey("notification_validator_id")
         private val IS_PLUS_ACTIVATED_KEY = booleanPreferencesKey("is_plus_activated")
+        private val PLUS_BLUR_ENABLED_KEY = booleanPreferencesKey("plus_blur_enabled")
+        private val PLUS_BLUR_MODE_KEY = stringPreferencesKey("plus_blur_mode")
+        private val PLUS_BLUR_INTENSITY_KEY = stringPreferencesKey("plus_blur_intensity")
+        private val PLUS_BLUR_REDUCE_ON_BATTERY_SAVER_KEY =
+            booleanPreferencesKey("plus_blur_reduce_on_battery_saver")
         private val PLUS_LICENSE_CDK_KEY = stringPreferencesKey("plus_license_cdk")
         private val PLUS_LICENSE_DEVICE_FINGERPRINT_KEY =
             stringPreferencesKey("plus_license_device_fingerprint")
@@ -492,6 +499,8 @@ class SettingsManager(private val context: Context) {
             preferences[PASSWORD_PAGE_VISIBLE_CONTENT_TYPES_KEY]
         ) ?: PasswordPageContentType.DEFAULT_VISIBLE_TYPES
 
+        val isPlusActivated = preferences[IS_PLUS_ACTIVATED_KEY] ?: false
+
         return AppSettings(
             themeMode = ThemeMode.valueOf(
                 preferences[THEME_MODE_KEY] ?: ThemeMode.SYSTEM.name
@@ -563,7 +572,20 @@ class SettingsManager(private val context: Context) {
             notificationValidatorEnabled = false,
             notificationValidatorAutoMatch = false,
             notificationValidatorId = -1L,
-            isPlusActivated = preferences[IS_PLUS_ACTIVATED_KEY] ?: false,
+            isPlusActivated = isPlusActivated,
+            plusBlurEnabled = isPlusActivated && (preferences[PLUS_BLUR_ENABLED_KEY] ?: false),
+            plusBlurMode = runCatching {
+                MonicaBlurMode.valueOf(
+                    preferences[PLUS_BLUR_MODE_KEY] ?: MonicaBlurMode.DEFAULT.name
+                )
+            }.getOrDefault(MonicaBlurMode.DEFAULT),
+            plusBlurIntensity = runCatching {
+                MonicaBlurIntensity.valueOf(
+                    preferences[PLUS_BLUR_INTENSITY_KEY] ?: MonicaBlurIntensity.DEFAULT.name
+                )
+            }.getOrDefault(MonicaBlurIntensity.DEFAULT),
+            plusBlurReduceOnBatterySaver =
+                preferences[PLUS_BLUR_REDUCE_ON_BATTERY_SAVER_KEY] ?: true,
             stackCardMode = preferences[STACK_CARD_MODE_KEY] ?: "AUTO",
             passwordGroupMode = preferences[PASSWORD_GROUP_MODE_KEY] ?: "smart",
             passwordWebsiteStackMatchMode =
@@ -915,6 +937,34 @@ class SettingsManager(private val context: Context) {
     suspend fun updatePlusActivated(activated: Boolean) {
         dataStore.edit { preferences ->
             preferences[IS_PLUS_ACTIVATED_KEY] = activated
+            if (!activated) {
+                preferences[PLUS_BLUR_ENABLED_KEY] = false
+            }
+        }
+    }
+
+    suspend fun updatePlusBlurEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            val isPlusActivated = preferences[IS_PLUS_ACTIVATED_KEY] ?: false
+            preferences[PLUS_BLUR_ENABLED_KEY] = enabled && isPlusActivated
+        }
+    }
+
+    suspend fun updatePlusBlurMode(mode: MonicaBlurMode) {
+        dataStore.edit { preferences ->
+            preferences[PLUS_BLUR_MODE_KEY] = mode.name
+        }
+    }
+
+    suspend fun updatePlusBlurIntensity(intensity: MonicaBlurIntensity) {
+        dataStore.edit { preferences ->
+            preferences[PLUS_BLUR_INTENSITY_KEY] = intensity.name
+        }
+    }
+
+    suspend fun updatePlusBlurReduceOnBatterySaver(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PLUS_BLUR_REDUCE_ON_BATTERY_SAVER_KEY] = enabled
         }
     }
 

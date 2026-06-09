@@ -4,6 +4,12 @@ import android.content.Context
 import android.util.Log
 import androidx.work.*
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.sync.SyncError
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncNetworkPolicy
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncTrigger
 import java.util.concurrent.TimeUnit
 
 /**
@@ -155,7 +161,7 @@ class BitwardenSyncWorker(
             WorkManager.getInstance(context)
                 .enqueueUniqueWork(
                     oneTimeWorkName(vaultId),
-                    ExistingWorkPolicy.REPLACE,
+                    ExistingWorkPolicy.KEEP,
                     request
                 )
             
@@ -166,6 +172,14 @@ class BitwardenSyncWorker(
     override suspend fun doWork(): Result {
         val syncType = inputData.getString(KEY_SYNC_TYPE) ?: SYNC_TYPE_QUEUE
         val vaultId = inputData.getLong(KEY_VAULT_ID, -1L).takeIf { it > 0 }
+        val taskId = SyncDiagnostics.nextTaskId("bw-worker")
+        val target = vaultId?.let { "bitwarden:$it" } ?: "bitwarden:all_unlocked"
+        val startedAt = SyncDiagnostics.start(
+            taskId = taskId,
+            target = target,
+            trigger = "WORKER_$syncType",
+            detail = "attempt=$runAttemptCount"
+        )
         
         Log.d(TAG, "Starting sync work: type=$syncType, vaultId=$vaultId")
         
@@ -188,10 +202,43 @@ class BitwardenSyncWorker(
             }
             
             Log.d(TAG, "Sync work completed successfully")
+            SyncDiagnostics.success(
+                taskId = taskId,
+                target = target,
+                trigger = "WORKER_$syncType",
+                startedAt = startedAt,
+                detail = "attempt=$runAttemptCount"
+            )
             Result.success()
             
+        } catch (e: BitwardenWorkerBlockedException) {
+            Log.w(TAG, "Sync work blocked: ${e.syncError.kind}")
+            SyncDiagnostics.blocked(
+                taskId = taskId,
+                target = target,
+                trigger = "WORKER_$syncType",
+                reason = e.syncError.redactedMessage ?: e.syncError.kind.name,
+                startedAt = startedAt,
+                detail = "attempt=$runAttemptCount retry=${e.syncError.retryable && runAttemptCount < 3}"
+            )
+
+            if (e.syncError.retryable && runAttemptCount < 3) {
+                Result.retry()
+            } else {
+                Result.failure(
+                    workDataOf("error" to (e.syncError.redactedMessage ?: e.syncError.kind.name))
+                )
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Sync work failed", e)
+            SyncDiagnostics.failed(
+                taskId = taskId,
+                target = target,
+                trigger = "WORKER_$syncType",
+                startedAt = startedAt,
+                error = e,
+                detail = "attempt=$runAttemptCount retry=${runAttemptCount < 3}"
+            )
             
             if (runAttemptCount < 3) {
                 Result.retry()
@@ -203,18 +250,38 @@ class BitwardenSyncWorker(
         }
     }
     
-    /**
-     * 获取 SyncQueueManager 实例
-     * 实际使用时应该通过 Hilt/Koin 等依赖注入框架获取
-     */
-    private fun getSyncQueueManager(): SyncQueueManager? {
-        // TODO: 通过依赖注入获取实例
-        // 临时返回 null，需要在应用初始化时设置
-        return SyncQueueManagerHolder.instance
-    }
-
     private suspend fun syncVault(vaultId: Long) {
-        when (val result = BitwardenRepository.getInstance(applicationContext).sync(vaultId)) {
+        val repository = BitwardenRepository.getInstance(applicationContext)
+        val syncResult = repository.syncViaCoordinator(
+            vaultId = vaultId,
+            requestIdPrefix = "bw-worker-vault",
+            trigger = SyncTrigger.WORKER_RECOVERY,
+            priority = SyncPriority.BACKGROUND,
+            mode = SyncMode.BACKGROUND,
+            networkPolicy = SyncNetworkPolicy.REQUIRED
+        )
+        val result = when (syncResult) {
+            is BitwardenCoordinatedSyncResult.Completed -> syncResult.result
+            BitwardenCoordinatedSyncResult.Merged -> {
+                Log.d(TAG, "Repository sync merged with active coordinator task: vaultId=$vaultId")
+                return
+            }
+            is BitwardenCoordinatedSyncResult.Skipped -> {
+                Log.d(TAG, "Repository sync skipped by coordinator: vaultId=$vaultId, reason=${syncResult.reason}")
+                return
+            }
+            is BitwardenCoordinatedSyncResult.Blocked -> {
+                throw BitwardenWorkerBlockedException(syncResult.error)
+            }
+            is BitwardenCoordinatedSyncResult.Canceled -> {
+                throw IllegalStateException("Bitwarden sync canceled: ${syncResult.reason}")
+            }
+            is BitwardenCoordinatedSyncResult.Failed -> {
+                throw syncResult.error
+            }
+        }
+
+        when (result) {
             is BitwardenRepository.SyncResult.Success -> {
                 Log.d(
                     TAG,
@@ -243,15 +310,8 @@ class BitwardenSyncWorker(
             syncVault(vault.id)
         }
     }
-}
 
-/**
- * SyncQueueManager 单例持有者
- * 用于在 Worker 中访问 SyncQueueManager
- * 
- * 注意：这是一个临时方案，正式实现应该使用 Hilt WorkerFactory
- */
-object SyncQueueManagerHolder {
-    @Volatile
-    var instance: SyncQueueManager? = null
+    private class BitwardenWorkerBlockedException(val syncError: SyncError) : Exception(
+        syncError.redactedMessage ?: syncError.kind.name
+    )
 }

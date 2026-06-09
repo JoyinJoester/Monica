@@ -10,14 +10,14 @@ import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
 import takagi.ru.monica.attachments.AttachmentContainer
-import takagi.ru.monica.bitwarden.sync.NetworkMonitor
-import takagi.ru.monica.bitwarden.sync.SyncQueueManager
-import takagi.ru.monica.bitwarden.sync.SyncQueueManagerHolder
 import takagi.ru.monica.data.AppLauncherIcon
 import takagi.ru.monica.data.AppLauncherLabel
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.mdbx.MdbxDiagLogger
+import takagi.ru.monica.perf.MainThreadStallMonitor
 import takagi.ru.monica.security.AppUpdateSecurityGuard
+import takagi.ru.monica.sync.AndroidSyncNetworkGate
+import takagi.ru.monica.sync.SyncTaskRunner
 import takagi.ru.monica.utils.AppLauncherIconManager
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.webdav.WebDavBackoffState
@@ -48,9 +48,10 @@ class MonicaApplication : Application() {
         )
         
         initKoin()
+        SyncTaskRunner.installNetworkGate(AndroidSyncNetworkGate(this))
+        MainThreadStallMonitor.start()
         MdbxDiagLogger.initialize(this)
         syncLauncherEntryPointsWithSettings()
-        initBitwardenSyncInfrastructure()
         WebDavBackoffState.attachPersistence(this)
         scheduleKeePassRemoteUploadRecovery()
         scheduleAttachmentHousekeeping()
@@ -66,24 +67,6 @@ class MonicaApplication : Application() {
             
             // 提供 Android Context
             androidContext(this@MonicaApplication)
-        }
-    }
-
-    /**
-     * Initialize lightweight Bitwarden sync infrastructure so WorkManager
-     * can resolve a queue manager instance instead of retry looping.
-     */
-    private fun initBitwardenSyncInfrastructure() {
-        runCatching {
-            val database = PasswordDatabase.getDatabase(this)
-            val queueManager = SyncQueueManager(
-                context = this,
-                pendingOperationDao = database.bitwardenPendingOperationDao(),
-                networkMonitor = NetworkMonitor(this)
-            )
-            SyncQueueManagerHolder.instance = queueManager
-        }.onFailure { error ->
-            Log.w(TAG, "Failed to init Bitwarden sync infrastructure", error)
         }
     }
 

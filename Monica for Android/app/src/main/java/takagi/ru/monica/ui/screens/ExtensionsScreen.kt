@@ -20,8 +20,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.data.MonicaBlurIntensity
+import takagi.ru.monica.data.MonicaBlurMode
 import takagi.ru.monica.data.PasswordSwipeSelectionMode
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.ui.effects.blur.MonicaBlurPreviewCard
 
 /**
  * 功能拓展页面 - 聚合各种扩展功能的设置
@@ -34,6 +37,14 @@ fun ExtensionsScreen(
     onNavigateToMonicaPlus: () -> Unit = {},
     onNavigateToQuickSetup: () -> Unit = {},
     isPlusActivated: Boolean = false,
+    plusBlurEnabled: Boolean = false,
+    onPlusBlurEnabledChange: (Boolean) -> Unit = {},
+    plusBlurMode: MonicaBlurMode = MonicaBlurMode.DEFAULT,
+    onPlusBlurModeChange: (MonicaBlurMode) -> Unit = {},
+    plusBlurIntensity: MonicaBlurIntensity = MonicaBlurIntensity.DEFAULT,
+    onPlusBlurIntensityChange: (MonicaBlurIntensity) -> Unit = {},
+    plusBlurReduceOnBatterySaver: Boolean = true,
+    onPlusBlurReduceOnBatterySaverChange: (Boolean) -> Unit = {},
     validatorVibrationEnabled: Boolean = false,
     onValidatorVibrationChange: (Boolean) -> Unit = {},
     copyNextCodeWhenExpiring: Boolean = false,
@@ -64,6 +75,8 @@ fun ExtensionsScreen(
     // 密码卡片显示模式选择对话框
     var showDisplayModeDialog by remember { mutableStateOf(false) }
     var showClipboardAutoClearDialog by remember { mutableStateOf(false) }
+    var showPlusBlurModeDialog by remember { mutableStateOf(false) }
+    var showPlusBlurIntensityDialog by remember { mutableStateOf(false) }
     val clipboardAutoClearOptions = remember { listOf(0, 10, 20, 30, 60) }
     
     if (showDisplayModeDialog) {
@@ -145,6 +158,82 @@ fun ExtensionsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showClipboardAutoClearDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showPlusBlurModeDialog) {
+        AlertDialog(
+            onDismissRequest = { showPlusBlurModeDialog = false },
+            title = { Text(stringResource(R.string.plus_blur_mode_title)) },
+            text = {
+                Column {
+                    MonicaBlurMode.values().forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onPlusBlurModeChange(mode)
+                                    showPlusBlurModeDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = mode == plusBlurMode,
+                                onClick = {
+                                    onPlusBlurModeChange(mode)
+                                    showPlusBlurModeDialog = false
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(plusBlurModeLabel(mode))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPlusBlurModeDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showPlusBlurIntensityDialog) {
+        AlertDialog(
+            onDismissRequest = { showPlusBlurIntensityDialog = false },
+            title = { Text(stringResource(R.string.plus_blur_intensity_title)) },
+            text = {
+                Column {
+                    MonicaBlurIntensity.values().forEach { intensity ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onPlusBlurIntensityChange(intensity)
+                                    showPlusBlurIntensityDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = intensity == plusBlurIntensity,
+                                onClick = {
+                                    onPlusBlurIntensityChange(intensity)
+                                    showPlusBlurIntensityDialog = false
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(plusBlurIntensityLabel(intensity))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPlusBlurIntensityDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
@@ -237,6 +326,61 @@ fun ExtensionsScreen(
                     title = stringResource(R.string.re_quick_init_title),
                     description = stringResource(R.string.re_quick_init_desc),
                     onClick = onNavigateToQuickSetup
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            ExtensionSection(title = stringResource(R.string.extensions_visual_effects)) {
+                if (isPlusActivated) {
+                    ExtensionSwitchItem(
+                        icon = Icons.Default.AutoAwesome,
+                        title = stringResource(R.string.plus_blur_title),
+                        description = stringResource(R.string.plus_blur_desc),
+                        checked = plusBlurEnabled,
+                        onCheckedChange = onPlusBlurEnabledChange
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    ExtensionChoiceItem(
+                        icon = Icons.Default.SettingsSuggest,
+                        title = stringResource(R.string.plus_blur_mode_title),
+                        description = stringResource(R.string.plus_blur_mode_desc),
+                        value = plusBlurModeLabel(plusBlurMode),
+                        onClick = { showPlusBlurModeDialog = true }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    ExtensionChoiceItem(
+                        icon = Icons.Default.Update,
+                        title = stringResource(R.string.plus_blur_intensity_title),
+                        description = stringResource(R.string.plus_blur_intensity_desc),
+                        value = plusBlurIntensityLabel(plusBlurIntensity),
+                        onClick = { showPlusBlurIntensityDialog = true }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    ExtensionSwitchItem(
+                        icon = Icons.Default.Security,
+                        title = stringResource(R.string.plus_blur_reduce_battery_title),
+                        description = stringResource(R.string.plus_blur_reduce_battery_desc),
+                        checked = plusBlurReduceOnBatterySaver,
+                        onCheckedChange = onPlusBlurReduceOnBatterySaverChange
+                    )
+                } else {
+                    ExtensionClickableItem(
+                        icon = Icons.Default.AutoAwesome,
+                        title = stringResource(R.string.plus_blur_title),
+                        description = stringResource(R.string.plus_blur_requires_plus),
+                        onClick = onNavigateToMonicaPlus
+                    )
+                }
+            }
+
+            if (isPlusActivated) {
+                MonicaBlurPreviewCard(
+                    isPlusActivated = isPlusActivated,
+                    plusBlurEnabled = plusBlurEnabled,
+                    mode = plusBlurMode,
+                    intensity = plusBlurIntensity,
+                    reduceOnBatterySaver = plusBlurReduceOnBatterySaver,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                 )
             }
 
@@ -379,6 +523,26 @@ private fun clipboardAutoClearLabel(seconds: Int): String {
         stringResource(R.string.clipboard_auto_clear_never)
     } else {
         stringResource(R.string.clipboard_auto_clear_seconds, seconds)
+    }
+}
+
+@Composable
+private fun plusBlurModeLabel(mode: MonicaBlurMode): String {
+    return when (mode) {
+        MonicaBlurMode.AUTOMATIC -> stringResource(R.string.plus_blur_mode_automatic)
+        MonicaBlurMode.LIGHTWEIGHT -> stringResource(R.string.plus_blur_mode_lightweight)
+        MonicaBlurMode.BACKGROUND_IMAGE -> stringResource(R.string.plus_blur_mode_background_image)
+        MonicaBlurMode.GLASS -> stringResource(R.string.plus_blur_mode_glass)
+        MonicaBlurMode.COMPATIBLE -> stringResource(R.string.plus_blur_mode_compatible)
+    }
+}
+
+@Composable
+private fun plusBlurIntensityLabel(intensity: MonicaBlurIntensity): String {
+    return when (intensity) {
+        MonicaBlurIntensity.LIGHT -> stringResource(R.string.plus_blur_intensity_light)
+        MonicaBlurIntensity.STANDARD -> stringResource(R.string.plus_blur_intensity_standard)
+        MonicaBlurIntensity.STRONG -> stringResource(R.string.plus_blur_intensity_strong)
     }
 }
 

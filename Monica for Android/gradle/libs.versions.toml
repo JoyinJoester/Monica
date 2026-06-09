@@ -34,6 +34,7 @@ credentials = "1.2.2"  # Credential Manager for Passkeys (Android 14+)
 work = "2.8.1"  # WorkManager for auto backup
 reorderable = "3.0.0"  # Compose Reorderable for drag-and-drop sorting
 koin = "3.5.6"  # Koin dependency injection for autofill architecture
+haze = "0.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -130,6 +131,7 @@ reorderable = { group = "sh.calvin.reorderable", name = "reorderable", version.r
 koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
 koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compose", version.ref = "koin" }
 koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
+haze-jetpack-compose = { group = "dev.chrisbanes.haze", name = "haze-jetpack-compose", version.ref = "haze" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -59,6 +59,15 @@ import takagi.ru.monica.repository.MdbxVaultCrypto
 import takagi.ru.monica.repository.MdbxVaultDiagnostics
 import takagi.ru.monica.repository.MdbxVaultStore
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncNetworkPolicy
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncRequest
+import takagi.ru.monica.sync.SyncTarget
+import takagi.ru.monica.sync.SyncTaskAwaitResult
+import takagi.ru.monica.sync.SyncTaskRunner
+import takagi.ru.monica.sync.SyncTrigger
 import takagi.ru.monica.utils.FileSourceEntry
 import takagi.ru.monica.utils.WebDavKeePassFileSource
 import takagi.ru.monica.utils.OneDriveAuthManager
@@ -133,7 +142,6 @@ class MdbxViewModel(
     val advancedDialogState: StateFlow<MdbxAdvancedDialogState> =
         _advancedDialogState.asStateFlow()
 
-    private val autoSyncLastStartedAt = mutableMapOf<Long, Long>()
     private val activeVaultPrefs =
         context.applicationContext.getSharedPreferences(ACTIVE_VAULT_PREFS_NAME, Context.MODE_PRIVATE)
     private val _activeMdbxDatabaseId = MutableStateFlow(
@@ -153,6 +161,7 @@ class MdbxViewModel(
         const val ACTIVE_VAULT_ID_KEY = "last_active_mdbx_database_id"
         const val NO_ACTIVE_VAULT_ID = -1L
         const val ACTIVE_PRELOAD_MIN_INTERVAL_MS = 2_000L
+        const val VISIBLE_MDBX_AUTO_SYNC_THROTTLE_MS = 15_000L
     }
 
     private data class CachedDeltaHistory(
@@ -938,61 +947,219 @@ class MdbxViewModel(
     fun syncExternalVault(databaseId: Long) {
         viewModelScope.launch {
             _operationState.value = OperationState.Loading("Syncing vault to external location...")
-            try {
-                withContext(Dispatchers.IO) {
-                    refreshVaultFromSource(databaseId)
-                    refreshSingleVaultState(databaseId)
-                }
-                _operationState.value = OperationState.Success("Vault synced to external location")
-            } catch (e: Exception) {
-                _operationState.value = OperationState.Error(
-                    "Failed to sync vault: ${e.message ?: "unknown error"}"
-                )
-            }
+            val result = runMdbxSyncThroughCoordinator(
+                databaseId = databaseId,
+                requestIdPrefix = "mdbx-external",
+                trigger = SyncTrigger.MANUAL,
+                priority = SyncPriority.MANUAL,
+                mode = SyncMode.FOREGROUND
+            )
+            applyManualMdbxSyncResult(
+                result = result,
+                successMessage = "Vault synced to external location",
+                failurePrefix = "Failed to sync vault"
+            )
         }
     }
 
     fun syncVault(databaseId: Long) {
         viewModelScope.launch {
             _operationState.value = OperationState.Loading("Syncing MDBX vault...")
-            try {
-                withContext(Dispatchers.IO) {
-                    refreshVaultFromSource(databaseId)
-                    refreshSingleVaultState(databaseId)
-                }
-                _operationState.value = OperationState.Success("MDBX vault synced")
-            } catch (e: Exception) {
-                _operationState.value = OperationState.Error(
-                    "Failed to sync vault: ${e.message ?: "unknown error"}"
-                )
-            }
+            val result = runMdbxSyncThroughCoordinator(
+                databaseId = databaseId,
+                requestIdPrefix = "mdbx-manual",
+                trigger = SyncTrigger.MANUAL,
+                priority = SyncPriority.MANUAL,
+                mode = SyncMode.FOREGROUND
+            )
+            applyManualMdbxSyncResult(
+                result = result,
+                successMessage = "MDBX vault synced",
+                failurePrefix = "Failed to sync vault"
+            )
         }
     }
 
     fun autoSyncVisibleVault(databaseId: Long) {
         viewModelScope.launch {
-            val now = System.currentTimeMillis()
-            val lastStarted = autoSyncLastStartedAt[databaseId] ?: 0L
-            if (now - lastStarted < 15_000L) return@launch
             if (_operationState.value is OperationState.Loading) return@launch
-            val shouldSync = withContext(Dispatchers.IO) {
-                val database = databaseDao.getDatabaseById(databaseId) ?: return@withContext false
-                database.lastSyncStatus != MdbxSyncStatus.PENDING_UPLOAD.name &&
-                    database.sourceTypeEnum != MdbxSourceType.LOCAL_INTERNAL
+            val database = withContext(Dispatchers.IO) {
+                databaseDao.getDatabaseById(databaseId)
             }
+            val shouldSync = database != null &&
+                database.lastSyncStatus != MdbxSyncStatus.PENDING_UPLOAD.name &&
+                database.sourceTypeEnum != MdbxSourceType.LOCAL_INTERNAL
             if (!shouldSync) {
                 refreshSingleVaultState(databaseId)
                 return@launch
             }
-            autoSyncLastStartedAt[databaseId] = now
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    refreshVaultFromSource(databaseId)
-                    refreshSingleVaultState(databaseId)
-                }
-            }.onFailure {
+            val result = runMdbxSyncThroughCoordinator(
+                databaseId = databaseId,
+                requestIdPrefix = "mdbx-visible",
+                trigger = SyncTrigger.PAGE_VISIBLE,
+                priority = SyncPriority.PAGE_VISIBLE,
+                mode = SyncMode.SILENT,
+                throttleMs = VISIBLE_MDBX_AUTO_SYNC_THROTTLE_MS
+            )
+            if (result !is SyncTaskAwaitResult.Completed) {
                 refreshSingleVaultState(databaseId)
             }
+        }
+    }
+
+    private suspend fun runMdbxSyncThroughCoordinator(
+        databaseId: Long,
+        requestIdPrefix: String,
+        trigger: SyncTrigger,
+        priority: SyncPriority,
+        mode: SyncMode,
+        throttleMs: Long = 0L
+    ): SyncTaskAwaitResult<Unit> {
+        return runMdbxTaskThroughCoordinator(
+            databaseId = databaseId,
+            requestIdPrefix = requestIdPrefix,
+            trigger = trigger,
+            priority = priority,
+            mode = mode,
+            throttleMs = throttleMs,
+            operationName = "sync"
+        ) {
+            refreshVaultFromSource(databaseId)
+            refreshSingleVaultState(databaseId)
+        }
+    }
+
+    private suspend fun runMdbxPendingUploadThroughCoordinator(
+        databaseId: Long,
+        requestIdPrefix: String,
+        trigger: SyncTrigger,
+        priority: SyncPriority,
+        mode: SyncMode
+    ): SyncTaskAwaitResult<Unit> {
+        return runMdbxTaskThroughCoordinator(
+            databaseId = databaseId,
+            requestIdPrefix = requestIdPrefix,
+            trigger = trigger,
+            priority = priority,
+            mode = mode,
+            operationName = "pending_upload"
+        ) { database ->
+            vaultStore.flushPendingWorkingCopy(database.id)
+            refreshSingleVaultState(database.id)
+        }
+    }
+
+    private suspend fun runMdbxTaskThroughCoordinator(
+        databaseId: Long,
+        requestIdPrefix: String,
+        trigger: SyncTrigger,
+        priority: SyncPriority,
+        mode: SyncMode,
+        throttleMs: Long = 0L,
+        operationName: String,
+        block: suspend (LocalMdbxDatabase) -> Unit
+    ): SyncTaskAwaitResult<Unit> {
+        val target = SyncTarget.MdbxVault(databaseId)
+        val taskId = SyncDiagnostics.nextTaskId(requestIdPrefix)
+        val targetLog = "mdbx:$databaseId"
+        val triggerLog = trigger.name
+        val database = withContext(Dispatchers.IO) {
+            databaseDao.getDatabaseById(databaseId)
+        }
+        if (database == null) {
+            SyncDiagnostics.skipped(
+                taskId = taskId,
+                target = targetLog,
+                trigger = triggerLog,
+                reason = "missing_vault"
+            )
+            return SyncTaskAwaitResult.Skipped("missing_vault")
+        }
+
+        val detail = "operation=$operationName source=${database.sourceType} status=${database.lastSyncStatus} throttleMs=$throttleMs"
+        SyncDiagnostics.queued(taskId, targetLog, triggerLog, detail)
+        val request = SyncRequest(
+            requestId = taskId,
+            target = target,
+            trigger = trigger,
+            createdAtMillis = System.currentTimeMillis(),
+            priority = priority,
+            mode = mode,
+            throttleKey = target.stableKey,
+            networkPolicy = database.mdbxSyncNetworkPolicy(),
+            throttleMs = throttleMs
+        )
+        val result = SyncTaskRunner.requestAndAwait(request) {
+            val startedAt = SyncDiagnostics.start(taskId, targetLog, triggerLog, detail)
+            try {
+                withContext(Dispatchers.IO) {
+                    block(database)
+                }
+                SyncDiagnostics.success(taskId, targetLog, triggerLog, startedAt)
+            } catch (error: Exception) {
+                runCatching { refreshSingleVaultState(databaseId) }
+                SyncDiagnostics.failed(taskId, targetLog, triggerLog, startedAt, error)
+                throw error
+            }
+        }
+        when (result) {
+            is SyncTaskAwaitResult.Completed -> Unit
+            is SyncTaskAwaitResult.Merged -> SyncDiagnostics.skipped(
+                taskId = taskId,
+                target = targetLog,
+                trigger = triggerLog,
+                reason = "merged"
+            )
+            is SyncTaskAwaitResult.Skipped -> SyncDiagnostics.skipped(
+                taskId = taskId,
+                target = targetLog,
+                trigger = triggerLog,
+                reason = result.reason
+            )
+            is SyncTaskAwaitResult.Blocked -> SyncDiagnostics.blocked(
+                taskId = taskId,
+                target = targetLog,
+                trigger = triggerLog,
+                reason = result.error.redactedMessage ?: result.error.kind.name
+            )
+            is SyncTaskAwaitResult.Canceled -> SyncDiagnostics.skipped(
+                taskId = taskId,
+                target = targetLog,
+                trigger = triggerLog,
+                reason = result.reason ?: "canceled"
+            )
+            is SyncTaskAwaitResult.Failed -> Unit
+        }
+        return result
+    }
+
+    private fun applyManualMdbxSyncResult(
+        result: SyncTaskAwaitResult<Unit>,
+        successMessage: String,
+        failurePrefix: String
+    ) {
+        _operationState.value = when (result) {
+            is SyncTaskAwaitResult.Completed -> OperationState.Success(successMessage)
+            is SyncTaskAwaitResult.Merged -> OperationState.Success("MDBX vault sync already running")
+            is SyncTaskAwaitResult.Skipped -> OperationState.Success("MDBX vault sync skipped: ${result.reason}")
+            is SyncTaskAwaitResult.Blocked -> OperationState.Error(
+                "$failurePrefix: ${result.error.redactedMessage ?: result.error.kind.name}"
+            )
+            is SyncTaskAwaitResult.Canceled -> OperationState.Error(
+                "$failurePrefix: ${result.reason ?: "sync canceled"}"
+            )
+            is SyncTaskAwaitResult.Failed -> OperationState.Error(
+                "$failurePrefix: ${result.error.message ?: "unknown error"}"
+            )
+        }
+    }
+
+    private fun LocalMdbxDatabase.mdbxSyncNetworkPolicy(): SyncNetworkPolicy {
+        return when (sourceTypeEnum) {
+            MdbxSourceType.REMOTE_WEBDAV,
+            MdbxSourceType.REMOTE_ONEDRIVE -> SyncNetworkPolicy.REQUIRED
+            MdbxSourceType.LOCAL_INTERNAL,
+            MdbxSourceType.LOCAL_EXTERNAL -> SyncNetworkPolicy.ALLOWED
         }
     }
 
@@ -1000,20 +1167,47 @@ class MdbxViewModel(
         viewModelScope.launch {
             _operationState.value = OperationState.Loading("Uploading pending MDBX vault changes...")
             try {
-                val flushedIds = withContext(Dispatchers.IO) {
+                val pendingIds = withContext(Dispatchers.IO) {
                     databaseDao.getAllDatabasesSnapshot()
                         .filter { it.lastSyncStatus == MdbxSyncStatus.PENDING_UPLOAD.name }
-                        .map { database ->
-                            vaultStore.flushPendingWorkingCopy(database.id)
-                            database.id
-                        }
+                        .map { database -> database.id }
                 }
-                flushedIds.forEach { databaseId ->
-                    refreshSingleVaultState(databaseId)
+                var uploadedCount = 0
+                val skippedReasons = mutableListOf<String>()
+                val failureMessages = mutableListOf<String>()
+                pendingIds.forEach { databaseId ->
+                    when (val result = runMdbxPendingUploadThroughCoordinator(
+                        databaseId = databaseId,
+                        requestIdPrefix = "mdbx-pending-upload",
+                        trigger = SyncTrigger.MANUAL,
+                        priority = SyncPriority.MANUAL,
+                        mode = SyncMode.FOREGROUND
+                    )) {
+                        is SyncTaskAwaitResult.Completed -> uploadedCount += 1
+                        is SyncTaskAwaitResult.Merged -> skippedReasons += "already running"
+                        is SyncTaskAwaitResult.Skipped -> skippedReasons += result.reason
+                        is SyncTaskAwaitResult.Blocked -> failureMessages +=
+                            (result.error.redactedMessage ?: result.error.kind.name)
+                        is SyncTaskAwaitResult.Canceled -> failureMessages +=
+                            (result.reason ?: "sync canceled")
+                        is SyncTaskAwaitResult.Failed -> failureMessages +=
+                            (result.error.message ?: "unknown error")
+                    }
                 }
-                _operationState.value = OperationState.Success(
-                    "Uploaded ${flushedIds.size} pending MDBX vault(s)"
-                )
+                _operationState.value = if (failureMessages.isEmpty()) {
+                    val skippedSuffix = if (skippedReasons.isEmpty()) {
+                        ""
+                    } else {
+                        ", skipped ${skippedReasons.size}"
+                    }
+                    OperationState.Success(
+                        "Uploaded $uploadedCount pending MDBX vault(s)$skippedSuffix"
+                    )
+                } else {
+                    OperationState.Error(
+                        "Failed to upload pending MDBX vaults: ${failureMessages.joinToString("; ")}"
+                    )
+                }
             } catch (e: Exception) {
                 _operationState.value = OperationState.Error(
                     "Failed to upload pending MDBX vaults: ${e.message ?: "unknown error"}"
@@ -1125,32 +1319,78 @@ class MdbxViewModel(
             _advancedDialogState.value = current?.copy(isLoading = true, message = null)
                 ?: MdbxAdvancedDialogState.Hidden
             _operationState.value = OperationState.Loading("Uploading pending MDBX vault changes...")
-            try {
-                withContext(Dispatchers.IO) {
-                    vaultStore.flushPendingWorkingCopy(databaseId)
+            val result = runMdbxPendingUploadThroughCoordinator(
+                databaseId = databaseId,
+                requestIdPrefix = "mdbx-pending-upload",
+                trigger = SyncTrigger.MANUAL,
+                priority = SyncPriority.MANUAL,
+                mode = SyncMode.FOREGROUND
+            )
+            if (result is SyncTaskAwaitResult.Completed) {
+                try {
+                    val refreshedDiagnostic = withContext(Dispatchers.IO) {
+                        vaultStore.getVaultDiagnostics(databaseId)
+                    }
+                    applyVaultDiagnostic(databaseId, refreshedDiagnostic)
+                    val latest = _advancedDialogState.value as? MdbxAdvancedDialogState.Visible
+                    if (latest?.databaseId == databaseId) {
+                        _advancedDialogState.value = latest.copy(
+                            diagnostics = refreshedDiagnostic,
+                            isLoading = false,
+                            message = "Pending MDBX upload flushed"
+                        )
+                    }
+                    _operationState.value = OperationState.Success("Pending MDBX upload flushed")
+                } catch (e: Exception) {
+                    val latest = _advancedDialogState.value as? MdbxAdvancedDialogState.Visible
+                    if (latest?.databaseId == databaseId) {
+                        _advancedDialogState.value = latest.copy(isLoading = false)
+                    }
+                    _operationState.value = OperationState.Error(
+                        "Failed to refresh MDBX diagnostics: ${e.message ?: "unknown error"}"
+                    )
                 }
-                val refreshedDiagnostic = withContext(Dispatchers.IO) {
-                    vaultStore.getVaultDiagnostics(databaseId)
-                }
-                applyVaultDiagnostic(databaseId, refreshedDiagnostic)
+            } else {
                 val latest = _advancedDialogState.value as? MdbxAdvancedDialogState.Visible
                 if (latest?.databaseId == databaseId) {
                     _advancedDialogState.value = latest.copy(
-                        diagnostics = refreshedDiagnostic,
                         isLoading = false,
-                        message = "Pending MDBX upload flushed"
+                        message = pendingUploadResultMessage(result)
                     )
                 }
-                _operationState.value = OperationState.Success("Pending MDBX upload flushed")
-            } catch (e: Exception) {
-                val latest = _advancedDialogState.value as? MdbxAdvancedDialogState.Visible
-                if (latest?.databaseId == databaseId) {
-                    _advancedDialogState.value = latest.copy(isLoading = false)
-                }
-                _operationState.value = OperationState.Error(
-                    "Failed to upload pending MDBX vault: ${e.message ?: "unknown error"}"
-                )
+                _operationState.value = pendingUploadOperationState(result)
             }
+        }
+    }
+
+    private fun pendingUploadOperationState(
+        result: SyncTaskAwaitResult<Unit>
+    ): OperationState {
+        return when (result) {
+            is SyncTaskAwaitResult.Completed -> OperationState.Success("Pending MDBX upload flushed")
+            is SyncTaskAwaitResult.Merged -> OperationState.Success("Pending MDBX upload already running")
+            is SyncTaskAwaitResult.Skipped -> OperationState.Success(
+                "Pending MDBX upload skipped: ${result.reason}"
+            )
+            is SyncTaskAwaitResult.Blocked -> OperationState.Error(
+                "Failed to upload pending MDBX vault: ${result.error.redactedMessage ?: result.error.kind.name}"
+            )
+            is SyncTaskAwaitResult.Canceled -> OperationState.Error(
+                "Failed to upload pending MDBX vault: ${result.reason ?: "sync canceled"}"
+            )
+            is SyncTaskAwaitResult.Failed -> OperationState.Error(
+                "Failed to upload pending MDBX vault: ${result.error.message ?: "unknown error"}"
+            )
+        }
+    }
+
+    private fun pendingUploadResultMessage(
+        result: SyncTaskAwaitResult<Unit>
+    ): String {
+        return when (val state = pendingUploadOperationState(result)) {
+            is OperationState.Success -> state.message
+            is OperationState.Error -> state.message
+            else -> "Pending MDBX upload did not complete"
         }
     }
 

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import takagi.ru.monica.sync.SyncDiagnostics
 import kotlin.math.min
 
 enum class SyncTriggerReason {
@@ -129,8 +130,19 @@ class BitwardenSyncOrchestrator(
     }
 
     private suspend fun processRequest(vaultId: Long, reason: SyncTriggerReason, force: Boolean) {
+        val taskId = SyncDiagnostics.nextTaskId("bw")
+        val target = "bitwarden:$vaultId"
+        val trigger = reason.name
         var runNow = false
         var silent = reason != SyncTriggerReason.MANUAL
+        var startedAt: Long? = null
+
+        SyncDiagnostics.queued(
+            taskId = taskId,
+            target = target,
+            trigger = trigger,
+            detail = "force=$force"
+        )
 
         mutex.withLock {
             val runtime = runtimeOf(vaultId)
@@ -148,37 +160,56 @@ class BitwardenSyncOrchestrator(
                     requestSync(vaultId, SyncTriggerReason.LOCAL_MUTATION, force = true)
                 }
                 setQueued(vaultId, runtime, reason)
+                SyncDiagnostics.queued(
+                    taskId = taskId,
+                    target = target,
+                    trigger = trigger,
+                    detail = "debounceMs=${config.localMutationDebounceMs}"
+                )
                 return
             }
 
             if (runtime.isRunning) {
                 runtime.pendingReason = pickHigherPriority(runtime.pendingReason, reason)
                 setQueued(vaultId, runtime, runtime.pendingReason)
+                SyncDiagnostics.queued(
+                    taskId = taskId,
+                    target = target,
+                    trigger = trigger,
+                    detail = "coalesced=true pending=${runtime.pendingReason}"
+                )
                 return
             }
 
             if (isAutoReason(reason) && !force) {
                 if (!isAutoSyncEnabled()) {
                     setBlocked(vaultId, runtime, SyncBlockReason.AUTO_SYNC_DISABLED, "自动同步已关闭")
+                    SyncDiagnostics.blocked(taskId, target, trigger, "auto_sync_disabled")
                     return
                 }
-                if (!passesThrottle(runtime, reason, nowProvider())) return
+                if (!passesThrottle(runtime, reason, nowProvider())) {
+                    SyncDiagnostics.skipped(taskId, target, trigger, "throttle")
+                    return
+                }
             }
 
             when (checkNetwork()) {
                 NetworkGateResult.ALLOWED -> Unit
                 NetworkGateResult.NETWORK_UNAVAILABLE -> {
                     setBlocked(vaultId, runtime, SyncBlockReason.NETWORK_UNAVAILABLE, "网络不可用")
+                    SyncDiagnostics.blocked(taskId, target, trigger, "network_unavailable")
                     return
                 }
                 NetworkGateResult.WIFI_REQUIRED -> {
                     setBlocked(vaultId, runtime, SyncBlockReason.WIFI_REQUIRED, "仅 Wi-Fi 同步")
+                    SyncDiagnostics.blocked(taskId, target, trigger, "wifi_required")
                     return
                 }
             }
 
             if (!isVaultUnlocked(vaultId)) {
                 setBlocked(vaultId, runtime, SyncBlockReason.VAULT_LOCKED, "Vault 未解锁")
+                SyncDiagnostics.blocked(taskId, target, trigger, "vault_locked")
                 return
             }
 
@@ -196,6 +227,12 @@ class BitwardenSyncOrchestrator(
                     nextRetryAt = null
                 )
             }
+            startedAt = SyncDiagnostics.start(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                detail = "silent=$silent"
+            )
             runNow = true
         }
 
@@ -286,6 +323,40 @@ class BitwardenSyncOrchestrator(
                 vaultId = vaultId,
                 reason = replayReason,
                 force = shouldForceQueuedReplay(replayReason)
+            )
+        }
+
+        val executionStartedAt = startedAt ?: SyncDiagnostics.now()
+        when (outcome) {
+            is SyncExecutionOutcome.Success -> SyncDiagnostics.success(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                startedAt = executionStartedAt,
+                detail = "applied=${outcome.appliedChangeCount} conflicts=${outcome.conflictCount} uploadFailed=${outcome.uploadFailedCount} skippedDirty=${outcome.skippedDueToLocalDirtyCount}"
+            )
+            is SyncExecutionOutcome.Blocked -> SyncDiagnostics.blocked(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                reason = outcome.reason.name,
+                startedAt = executionStartedAt
+            )
+            is SyncExecutionOutcome.RetryableError -> SyncDiagnostics.failed(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                startedAt = executionStartedAt,
+                error = IllegalStateException(outcome.message),
+                detail = "retryable=true"
+            )
+            is SyncExecutionOutcome.FatalError -> SyncDiagnostics.failed(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                startedAt = executionStartedAt,
+                error = IllegalStateException(outcome.message),
+                detail = "retryable=false"
             )
         }
     }

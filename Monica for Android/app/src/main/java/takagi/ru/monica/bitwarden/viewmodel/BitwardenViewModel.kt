@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -21,6 +22,7 @@ import takagi.ru.monica.bitwarden.api.BitwardenTlsConfig
 import takagi.ru.monica.bitwarden.cache.BitwardenOfflineSecretCache
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.bitwarden.service.LoginResult
+import takagi.ru.monica.bitwarden.sync.BitwardenCoordinatedSyncResult
 import takagi.ru.monica.bitwarden.sync.BitwardenMutationSyncBridge
 import takagi.ru.monica.bitwarden.sync.BitwardenSyncOrchestrator
 import takagi.ru.monica.bitwarden.sync.BitwardenSyncNotificationHelper
@@ -30,6 +32,9 @@ import takagi.ru.monica.bitwarden.sync.SyncBlockReason
 import takagi.ru.monica.bitwarden.sync.SyncExecutionOutcome
 import takagi.ru.monica.bitwarden.sync.SyncTriggerReason
 import takagi.ru.monica.bitwarden.sync.VaultSyncStatus
+import takagi.ru.monica.bitwarden.sync.mergeBitwardenSyncStatuses
+import takagi.ru.monica.bitwarden.sync.syncViaCoordinator
+import takagi.ru.monica.bitwarden.sync.toBitwardenBlockReason
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.BitwardenConflictBackup
@@ -37,6 +42,11 @@ import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncNetworkPolicy
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncTaskRunner
+import takagi.ru.monica.sync.SyncTrigger
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.OperationLogger
 
@@ -157,7 +167,16 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         isVaultUnlocked = { vaultId -> repository.isVaultUnlocked(vaultId) },
         executeSync = { vaultId, silent -> runSync(vaultId = vaultId, silent = silent) }
     )
-    val syncStatusByVault: StateFlow<Map<Long, VaultSyncStatus>> = syncOrchestrator.statusByVault
+    val syncStatusByVault: StateFlow<Map<Long, VaultSyncStatus>> = combine(
+        syncOrchestrator.statusByVault,
+        SyncTaskRunner.statuses
+    ) { orchestratorStatuses, coordinatorStatuses ->
+        mergeBitwardenSyncStatuses(orchestratorStatuses, coordinatorStatuses.values)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyMap()
+    )
     
     init {
         // 加载永不锁定设置
@@ -665,7 +684,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             }
 
             _sendState.value = SendState.Syncing
-            when (val result = repository.refreshSends(vault.id)) {
+            when (val result = refreshSendsViaCoordinator(vault.id)) {
                 is BitwardenRepository.SendSyncResult.Success -> {
                     _sends.value = result.sends
                     refreshSendsAcrossVaults()
@@ -702,7 +721,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             var anyWarning: String? = null
             unlockedVaultIds.forEach { vaultId ->
                 val vault = vaults.firstOrNull { it.id == vaultId } ?: return@forEach
-                when (val result = repository.refreshSends(vault.id)) {
+                when (val result = refreshSendsViaCoordinator(vault.id)) {
                     is BitwardenRepository.SendSyncResult.Success -> Unit
                     is BitwardenRepository.SendSyncResult.Warning -> {
                         if (anyWarning == null) anyWarning = result.message
@@ -723,6 +742,51 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 anyError != null -> SendState.Error(anyError!!)
                 anyWarning != null -> SendState.Warning(anyWarning!!)
                 else -> SendState.Idle
+            }
+        }
+    }
+
+    private suspend fun refreshSendsViaCoordinator(vaultId: Long): BitwardenRepository.SendSyncResult {
+        return when (val coordinatedResult = repository.syncViaCoordinator(
+            vaultId = vaultId,
+            requestIdPrefix = "bw-send-vault",
+            trigger = SyncTrigger.MANUAL,
+            priority = SyncPriority.MANUAL,
+            mode = SyncMode.FOREGROUND,
+            networkPolicy = if (_isSyncOnWifiOnly.value) {
+                SyncNetworkPolicy.WIFI_ONLY
+            } else {
+                SyncNetworkPolicy.REQUIRED
+            }
+        )) {
+            is BitwardenCoordinatedSyncResult.Completed -> when (val result = coordinatedResult.result) {
+                is BitwardenRepository.SyncResult.Success -> {
+                    BitwardenRepository.SendSyncResult.Success(repository.getSends(vaultId))
+                }
+                is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
+                    BitwardenRepository.SendSyncResult.Warning(
+                        sends = repository.getSends(vaultId),
+                        message = result.reason
+                    )
+                }
+                is BitwardenRepository.SyncResult.Error -> {
+                    BitwardenRepository.SendSyncResult.Error(result.message)
+                }
+            }
+            BitwardenCoordinatedSyncResult.Merged,
+            is BitwardenCoordinatedSyncResult.Skipped -> {
+                BitwardenRepository.SendSyncResult.Success(repository.getSends(vaultId))
+            }
+            is BitwardenCoordinatedSyncResult.Blocked -> {
+                BitwardenRepository.SendSyncResult.Error(
+                    coordinatedResult.error.redactedMessage ?: coordinatedResult.error.kind.name
+                )
+            }
+            is BitwardenCoordinatedSyncResult.Canceled -> {
+                BitwardenRepository.SendSyncResult.Error(coordinatedResult.reason ?: "同步被取消")
+            }
+            is BitwardenCoordinatedSyncResult.Failed -> {
+                BitwardenRepository.SendSyncResult.Error(coordinatedResult.error.message ?: "同步失败")
             }
         }
     }
@@ -1319,7 +1383,61 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             _syncState.value = SyncState.Syncing
         }
 
-        return when (val result = repository.sync(vault.id)) {
+        return when (val coordinatedResult = runRepositorySyncThroughCoordinator(vault.id, silent)) {
+            BitwardenCoordinatedSyncResult.Merged,
+            is BitwardenCoordinatedSyncResult.Skipped -> {
+                if (!silent) {
+                    _syncState.value = SyncState.Success(
+                        appliedChangeCount = 0,
+                        availableOfflineCount = 0,
+                        conflictCount = 0,
+                        uploadFailedCount = 0,
+                        skippedDueToLocalDirtyCount = 0
+                    )
+                }
+                SyncExecutionOutcome.Success(
+                    appliedChangeCount = 0,
+                    availableOfflineCount = 0,
+                    conflictCount = 0,
+                    uploadFailedCount = 0,
+                    skippedDueToLocalDirtyCount = 0
+                )
+            }
+
+            is BitwardenCoordinatedSyncResult.Blocked -> {
+                val message = coordinatedResult.error.redactedMessage ?: coordinatedResult.error.kind.name
+                if (!silent) {
+                    _syncState.value = SyncState.Error(message)
+                    _events.emit(BitwardenEvent.ShowError("同步受阻: $message"))
+                } else {
+                    Log.w(TAG, "Silent auto sync blocked: $message")
+                }
+                SyncExecutionOutcome.Blocked(coordinatedResult.error.toBitwardenBlockReason(), message)
+            }
+
+            is BitwardenCoordinatedSyncResult.Canceled -> {
+                val message = coordinatedResult.reason ?: "同步被取消"
+                if (!silent) {
+                    _syncState.value = SyncState.Error(message)
+                    _events.emit(BitwardenEvent.ShowError("同步失败: $message"))
+                } else {
+                    Log.w(TAG, "Silent auto sync canceled: $message")
+                }
+                classifyError(message)
+            }
+
+            is BitwardenCoordinatedSyncResult.Failed -> {
+                val message = coordinatedResult.error.message ?: "同步失败"
+                if (!silent) {
+                    _syncState.value = SyncState.Error(message)
+                    _events.emit(BitwardenEvent.ShowError("同步失败: $message"))
+                } else {
+                    Log.w(TAG, "Silent auto sync failed: $message")
+                }
+                classifyError(message)
+            }
+
+            is BitwardenCoordinatedSyncResult.Completed -> when (val result = coordinatedResult.result) {
             is BitwardenRepository.SyncResult.Success -> {
                 val warmedCount = warmBitwardenOfflineSecretCacheForVault(vault.id)
                 val offlineReadyCount = maxOf(result.availableOfflineCount, warmedCount)
@@ -1433,6 +1551,25 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 SyncExecutionOutcome.FatalError("空 Vault 保护已触发")
             }
         }
+        }
+    }
+
+    private suspend fun runRepositorySyncThroughCoordinator(
+        vaultId: Long,
+        silent: Boolean
+    ): BitwardenCoordinatedSyncResult {
+        return repository.syncViaCoordinator(
+            vaultId = vaultId,
+            requestIdPrefix = "bw-vm-vault",
+            trigger = if (silent) SyncTrigger.PAGE_VISIBLE else SyncTrigger.MANUAL,
+            priority = if (silent) SyncPriority.PAGE_VISIBLE else SyncPriority.MANUAL,
+            mode = if (silent) SyncMode.SILENT else SyncMode.FOREGROUND,
+            networkPolicy = if (_isSyncOnWifiOnly.value) {
+                SyncNetworkPolicy.WIFI_ONLY
+            } else {
+                SyncNetworkPolicy.REQUIRED
+            }
+        )
     }
 
     private suspend fun warmBitwardenOfflineSecretCacheForVault(vaultId: Long): Int {

@@ -29,8 +29,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 import takagi.ru.monica.data.ProgressBarStyle
+import takagi.ru.monica.ui.rememberTotpTickerMillis
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -47,17 +47,7 @@ fun UnifiedProgressBar(
     smoothProgress: Boolean = true,
     timeOffset: Long = 0 // 新增：时间偏移量（毫秒）以同步 TOTP 生成
 ) {
-    // 平滑进度：使用毫秒级更新
-    var currentMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    
-    LaunchedEffect(smoothProgress) {
-        if (smoothProgress) {
-            while (true) {
-                currentMillis = System.currentTimeMillis()
-                delay(16) // ~60fps
-            }
-        }
-    }
+    val currentMillis = rememberTotpTickerMillis(smoothProgress)
     
     // 根据是否平滑来计算进度
     // TOTP 周期是从 Unix 纪元开始计算的，需要精确对齐
@@ -291,17 +281,7 @@ fun CompactUnifiedProgressBar(
     smoothProgress: Boolean = true,
     timeOffset: Long = 0 // 新增：时间偏移量
 ) {
-    // 平滑进度：使用毫秒级更新
-    var currentMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    
-    LaunchedEffect(smoothProgress) {
-        if (smoothProgress) {
-            while (true) {
-                currentMillis = System.currentTimeMillis()
-                delay(16) // ~60fps
-            }
-        }
-    }
+    val currentMillis = rememberTotpTickerMillis(smoothProgress)
     
     val (remainingSeconds, progress) = if (smoothProgress) {
         val correctedMillis = currentMillis + timeOffset

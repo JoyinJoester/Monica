@@ -455,6 +455,51 @@ class MdbxAndroidIntegrationGuardTest {
     }
 
     @Test
+    fun incomingVaultApplySerializesWithLocalMdbxWrites() {
+        val vaultStoreSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
+        ).readText()
+        val applyIncomingBody = vaultStoreSource
+            .substringAfter("suspend fun applyIncomingVaultFile(")
+            .substringBefore("override suspend fun upsertPassword")
+
+        assertTrue(
+            "MDBX incoming sync must use the same per-vault write lock as autofill, restore, and normal item writes.",
+            applyIncomingBody.contains("withVaultWriteLock(localFile)") &&
+                applyIncomingBody.contains("openExistingWritableVault(localFile).use") &&
+                applyIncomingBody.contains("flushWorkingCopyToSourceIfNeeded(dbInfo, localFile)")
+        )
+        assertFalse(
+            "Incoming sync must not release the vault lock before flushing the merged working copy.",
+            applyIncomingBody.contains("}.also {\n            flushWorkingCopyToSourceIfNeeded(dbInfo, localFile)")
+        )
+    }
+
+    @Test
+    fun directMdbxFlushesSerializeWithVaultWrites() {
+        val vaultStoreSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
+        ).readText()
+        val flushPendingBody = vaultStoreSource
+            .substringAfter("override suspend fun flushPendingWorkingCopy(")
+            .substringBefore("override suspend fun flushWorkingCopy(")
+        val flushBody = vaultStoreSource
+            .substringAfter("override suspend fun flushWorkingCopy(")
+            .substringBefore("override suspend fun listConflicts(")
+
+        assertTrue(
+            "Pending MDBX flush must hold the same per-vault write lock as item writes.",
+            flushPendingBody.contains("withVaultWriteLock(file)") &&
+                flushPendingBody.contains("flushWorkingCopyToSourceIfNeeded(dbInfo, file)")
+        )
+        assertTrue(
+            "Explicit MDBX flush must hold the same per-vault write lock as item writes.",
+            flushBody.contains("withVaultWriteLock(file)") &&
+                flushBody.contains("flushWorkingCopyToSourceIfNeeded(dbInfo, file)")
+        )
+    }
+
+    @Test
     fun appFacingWordingTreatsMdbxAsOnePointZeroNotTestFeature() {
         val managerSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/screens/MdbxManagerScreen.kt"

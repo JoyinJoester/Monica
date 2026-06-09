@@ -84,6 +84,7 @@ import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.sync.isUserVisibleSyncInProgress
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.bitwarden.sync.syncForUserVisibleRequest
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.ItemType
@@ -117,6 +118,14 @@ import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.sync.SyncItemKind
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncRequest
+import takagi.ru.monica.sync.SyncTarget
+import takagi.ru.monica.sync.SyncTaskRunner
+import takagi.ru.monica.sync.SyncTrigger
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
@@ -270,8 +279,23 @@ fun CardWalletScreen(
         }
     }
     LaunchedEffect(Unit) {
-        bankCardViewModel.syncAllKeePassCards()
-        documentViewModel.syncAllKeePassDocuments()
+        SyncTaskRunner.request(
+            request = SyncRequest(
+                requestId = SyncDiagnostics.nextTaskId("kp-card-wallet"),
+                target = SyncTarget.KeePassCompatibilityIndex(
+                    databaseId = null,
+                    itemTypes = setOf(SyncItemKind.BANK_CARD, SyncItemKind.DOCUMENT)
+                ),
+                trigger = SyncTrigger.PAGE_VISIBLE,
+                createdAtMillis = System.currentTimeMillis(),
+                priority = SyncPriority.PAGE_VISIBLE,
+                mode = SyncMode.SILENT,
+                throttleMs = 30_000L
+            )
+        ) {
+            bankCardViewModel.syncAllKeePassCardsNow()
+            documentViewModel.syncAllKeePassDocumentsNow()
+        }
     }
 
     LaunchedEffect(savedCategoryFilterState, hasRestoredCategoryFilter) {
@@ -403,7 +427,10 @@ fun CardWalletScreen(
                     return@launch
                 }
 
-                val syncResult = bitwardenRepository.sync(vaultId)
+                val syncResult = bitwardenRepository.syncForUserVisibleRequest(
+                    vaultId = vaultId,
+                    requestIdPrefix = "bw-card-wallet-vault"
+                )
                 when (syncResult) {
                     is BitwardenRepository.SyncResult.Success -> {
                         syncFeedbackIsSuccess = true

@@ -1609,7 +1609,9 @@ class MdbxVaultStore(
         if (!file.exists()) {
             throw IllegalStateException("MDBX local copy is missing: ${file.absolutePath}")
         }
-        flushWorkingCopyToSourceIfNeeded(dbInfo, file)
+        withVaultWriteLock(file) {
+            flushWorkingCopyToSourceIfNeeded(dbInfo, file)
+        }
     }
 
     override suspend fun flushWorkingCopy(databaseId: Long) = withContext(Dispatchers.IO) {
@@ -1620,7 +1622,9 @@ class MdbxVaultStore(
         if (!file.exists()) {
             throw IllegalStateException("MDBX local copy is missing: ${file.absolutePath}")
         }
-        flushWorkingCopyToSourceIfNeeded(dbInfo, file)
+        withVaultWriteLock(file) {
+            flushWorkingCopyToSourceIfNeeded(dbInfo, file)
+        }
     }
 
     override suspend fun listConflicts(databaseId: Long): List<MdbxConflictSummary> =
@@ -1745,82 +1749,85 @@ class MdbxVaultStore(
             ?: throw IllegalStateException("MDBX vault not found: $databaseId")
         val localFile = resolveWritableFile(dbInfo)
             ?: throw IllegalStateException("MDBX vault has no writable local copy: ${dbInfo.name}")
-        if (!localFile.exists()) {
-            localFile.parentFile?.mkdirs()
-            incomingFile.copyTo(localFile, overwrite = true)
-            validateExistingVaultFile(localFile)
-            return@withContext MdbxApplyResult(
-                appliedObjectCount = 0,
-                keptLocalObjectCount = 0,
-                conflictCount = 0,
-                tombstoneCount = 0
-            )
-        }
 
-        openReadOnly(incomingFile).use { incoming ->
-            val incomingMissingTables = missingRequiredTables(incoming)
-            if (incomingMissingTables.isNotEmpty()) {
-                throw IllegalArgumentException(
-                    "Unsupported incoming MDBX schema, missing tables: ${incomingMissingTables.joinToString()}"
+        withVaultWriteLock(localFile) {
+            if (!localFile.exists()) {
+                localFile.parentFile?.mkdirs()
+                incomingFile.copyTo(localFile, overwrite = true)
+                validateExistingVaultFile(localFile)
+                return@withVaultWriteLock MdbxApplyResult(
+                    appliedObjectCount = 0,
+                    keptLocalObjectCount = 0,
+                    conflictCount = 0,
+                    tombstoneCount = 0
                 )
             }
-            requireSupportedVaultFormat(incoming, label = "incoming MDBX")
 
-            openExistingWritableVault(localFile).use { local ->
-                var applied = 0
-                var keptLocal = 0
-                var conflicts = 0
-                var tombstones = 0
-                local.beginTransaction()
-                try {
-                    ensureSchema(local)
-                    ensureDeviceRegistration(local)
-                    val localEpochKey = requireEpochKey(local, dbInfo)
-                    val incomingEpochKey = resolveIncomingEpochKey(
-                        local = local,
-                        incoming = incoming,
-                        dbInfo = dbInfo,
-                        localEpochKey = localEpochKey
+            val result = openReadOnly(incomingFile).use { incoming ->
+                val incomingMissingTables = missingRequiredTables(incoming)
+                if (incomingMissingTables.isNotEmpty()) {
+                    throw IllegalArgumentException(
+                        "Unsupported incoming MDBX schema, missing tables: ${incomingMissingTables.joinToString()}"
                     )
-                    copyIncomingHistory(local, incoming)
-                    copyIncomingFolders(local, incoming)
-                    tombstones = copyIncomingTombstones(local, incoming)
-
-                    readIncomingProjects(incoming).forEach { project ->
-                        when (applyIncomingProject(local, incoming, project, localEpochKey, incomingEpochKey)) {
-                            ApplyDecision.APPLIED -> applied++
-                            ApplyDecision.KEPT_LOCAL -> keptLocal++
-                            ApplyDecision.CONFLICT -> conflicts++
-                        }
-                    }
-                    readIncomingEntries(incoming).forEach { entry ->
-                        when (applyIncomingEntry(local, incoming, entry, localEpochKey, incomingEpochKey)) {
-                            ApplyDecision.APPLIED -> applied++
-                            ApplyDecision.KEPT_LOCAL -> keptLocal++
-                            ApplyDecision.CONFLICT -> conflicts++
-                        }
-                    }
-                    readIncomingAttachments(incoming).forEach { attachment ->
-                        when (applyIncomingAttachment(local, incoming, attachment, localEpochKey, incomingEpochKey)) {
-                            ApplyDecision.APPLIED -> applied++
-                            ApplyDecision.KEPT_LOCAL -> keptLocal++
-                            ApplyDecision.CONFLICT -> conflicts++
-                        }
-                    }
-                    local.setTransactionSuccessful()
-                } finally {
-                    local.endTransaction()
                 }
-                checkpoint(local)
-                MdbxApplyResult(
-                    appliedObjectCount = applied,
-                    keptLocalObjectCount = keptLocal,
-                    conflictCount = conflicts,
-                    tombstoneCount = tombstones
-                )
+                requireSupportedVaultFormat(incoming, label = "incoming MDBX")
+
+                openExistingWritableVault(localFile).use { local ->
+                    var applied = 0
+                    var keptLocal = 0
+                    var conflicts = 0
+                    var tombstones = 0
+                    local.beginTransaction()
+                    try {
+                        ensureSchema(local)
+                        ensureDeviceRegistration(local)
+                        val localEpochKey = requireEpochKey(local, dbInfo)
+                        val incomingEpochKey = resolveIncomingEpochKey(
+                            local = local,
+                            incoming = incoming,
+                            dbInfo = dbInfo,
+                            localEpochKey = localEpochKey
+                        )
+                        copyIncomingHistory(local, incoming)
+                        copyIncomingFolders(local, incoming)
+                        tombstones = copyIncomingTombstones(local, incoming)
+
+                        readIncomingProjects(incoming).forEach { project ->
+                            when (applyIncomingProject(local, incoming, project, localEpochKey, incomingEpochKey)) {
+                                ApplyDecision.APPLIED -> applied++
+                                ApplyDecision.KEPT_LOCAL -> keptLocal++
+                                ApplyDecision.CONFLICT -> conflicts++
+                            }
+                        }
+                        readIncomingEntries(incoming).forEach { entry ->
+                            when (applyIncomingEntry(local, incoming, entry, localEpochKey, incomingEpochKey)) {
+                                ApplyDecision.APPLIED -> applied++
+                                ApplyDecision.KEPT_LOCAL -> keptLocal++
+                                ApplyDecision.CONFLICT -> conflicts++
+                            }
+                        }
+                        readIncomingAttachments(incoming).forEach { attachment ->
+                            when (applyIncomingAttachment(local, incoming, attachment, localEpochKey, incomingEpochKey)) {
+                                ApplyDecision.APPLIED -> applied++
+                                ApplyDecision.KEPT_LOCAL -> keptLocal++
+                                ApplyDecision.CONFLICT -> conflicts++
+                            }
+                        }
+                        local.setTransactionSuccessful()
+                    } finally {
+                        local.endTransaction()
+                    }
+                    checkpoint(local)
+                    MdbxApplyResult(
+                        appliedObjectCount = applied,
+                        keptLocalObjectCount = keptLocal,
+                        conflictCount = conflicts,
+                        tombstoneCount = tombstones
+                    )
+                }
             }
-        }.also {
             flushWorkingCopyToSourceIfNeeded(dbInfo, localFile)
+            result
         }
     }
 

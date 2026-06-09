@@ -44,6 +44,16 @@ import takagi.ru.monica.utils.AutoBackupManager
 import takagi.ru.monica.utils.CustomFieldBackupEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.CustomField
+import takagi.ru.monica.sync.SyncBackupProvider
+import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncNetworkPolicy
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncRequest
+import takagi.ru.monica.sync.SyncTarget
+import takagi.ru.monica.sync.SyncTaskAwaitResult
+import takagi.ru.monica.sync.SyncTaskRunner
+import takagi.ru.monica.sync.SyncTrigger
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.util.DataExportImportManager
 import java.text.SimpleDateFormat
@@ -771,82 +781,149 @@ fun WebDavBackupScreen(
                         isLoading = true
                         errorMessage = ""
                         coroutineScope.launch {
+                            val backupTarget = SyncTarget.Backup(SyncBackupProvider.WEBDAV)
+                            val taskId = SyncDiagnostics.nextTaskId("backup-webdav-screen")
+                            val targetLog = backupTarget.stableKey.value
+                            val triggerLog = "WEBDAV_SCREEN_MANUAL"
                             try {
-                                // 获取 Monica 本地密码数据
-                                val localPasswords = passwordRepository.getAllLocalPasswordEntries()
-                                
-                                // WebDAV 是跨端备份；如果 Android 本机密钥不可用，不能把设备密文写进备份。
-                                val securityManager = takagi.ru.monica.security.SecurityManager(context)
-                                val failedPasswordTitles = mutableListOf<String>()
-                                val decryptedPasswords = localPasswords.map { entry ->
-                                    try {
-                                        entry.copy(password = securityManager.decryptData(entry.password))
-                                    } catch (e: Exception) {
-                                        android.util.Log.w("WebDavBackupScreen", "无法解密密码 ${entry.title}: ${e.message}")
-                                        failedPasswordTitles += entry.title.ifBlank { entry.website.ifBlank { entry.username } }
-                                        entry.copy(password = "")
-                                    }
-                                }
-                                if (failedPasswordTitles.isNotEmpty()) {
-                                    throw IllegalStateException(
-                                        "有 ${failedPasswordTitles.size} 条密码无法解密，已取消备份。请先用主密码解锁 Monica 后重新备份。"
+                                val syncResult = SyncTaskRunner.requestAndAwait(
+                                    request = SyncRequest(
+                                        requestId = taskId,
+                                        target = backupTarget,
+                                        trigger = SyncTrigger.MANUAL,
+                                        createdAtMillis = System.currentTimeMillis(),
+                                        priority = SyncPriority.MANUAL,
+                                        mode = SyncMode.FOREGROUND,
+                                        networkPolicy = SyncNetworkPolicy.REQUIRED
                                     )
+                                ) {
+                                    SyncDiagnostics.queued(taskId, targetLog, triggerLog)
+                                    val startedAt = SyncDiagnostics.start(taskId, targetLog, triggerLog)
+                                    try {
+                                        // 获取 Monica 本地密码数据
+                                        val localPasswords = passwordRepository.getAllLocalPasswordEntries()
+
+                                        // WebDAV 是跨端备份；如果 Android 本机密钥不可用，不能把设备密文写进备份。
+                                        val securityManager = takagi.ru.monica.security.SecurityManager(context)
+                                        val failedPasswordTitles = mutableListOf<String>()
+                                        val decryptedPasswords = localPasswords.map { entry ->
+                                            try {
+                                                entry.copy(password = securityManager.decryptData(entry.password))
+                                            } catch (e: Exception) {
+                                                android.util.Log.w("WebDavBackupScreen", "无法解密密码 ${entry.title}: ${e.message}")
+                                                failedPasswordTitles += entry.title.ifBlank { entry.website.ifBlank { entry.username } }
+                                                entry.copy(password = "")
+                                            }
+                                        }
+                                        if (failedPasswordTitles.isNotEmpty()) {
+                                            throw IllegalStateException(
+                                                "有 ${failedPasswordTitles.size} 条密码无法解密，已取消备份。请先用主密码解锁 Monica 后重新备份。"
+                                            )
+                                        }
+
+                                        // 获取 Monica 本地其他数据(TOTP、银行卡、证件、笔记)
+                                        val localSecureItems = secureItemRepository.getAllLocalItems()
+
+                                        // 创建并上传永久备份
+                                        val report = webDavHelper.createAndUploadBackup(
+                                            passwords = decryptedPasswords,
+                                            secureItems = localSecureItems,
+                                            preferences = backupPreferences,
+                                            isPermanent = true, // Manual backups are permanent
+                                            isManualTrigger = true,
+                                            contentScope = BackupContentScope.MONICA_LOCAL_ONLY
+                                        ).getOrThrow()
+
+                                        SyncDiagnostics.success(
+                                            taskId = taskId,
+                                            target = targetLog,
+                                            trigger = triggerLog,
+                                            startedAt = startedAt,
+                                            detail = "passwords=${decryptedPasswords.size} secureItems=${localSecureItems.size} hasIssues=${report.hasIssues()}"
+                                        )
+                                        report
+                                    } catch (error: Exception) {
+                                        SyncDiagnostics.failed(taskId, targetLog, triggerLog, startedAt, error)
+                                        throw error
+                                    }
                                 }
-                                
-                                // 获取 Monica 本地其他数据(TOTP、银行卡、证件、笔记)
-                                val localSecureItems = secureItemRepository.getAllLocalItems()
-                                
-                                // 创建并上传永久备份
-                                val result = webDavHelper.createAndUploadBackup(
-                                    passwords = decryptedPasswords, 
-                                    secureItems = localSecureItems,
-                                    preferences = backupPreferences,
-                                    isPermanent = true, // Manual backups are permanent
-                                    isManualTrigger = true,
-                                    contentScope = BackupContentScope.MONICA_LOCAL_ONLY
-                                )
-                                
-                                if (result.isSuccess) {
-                                    // 更新上次备份时间
-                                    lastBackupTime = webDavHelper.getLastBackupTime()
-                                    
-                                    // P0修复：使用报告数据
-                                    val report = result.getOrNull()
-                                    val message = if (report != null && report.hasIssues()) {
-                                        // 显示详细报告（如果有问题）
-                                        report.getSummary()
-                                    } else {
-                                        context.getString(R.string.webdav_backup_success)
+
+                                when (syncResult) {
+                                    is SyncTaskAwaitResult.Completed -> {
+                                        lastBackupTime = webDavHelper.getLastBackupTime()
+
+                                        val report = syncResult.value
+                                        val message = if (report.hasIssues()) {
+                                            report.getSummary()
+                                        } else {
+                                            context.getString(R.string.webdav_backup_success)
+                                        }
+
+                                        Toast.makeText(
+                                            context,
+                                            message,
+                                            Toast.LENGTH_LONG
+                                        ).show()
+
+                                        loadBackups(webDavHelper) { list, error ->
+                                            backupList = list
+                                            error?.let { errorMessage = it }
+                                        }
                                     }
-                                    
-                                    Toast.makeText(
-                                        context,
-                                        message,
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                    
-                                    // 刷新备份列表
-                                    loadBackups(webDavHelper) { list, error ->
-                                        backupList = list
-                                        isLoading = false
-                                        isBackupInProgress = false
-                                        error?.let { errorMessage = it }
+                                    is SyncTaskAwaitResult.Merged -> {
+                                        SyncDiagnostics.skipped(
+                                            taskId = taskId,
+                                            target = targetLog,
+                                            trigger = triggerLog,
+                                            reason = "merged_with_running_backup",
+                                            detail = "running=${syncResult.status.runningRequestId.orEmpty()}"
+                                        )
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.webdav_backup_in_progress),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                     }
-                                } else {
-                                    isLoading = false
-                                    isBackupInProgress = false
-                                    val error = result.exceptionOrNull()?.message
-                                        ?: context.getString(R.string.webdav_create_backup_failed)
-                                    errorMessage = error
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.webdav_backup_failed, error),
-                                        Toast.LENGTH_LONG
-                                    ).show()
+                                    is SyncTaskAwaitResult.Skipped -> {
+                                        SyncDiagnostics.skipped(taskId, targetLog, triggerLog, syncResult.reason)
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.webdav_backup_failed, syncResult.reason),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                    is SyncTaskAwaitResult.Blocked -> {
+                                        val reason = syncResult.error.redactedMessage ?: syncResult.error.kind.name
+                                        SyncDiagnostics.blocked(taskId, targetLog, triggerLog, reason)
+                                        errorMessage = reason
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.webdav_backup_failed, reason),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                    is SyncTaskAwaitResult.Canceled -> {
+                                        val reason = syncResult.reason ?: "backup canceled"
+                                        SyncDiagnostics.skipped(taskId, targetLog, triggerLog, reason)
+                                        errorMessage = reason
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.webdav_backup_failed, reason),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                    is SyncTaskAwaitResult.Failed -> {
+                                        val error = syncResult.error.message
+                                            ?: context.getString(R.string.webdav_create_backup_failed)
+                                        errorMessage = error
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.webdav_backup_failed, error),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
                                 }
                             } catch (e: Exception) {
-                                isLoading = false
-                                isBackupInProgress = false
                                 errorMessage = e.message ?: context.getString(R.string.webdav_create_backup_failed)
                                 Toast.makeText(
                                     context,
@@ -856,6 +933,9 @@ fun WebDavBackupScreen(
                                     ),
                                     Toast.LENGTH_LONG
                                 ).show()
+                            } finally {
+                                isLoading = false
+                                isBackupInProgress = false
                             }
                         }
                     },

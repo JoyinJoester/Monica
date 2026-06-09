@@ -6,17 +6,15 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.vector.ImageVector
 import java.text.SimpleDateFormat
 import java.util.Locale
-import kotlinx.coroutines.delay
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.PasswordCardDisplayField
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.ui.rememberTotpTickerMillis
 import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.TotpGenerator
 
@@ -85,23 +83,7 @@ fun rememberPasswordAuthenticatorDisplayState(
         )
     } ?: return null
 
-    val currentTimeMillis by produceState(
-        initialValue = System.currentTimeMillis(),
-        key1 = totpData,
-        key2 = timeOffsetSeconds,
-        key3 = smoothProgress
-    ) {
-        while (true) {
-            val now = System.currentTimeMillis()
-            value = now
-            val waitMillis = if (smoothProgress) {
-                50L
-            } else {
-                (1000L - (now % 1000L)).coerceAtLeast(16L)
-            }
-            delay(waitMillis)
-        }
-    }
+    val currentTimeMillis = rememberTotpTickerMillis(smoothProgress)
     val currentSeconds = currentTimeMillis / 1000
 
     val rawCode = remember(totpData, currentSeconds, timeOffsetSeconds) {

@@ -747,6 +747,9 @@ class BitwardenRepository(private val context: Context) {
      * 3. 上传本地修改的条目到服务器（update）
      * 4. 从服务器拉取最新数据（pull）
      */
+    @Deprecated(
+        message = "Use BitwardenRepository.syncViaCoordinator for external callers. Bare sync is the coordinator executor body and must not be used as a UI/worker entrypoint."
+    )
     suspend fun sync(vaultId: Long): SyncResult = withContext(Dispatchers.IO) {
         syncMutexForVault(vaultId).withLock {
             try {
@@ -1403,6 +1406,11 @@ class BitwardenRepository(private val context: Context) {
             if (vaultIds.isEmpty()) emptyList() else sendDao.getSendsByVaults(vaultIds)
         }
 
+    @Deprecated(
+        message = "Use BitwardenRepository.syncViaCoordinator or BitwardenViewModel refreshSendsViaCoordinator so Send refresh shares the global sync queue.",
+        level = DeprecationLevel.WARNING
+    )
+    @Suppress("DEPRECATION")
     suspend fun refreshSends(vaultId: Long): SendSyncResult = withContext(Dispatchers.IO) {
         when (val result = sync(vaultId)) {
             is SyncResult.Success -> {

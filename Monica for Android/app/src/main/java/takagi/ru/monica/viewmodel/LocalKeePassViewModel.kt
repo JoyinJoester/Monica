@@ -44,6 +44,18 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.sync.KEEPASS_REMOTE_SYNC_DEDUPE_KEY
+import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.sync.SyncEnqueueResult
+import takagi.ru.monica.sync.SyncKey
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncNetworkPolicy
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncRequest
+import takagi.ru.monica.sync.SyncTarget
+import takagi.ru.monica.sync.SyncTaskAwaitResult
+import takagi.ru.monica.sync.SyncTaskRunner
+import takagi.ru.monica.sync.SyncTrigger
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.FileSourceEntry
 import takagi.ru.monica.utils.GoogleDriveKeePassFileSource
@@ -72,6 +84,7 @@ class LocalKeePassViewModel(
     companion object {
         private const val TAG = "LocalKeePassViewModel"
         private const val VISIBLE_REMOTE_AUTO_SYNC_THROTTLE_MS = 60_000L
+        private const val VISIBLE_REMOTE_AUTO_SYNC_DEDUPE_KEY = KEEPASS_REMOTE_SYNC_DEDUPE_KEY
     }
     
     private val context: Context get() = getApplication()
@@ -123,9 +136,6 @@ class LocalKeePassViewModel(
             syncStateDao = appDatabase.keepassRemoteSyncStateDao()
         )
     }
-    private val visibleRemoteSyncDatabaseIds = mutableSetOf<Long>()
-    private val visibleRemoteSyncLastStartedAt = mutableMapOf<Long, Long>()
-    private val visibleRemoteSyncMutex = Mutex()
 
     init {
         autoResolveWebDavConflictDatabases()
@@ -1288,90 +1298,196 @@ class LocalKeePassViewModel(
     }
 
     fun syncRemoteDatabase(databaseId: Long, silent: Boolean = false) {
+        val taskId = SyncDiagnostics.nextTaskId("kp-sync")
+        val targetLog = "keepass:$databaseId"
+        val triggerLog = if (silent) "REMOTE_SYNC_SILENT" else "REMOTE_SYNC_MANUAL"
+        SyncDiagnostics.queued(taskId, targetLog, triggerLog, detail = "silent=$silent")
         viewModelScope.launch {
             if (!silent) {
                 _operationState.value = OperationState.Loading("正在同步远端数据库...")
             }
 
-            try {
-                val result = withContext(Dispatchers.IO) {
-                    syncRemoteDatabaseInternal(databaseId)
+            val syncTarget = SyncTarget.KeePassDatabase(databaseId)
+            val result = SyncTaskRunner.requestAndAwait(
+                request = SyncRequest(
+                    requestId = taskId,
+                    target = syncTarget,
+                    trigger = if (silent) SyncTrigger.RETRY else SyncTrigger.MANUAL,
+                    createdAtMillis = System.currentTimeMillis(),
+                    priority = if (silent) SyncPriority.REPAIR else SyncPriority.MANUAL,
+                    mode = if (silent) SyncMode.SILENT else SyncMode.FOREGROUND,
+                    dedupeKey = SyncKey(VISIBLE_REMOTE_AUTO_SYNC_DEDUPE_KEY),
+                    throttleKey = syncTarget.stableKey,
+                    networkPolicy = SyncNetworkPolicy.REQUIRED
+                )
+            ) {
+                val startedAt = SyncDiagnostics.start(taskId, targetLog, triggerLog, detail = "silent=$silent")
+                try {
+                    val syncResult = withContext(Dispatchers.IO) {
+                        syncRemoteDatabaseInternal(databaseId)
+                    }
+                    SyncDiagnostics.success(taskId, targetLog, triggerLog, startedAt)
+                    syncResult
+                } catch (error: Exception) {
+                    withContext(Dispatchers.IO) {
+                        handleSyncRemoteFailure(databaseId, error)
+                    }
+                    SyncDiagnostics.failed(taskId, targetLog, triggerLog, startedAt, error)
+                    throw error
                 }
+            }
 
-                if (!silent) {
-                    _operationState.value = OperationState.Success(result.message)
-                    logKeepassDatabaseUpdate(
-                        databaseId = databaseId,
-                        databaseName = result.databaseName,
-                        changes = listOf(
-                            FieldChange("远端同步", "待同步", result.message)
+            when (result) {
+                is SyncTaskAwaitResult.Completed -> {
+                    val syncResult = result.value
+                    if (!silent) {
+                        _operationState.value = OperationState.Success(syncResult.message)
+                        logKeepassDatabaseUpdate(
+                            databaseId = databaseId,
+                            databaseName = syncResult.databaseName,
+                            changes = listOf(
+                                FieldChange("远端同步", "待同步", syncResult.message)
+                            )
                         )
+                    } else {
+                        Log.i(TAG, "Silent remote sync success: databaseId=$databaseId, message=${syncResult.message}")
+                    }
+                }
+                is SyncTaskAwaitResult.Merged -> {
+                    SyncDiagnostics.skipped(
+                        taskId = taskId,
+                        target = targetLog,
+                        trigger = triggerLog,
+                        reason = "merged",
+                        detail = "running=${result.status.runningRequestId.orEmpty()}"
                     )
-                } else {
-                    Log.i(TAG, "Silent remote sync success: databaseId=$databaseId, message=${result.message}")
+                    if (!silent) {
+                        _operationState.value = OperationState.Success("已有远端同步正在运行")
+                    }
                 }
-            } catch (e: Exception) {
-                withContext(Dispatchers.IO) {
-                    handleSyncRemoteFailure(databaseId, e)
+                is SyncTaskAwaitResult.Skipped -> {
+                    SyncDiagnostics.skipped(taskId, targetLog, triggerLog, result.reason)
+                    if (!silent) {
+                        _operationState.value = OperationState.Success("远端同步已跳过: ${result.reason}")
+                    }
                 }
-                if (!silent) {
-                    _operationState.value = OperationState.Error("同步失败: ${formatOperationError(e)}")
-                } else {
-                    Log.w(TAG, "Silent remote sync failed: databaseId=$databaseId, reason=${e.message}")
+                is SyncTaskAwaitResult.Blocked -> {
+                    SyncDiagnostics.blocked(
+                        taskId = taskId,
+                        target = targetLog,
+                        trigger = triggerLog,
+                        reason = result.error.redactedMessage ?: result.error.kind.name
+                    )
+                    val message = result.error.redactedMessage ?: result.error.kind.name
+                    if (!silent) {
+                        _operationState.value = OperationState.Error("同步失败: $message")
+                    } else {
+                        Log.w(TAG, "Silent remote sync blocked: databaseId=$databaseId, reason=$message")
+                    }
+                }
+                is SyncTaskAwaitResult.Canceled -> {
+                    val message = result.reason ?: "sync canceled"
+                    SyncDiagnostics.skipped(taskId, targetLog, triggerLog, message)
+                    if (!silent) {
+                        _operationState.value = OperationState.Error("同步失败: $message")
+                    } else {
+                        Log.w(TAG, "Silent remote sync canceled: databaseId=$databaseId, reason=$message")
+                    }
+                }
+                is SyncTaskAwaitResult.Failed -> {
+                    if (!silent) {
+                        _operationState.value = OperationState.Error("同步失败: ${formatOperationError(result.error)}")
+                    } else {
+                        Log.w(TAG, "Silent remote sync failed: databaseId=$databaseId, reason=${result.error.message}")
+                    }
                 }
             }
         }
     }
 
     fun autoSyncVisibleRemoteDatabase(databaseId: Long) {
-        synchronized(visibleRemoteSyncDatabaseIds) {
-            if (!visibleRemoteSyncDatabaseIds.add(databaseId)) {
-                return
-            }
-        }
+        val taskId = SyncDiagnostics.nextTaskId("kp-visible")
+        val targetLog = "keepass:$databaseId"
+        val triggerLog = "VISIBLE_REMOTE_AUTO_SYNC"
+        SyncDiagnostics.queued(taskId, targetLog, triggerLog)
         viewModelScope.launch(Dispatchers.IO) {
-            var mutexLocked = false
-            try {
-                if (!visibleRemoteSyncMutex.tryLock()) {
-                    return@launch
-                }
-                mutexLocked = true
+            val database = dao.getDatabaseById(databaseId)
+            if (database == null || !database.isRemoteSource()) {
+                SyncDiagnostics.skipped(taskId, targetLog, triggerLog, "not_remote_or_missing")
+                return@launch
+            }
+            if (database.lastSyncStatus == KeePassSyncStatus.CONFLICT) {
+                SyncDiagnostics.blocked(taskId, targetLog, triggerLog, "conflict")
+                return@launch
+            }
 
-                val database = dao.getDatabaseById(databaseId)
-                if (database == null || !database.isRemoteSource()) {
-                    return@launch
+            val syncTarget = SyncTarget.KeePassDatabase(databaseId)
+            val shouldBypassThrottle = database.lastSyncStatus == KeePassSyncStatus.PENDING_UPLOAD ||
+                database.lastSyncStatus == KeePassSyncStatus.FAILED ||
+                database.lastSyncStatus == KeePassSyncStatus.REMOTE_CHANGED
+            val throttleMs = if (shouldBypassThrottle) 0L else VISIBLE_REMOTE_AUTO_SYNC_THROTTLE_MS
+            val result = SyncTaskRunner.request(
+                request = SyncRequest(
+                    requestId = taskId,
+                    target = syncTarget,
+                    trigger = SyncTrigger.PAGE_VISIBLE,
+                    createdAtMillis = System.currentTimeMillis(),
+                    priority = SyncPriority.PAGE_VISIBLE,
+                    mode = SyncMode.SILENT,
+                    dedupeKey = SyncKey(VISIBLE_REMOTE_AUTO_SYNC_DEDUPE_KEY),
+                    throttleKey = syncTarget.stableKey,
+                    networkPolicy = SyncNetworkPolicy.REQUIRED,
+                    throttleMs = throttleMs
+                )
+            ) {
+                val startedAt = SyncDiagnostics.start(
+                    taskId = taskId,
+                    target = targetLog,
+                    trigger = triggerLog,
+                    detail = "status=${database.lastSyncStatus} throttleMs=$throttleMs"
+                )
+                try {
+                    val latestDatabase = dao.getDatabaseById(databaseId)
+                    if (latestDatabase == null || !latestDatabase.isRemoteSource()) {
+                        SyncDiagnostics.skipped(taskId, targetLog, triggerLog, "not_remote_or_missing", startedAt)
+                        return@request
+                    }
+                    if (latestDatabase.lastSyncStatus == KeePassSyncStatus.CONFLICT) {
+                        SyncDiagnostics.blocked(taskId, targetLog, triggerLog, "conflict", startedAt)
+                        throw IllegalStateException("KeePass remote sync blocked by conflict")
+                    }
+                    withContext(Dispatchers.IO) {
+                        syncRemoteDatabaseInternal(databaseId)
+                    }
+                    SyncDiagnostics.success(taskId, targetLog, triggerLog, startedAt)
+                } catch (error: Exception) {
+                    handleSyncRemoteFailure(databaseId, error)
+                    Log.w(TAG, "Visible KeePass remote auto-sync failed: databaseId=$databaseId", error)
+                    SyncDiagnostics.failed(taskId, targetLog, triggerLog, startedAt, error)
+                    throw error
                 }
-                if (database.lastSyncStatus == KeePassSyncStatus.CONFLICT) {
-                    return@launch
+            }
+            when (result) {
+                is SyncEnqueueResult.Accepted -> Unit
+                is SyncEnqueueResult.Merged -> {
+                    SyncDiagnostics.skipped(
+                        taskId = taskId,
+                        target = targetLog,
+                        trigger = triggerLog,
+                        reason = "merged",
+                        detail = "running=${result.existingStatus.runningRequestId.orEmpty()}"
+                    )
                 }
-
-                val now = SystemClock.elapsedRealtime()
-                val shouldBypassThrottle = database.lastSyncStatus == KeePassSyncStatus.PENDING_UPLOAD ||
-                    database.lastSyncStatus == KeePassSyncStatus.FAILED ||
-                    database.lastSyncStatus == KeePassSyncStatus.REMOTE_CHANGED
-                val lastStartedAt = synchronized(visibleRemoteSyncLastStartedAt) {
-                    visibleRemoteSyncLastStartedAt[databaseId]
+                is SyncEnqueueResult.Skipped -> {
+                    SyncDiagnostics.skipped(taskId, targetLog, triggerLog, result.reason)
                 }
-                if (!shouldBypassThrottle &&
-                    lastStartedAt != null &&
-                    now - lastStartedAt < VISIBLE_REMOTE_AUTO_SYNC_THROTTLE_MS
-                ) {
-                    return@launch
-                }
-                synchronized(visibleRemoteSyncLastStartedAt) {
-                    visibleRemoteSyncLastStartedAt[databaseId] = now
-                }
-
-                syncRemoteDatabaseInternal(databaseId)
-            } catch (error: Exception) {
-                handleSyncRemoteFailure(databaseId, error)
-                Log.w(TAG, "Visible KeePass remote auto-sync failed: databaseId=$databaseId", error)
-            } finally {
-                if (mutexLocked) {
-                    visibleRemoteSyncMutex.unlock()
-                }
-                synchronized(visibleRemoteSyncDatabaseIds) {
-                    visibleRemoteSyncDatabaseIds.remove(databaseId)
+                is SyncEnqueueResult.Blocked -> {
+                    SyncDiagnostics.blocked(
+                        taskId = taskId,
+                        target = targetLog,
+                        trigger = triggerLog,
+                        reason = result.error.kind.name.lowercase()
+                    )
                 }
             }
         }

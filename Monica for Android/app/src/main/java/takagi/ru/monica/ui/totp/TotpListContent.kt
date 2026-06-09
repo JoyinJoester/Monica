@@ -386,6 +386,7 @@ fun TotpListContent(
             delay(1000)
         }
     }
+    val sharedProgressTimeMillis = rememberTotpTickerMillis(appSettings.validatorSmoothProgress)
     
     // 添加单项删除对话框状态
     var itemToDelete by remember { mutableStateOf<takagi.ru.monica.data.SecureItem?>(null) }
@@ -1036,6 +1037,7 @@ fun TotpListContent(
                                     isSelectionMode = isSelectionMode,
                                     isSelected = selectedItems.contains(item.id),
                                     sharedTickSeconds = sharedTickSeconds,
+                                    sharedProgressTimeMillis = sharedProgressTimeMillis,
                                     appSettings = appSettings.copy(
                                         iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.authenticatorPageIconEnabled
                                     )

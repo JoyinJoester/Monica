@@ -56,6 +56,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.bitwarden.sync.syncForUserVisibleRequest
 import takagi.ru.monica.notes.ui.model.NoteListItemUiModel
 import takagi.ru.monica.ui.components.PullActionVisualState
 import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
@@ -211,7 +212,10 @@ fun NoteListContent(
                     return@launch
                 }
 
-                val syncResult = bitwardenRepository.sync(vaultId)
+                val syncResult = bitwardenRepository.syncForUserVisibleRequest(
+                    vaultId = vaultId,
+                    requestIdPrefix = "bw-note-list-vault"
+                )
                 when (syncResult) {
                     is BitwardenRepository.SyncResult.Success -> {
                         syncFeedbackIsSuccess = true

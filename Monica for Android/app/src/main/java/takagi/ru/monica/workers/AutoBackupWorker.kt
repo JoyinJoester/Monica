@@ -7,6 +7,16 @@ import kotlinx.coroutines.flow.first
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
+import takagi.ru.monica.sync.SyncBackupProvider
+import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncNetworkPolicy
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncRequest
+import takagi.ru.monica.sync.SyncTarget
+import takagi.ru.monica.sync.SyncTaskAwaitResult
+import takagi.ru.monica.sync.SyncTaskRunner
+import takagi.ru.monica.sync.SyncTrigger
 import takagi.ru.monica.utils.BackupContentScope
 import takagi.ru.monica.utils.WebDavHelper
 import takagi.ru.monica.webdav.WebDavBackoffState
@@ -34,23 +44,94 @@ class AutoBackupWorker(
         android.util.Log.d(TAG, "Starting auto backup work...")
 
         val isManualTrigger = inputData.getBoolean(KEY_MANUAL_TRIGGER, false)
+        val taskId = SyncDiagnostics.nextTaskId("backup-webdav")
+        val target = SyncTarget.Backup(SyncBackupProvider.WEBDAV)
+        val targetLabel = target.stableKey.value
+        val trigger = if (isManualTrigger) SyncTrigger.MANUAL else SyncTrigger.BACKUP_SCHEDULE
+        val triggerLabel = if (isManualTrigger) "WEBDAV_MANUAL_WORKER" else "WEBDAV_AUTO_WORKER"
         android.util.Log.d(TAG, "Manual trigger: $isManualTrigger")
+
+        val request = SyncRequest(
+            requestId = taskId,
+            target = target,
+            trigger = trigger,
+            createdAtMillis = System.currentTimeMillis(),
+            priority = if (isManualTrigger) SyncPriority.MANUAL else SyncPriority.PERIODIC,
+            mode = if (isManualTrigger) SyncMode.FOREGROUND else SyncMode.BACKGROUND,
+            networkPolicy = SyncNetworkPolicy.REQUIRED
+        )
+
+        return when (val result = SyncTaskRunner.requestAndAwait(request) {
+            runBackup(isManualTrigger, taskId, targetLabel, triggerLabel)
+        }) {
+            is SyncTaskAwaitResult.Completed -> result.value
+            is SyncTaskAwaitResult.Merged -> {
+                SyncDiagnostics.skipped(taskId, targetLabel, triggerLabel, "merged_with_running_backup")
+                androidx.work.ListenableWorker.Result.success()
+            }
+            is SyncTaskAwaitResult.Skipped -> {
+                SyncDiagnostics.skipped(taskId, targetLabel, triggerLabel, result.reason)
+                androidx.work.ListenableWorker.Result.success()
+            }
+            is SyncTaskAwaitResult.Blocked -> {
+                SyncDiagnostics.blocked(
+                    taskId = taskId,
+                    target = targetLabel,
+                    trigger = triggerLabel,
+                    reason = result.error.redactedMessage ?: result.error.kind.name,
+                    detail = "coordinator_blocked retryable=${result.error.retryable}"
+                )
+                if (result.error.retryable) {
+                    androidx.work.ListenableWorker.Result.retry()
+                } else {
+                    androidx.work.ListenableWorker.Result.success()
+                }
+            }
+            is SyncTaskAwaitResult.Canceled -> {
+                SyncDiagnostics.skipped(
+                    taskId = taskId,
+                    target = targetLabel,
+                    trigger = triggerLabel,
+                    reason = result.reason ?: "coordinator_canceled"
+                )
+                androidx.work.ListenableWorker.Result.retry()
+            }
+            is SyncTaskAwaitResult.Failed -> backupFailureResult(
+                taskId = taskId,
+                target = targetLabel,
+                trigger = triggerLabel,
+                error = result.error
+            )
+        }
+    }
+
+    private suspend fun runBackup(
+        isManualTrigger: Boolean,
+        taskId: String,
+        target: String,
+        trigger: String
+    ): androidx.work.ListenableWorker.Result {
+        SyncDiagnostics.queued(taskId, target, trigger)
+        val startedAt = SyncDiagnostics.start(taskId, target, trigger)
 
         try {
             val webDavHelper = WebDavHelper(applicationContext)
 
             if (!webDavHelper.isConfigured()) {
                 android.util.Log.w(TAG, "WebDAV not configured, skipping backup")
+                SyncDiagnostics.skipped(taskId, target, trigger, "not_configured", startedAt)
                 return androidx.work.ListenableWorker.Result.success()
             }
 
             if (!isManualTrigger && !webDavHelper.isAutoBackupEnabled()) {
                 android.util.Log.w(TAG, "Auto backup disabled, skipping backup")
+                SyncDiagnostics.skipped(taskId, target, trigger, "auto_backup_disabled", startedAt)
                 return androidx.work.ListenableWorker.Result.success()
             }
 
             if (!isManualTrigger && !webDavHelper.shouldAutoBackup()) {
                 android.util.Log.d(TAG, "Backup not needed yet (< 12 hours since last backup)")
+                SyncDiagnostics.skipped(taskId, target, trigger, "not_due", startedAt)
                 return androidx.work.ListenableWorker.Result.success()
             }
 
@@ -64,6 +145,7 @@ class AutoBackupWorker(
                         TAG,
                         "Host $host temporarily disabled (${waitMs}ms remaining); skip."
                     )
+                    SyncDiagnostics.blocked(taskId, target, trigger, "host_temporarily_disabled", startedAt)
                     return androidx.work.ListenableWorker.Result.success()
                 }
                 if (WebDavBackoffState.shouldBlock(host)) {
@@ -72,6 +154,7 @@ class AutoBackupWorker(
                         TAG,
                         "Host $host backoff until +${waitMs}ms; skip."
                     )
+                    SyncDiagnostics.blocked(taskId, target, trigger, "host_backoff", startedAt)
                     return androidx.work.ListenableWorker.Result.success()
                 }
             }
@@ -101,6 +184,14 @@ class AutoBackupWorker(
                     TAG,
                     "Auto backup postponed: $failedPasswordDecryptCount password secrets could not be decrypted"
                 )
+                SyncDiagnostics.blocked(
+                    taskId = taskId,
+                    target = target,
+                    trigger = trigger,
+                    reason = "decrypt_failed",
+                    startedAt = startedAt,
+                    detail = "passwords=$failedPasswordDecryptCount"
+                )
                 return androidx.work.ListenableWorker.Result.retry()
             }
 
@@ -129,11 +220,23 @@ class AutoBackupWorker(
                 if (report != null && report.hasIssues()) {
                     android.util.Log.w(TAG, "Backup has issues but completed")
                 }
+                SyncDiagnostics.success(
+                    taskId = taskId,
+                    target = target,
+                    trigger = trigger,
+                    startedAt = startedAt,
+                    detail = "passwords=${passwords.size} secureItems=${secureItems.size} hasIssues=${report?.hasIssues() == true}"
+                )
                 return androidx.work.ListenableWorker.Result.success()
             }
 
             val error = backupResult.exceptionOrNull()
             val classified = WebDavErrorClassifier.classify(error)
+            if (error != null) {
+                SyncDiagnostics.failed(taskId, target, trigger, startedAt, error, detail = "kind=${classified.kind}")
+            } else {
+                SyncDiagnostics.blocked(taskId, target, trigger, "unknown_backup_failure", startedAt, detail = "kind=${classified.kind}")
+            }
             android.util.Log.e(
                 TAG,
                 "Auto backup failed: kind=${classified.kind}, msg=${error?.message}",
@@ -151,14 +254,25 @@ class AutoBackupWorker(
 
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Auto backup error", e)
-            val classified = WebDavErrorClassifier.classify(e)
-            return when (classified.kind) {
-                WebDavErrorKind.RateLimited,
-                WebDavErrorKind.AuthFailed,
-                WebDavErrorKind.MethodNotAllowed,
-                WebDavErrorKind.MalformedResponse -> androidx.work.ListenableWorker.Result.success()
-                else -> androidx.work.ListenableWorker.Result.retry()
-            }
+            return backupFailureResult(taskId, target, trigger, e, startedAt)
+        }
+    }
+
+    private fun backupFailureResult(
+        taskId: String,
+        target: String,
+        trigger: String,
+        error: Exception,
+        startedAt: Long? = null
+    ): androidx.work.ListenableWorker.Result {
+        val classified = WebDavErrorClassifier.classify(error)
+        SyncDiagnostics.failed(taskId, target, trigger, startedAt, error, detail = "kind=${classified.kind}")
+        return when (classified.kind) {
+            WebDavErrorKind.RateLimited,
+            WebDavErrorKind.AuthFailed,
+            WebDavErrorKind.MethodNotAllowed,
+            WebDavErrorKind.MalformedResponse -> androidx.work.ListenableWorker.Result.success()
+            else -> androidx.work.ListenableWorker.Result.retry()
         }
     }
 

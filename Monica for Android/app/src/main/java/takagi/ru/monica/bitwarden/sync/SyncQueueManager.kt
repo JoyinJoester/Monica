@@ -16,6 +16,9 @@ import takagi.ru.monica.data.bitwarden.BitwardenPendingOperationDao
  * 3. 网络恢复时自动重试失败的操作
  * 4. 失败操作使用指数退避重试策略
  */
+@Deprecated(
+    message = "Pending Bitwarden operations are flushed by BitwardenRepository.sync through SyncTaskRunner. Do not initialize this legacy queue processor."
+)
 class SyncQueueManager(
     private val context: Context,
     private val pendingOperationDao: BitwardenPendingOperationDao,

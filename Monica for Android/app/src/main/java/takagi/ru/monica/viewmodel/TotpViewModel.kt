@@ -34,6 +34,14 @@ import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.sync.SyncItemKind
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncRequest
+import takagi.ru.monica.sync.SyncTarget
+import takagi.ru.monica.sync.SyncTaskRunner
+import takagi.ru.monica.sync.SyncTrigger
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.KeePassKdbxService
@@ -628,11 +636,40 @@ class TotpViewModel(
     }
 
     private fun syncKeePassTotp(databaseId: Long) {
+        val requestId = SyncDiagnostics.nextTaskId("kp-totp")
         viewModelScope.launch {
+            SyncTaskRunner.request(
+                request = SyncRequest(
+                    requestId = requestId,
+                    target = SyncTarget.KeePassCompatibilityIndex(
+                        databaseId = databaseId,
+                        itemTypes = setOf(SyncItemKind.TOTP)
+                    ),
+                    trigger = SyncTrigger.PAGE_VISIBLE,
+                    createdAtMillis = System.currentTimeMillis(),
+                    priority = SyncPriority.PAGE_VISIBLE,
+                    mode = SyncMode.SILENT,
+                    throttleMs = 30_000L
+                )
+            ) {
+                syncKeePassTotpNow(databaseId, requestId)
+            }
+        }
+    }
+
+    private suspend fun syncKeePassTotpNow(databaseId: Long, taskId: String) {
+        val target = "keepass_compat:totp:$databaseId"
+        val trigger = "TOTP_FILTER_ENTER"
+        SyncDiagnostics.queued(taskId, target, trigger)
+        val startedAt = SyncDiagnostics.start(taskId, target, trigger)
+        try {
             val snapshots = keepassBridge
                 ?.readLegacySecureItems(databaseId, setOf(ItemType.TOTP))
                 ?.getOrNull()
-                ?: return@launch
+                ?: run {
+                    SyncDiagnostics.skipped(taskId, target, trigger, "bridge_or_read_unavailable", startedAt)
+                    return
+                }
 
             val existingTotp = repository.getItemsByType(ItemType.TOTP).first()
             snapshots.forEach { snapshot ->
@@ -674,6 +711,16 @@ class TotpViewModel(
                     )
                 }
             }
+            SyncDiagnostics.success(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                startedAt = startedAt,
+                detail = "items=${snapshots.size}"
+            )
+        } catch (error: Exception) {
+            SyncDiagnostics.failed(taskId, target, trigger, startedAt, error)
+            throw error
         }
     }
     

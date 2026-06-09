@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Context
@@ -19,6 +20,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,11 +40,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -57,6 +65,7 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,7 +75,11 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.haze
 import takagi.ru.monica.R
+import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LinkedAppBinding
@@ -97,6 +110,8 @@ import takagi.ru.monica.ui.components.CustomIconActionDialog
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.CustomFieldEditCard
 import takagi.ru.monica.ui.components.CustomFieldSectionHeader
+import takagi.ru.monica.ui.components.EntryTypeChip
+import takagi.ru.monica.ui.components.EntryTypeChipOption
 import takagi.ru.monica.ui.components.InlineTotpPreviewCard
 import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
 import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
@@ -107,6 +122,9 @@ import takagi.ru.monica.ui.components.PasswordStrengthIndicator
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
 import takagi.ru.monica.ui.components.keepassBlockReasonLabel
 import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
+import takagi.ru.monica.ui.effects.blur.MonicaPlusBlurIslandSurface
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
@@ -131,6 +149,7 @@ import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
+import kotlin.math.roundToInt
 
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.MdbxViewModel
@@ -176,6 +195,344 @@ private data class KeePassOperationBlockUiState(
     val databaseName: String,
     val reason: KeePassOperationBlockReason
 )
+
+@Composable
+private fun AddPasswordBlurIslandTopBar(
+    title: String,
+    settings: AppSettings,
+    hazeState: HazeState,
+    hazeStyle: HazeStyle,
+    modifier: Modifier = Modifier,
+    isBarcodeMode: Boolean,
+    isEditing: Boolean,
+    passwordId: Long?,
+    isFavorite: Boolean,
+    onNavigateBack: () -> Unit,
+    onFavoriteChange: (Boolean) -> Unit,
+    onSwitchToWifi: ((Long?) -> Unit)?,
+    onSwitchToSshKey: ((Long?) -> Unit)?,
+    onLoginTypeChange: (String) -> Unit
+) {
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val density = LocalDensity.current
+    val islandSize = 40.dp
+    val topBarHeight = statusBarTop + 52.dp
+    val menuGap = 10.dp
+    var entryTypeMenuExpanded by remember { mutableStateOf(false) }
+    var topBarRootOffset by remember { mutableStateOf(IntOffset.Zero) }
+    var entryTypeButtonOffset by remember { mutableStateOf<IntOffset?>(null) }
+    val currentEntryType = if (isBarcodeMode) {
+        EntryTypeChipOption.BARCODE
+    } else {
+        EntryTypeChipOption.PASSWORD
+    }
+
+    fun selectEntryType(option: EntryTypeChipOption) {
+        entryTypeMenuExpanded = false
+        when (option) {
+            EntryTypeChipOption.WIFI ->
+                onSwitchToWifi?.invoke(if (isEditing) passwordId else null)
+            EntryTypeChipOption.SSH_KEY ->
+                onSwitchToSshKey?.invoke(if (isEditing) passwordId else null)
+            EntryTypeChipOption.BARCODE ->
+                onLoginTypeChange(LOGIN_TYPE_BARCODE)
+            EntryTypeChipOption.PASSWORD ->
+                onLoginTypeChange("PASSWORD")
+        }
+    }
+
+    BackHandler(enabled = entryTypeMenuExpanded) {
+        entryTypeMenuExpanded = false
+    }
+
+    Box(
+        modifier = modifier
+            .then(
+                if (entryTypeMenuExpanded) {
+                    Modifier.fillMaxSize()
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .height(topBarHeight)
+                }
+            )
+            .onGloballyPositioned { coordinates ->
+                val position = coordinates.positionInRoot()
+                topBarRootOffset = IntOffset(position.x.roundToInt(), position.y.roundToInt())
+            }
+    ) {
+        if (entryTypeMenuExpanded) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = { entryTypeMenuExpanded = false })
+                    }
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = statusBarTop)
+                .height(52.dp)
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            MonicaPlusBlurIslandSurface(
+                settings = settings,
+                enabledForThisSurface = !isEditing,
+                modifier = Modifier.size(islandSize),
+                shape = CircleShape,
+                contentPadding = PaddingValues(0.dp),
+                fillContent = true,
+                hazeState = hazeState,
+                hazeStyle = hazeStyle
+            ) {
+                AddPasswordBlurIslandIconButton(
+                    icon = MonicaIcons.Navigation.back,
+                    contentDescription = stringResource(R.string.back),
+                    onClick = onNavigateBack
+                )
+            }
+
+            MonicaPlusBlurIslandSurface(
+                settings = settings,
+                enabledForThisSurface = !isEditing,
+                modifier = Modifier
+                    .height(islandSize)
+                    .widthIn(max = 176.dp),
+                shape = RoundedCornerShape(20.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                contentAlignment = Alignment.CenterStart,
+                fillContent = false,
+                hazeState = hazeState,
+                hazeStyle = hazeStyle
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            if (onSwitchToWifi != null) {
+                Box(
+                    modifier = Modifier.onGloballyPositioned { coordinates ->
+                        val position = coordinates.positionInRoot()
+                        entryTypeButtonOffset = IntOffset(
+                            x = position.x.roundToInt() - topBarRootOffset.x,
+                            y = position.y.roundToInt() - topBarRootOffset.y
+                        )
+                    }
+                ) {
+                    MonicaPlusBlurIslandSurface(
+                        settings = settings,
+                        enabledForThisSurface = !isEditing,
+                        modifier = Modifier.height(islandSize),
+                        shape = RoundedCornerShape(20.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        hazeState = hazeState,
+                        hazeStyle = hazeStyle
+                    ) {
+                        AddPasswordBlurEntryTypeButton(
+                            current = currentEntryType,
+                            expanded = entryTypeMenuExpanded,
+                            enabled = !isEditing,
+                            onClick = { entryTypeMenuExpanded = !entryTypeMenuExpanded }
+                        )
+                    }
+                }
+            }
+
+            MonicaPlusBlurIslandSurface(
+                settings = settings,
+                enabledForThisSurface = !isEditing,
+                modifier = Modifier.size(islandSize),
+                shape = CircleShape,
+                contentPadding = PaddingValues(0.dp),
+                fillContent = true,
+                hazeState = hazeState,
+                hazeStyle = hazeStyle
+            ) {
+                AddPasswordBlurIslandIconButton(
+                    icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = stringResource(R.string.favorite),
+                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                    onClick = { onFavoriteChange(!isFavorite) }
+                )
+            }
+        }
+
+        entryTypeButtonOffset?.let { anchorOffset ->
+            AnimatedVisibility(
+                visible = entryTypeMenuExpanded && onSwitchToWifi != null,
+                enter = fadeIn(animationSpec = tween(120)) + expandVertically(
+                    animationSpec = tween(180, easing = FastOutSlowInEasing),
+                    expandFrom = Alignment.Top
+                ),
+                exit = fadeOut(animationSpec = tween(90)) + shrinkVertically(
+                    animationSpec = tween(120, easing = FastOutSlowInEasing),
+                    shrinkTowards = Alignment.Top
+                ),
+                modifier = Modifier.offset(
+                    x = with(density) { anchorOffset.x.toDp() },
+                    y = with(density) { anchorOffset.y.toDp() } + islandSize + menuGap
+                )
+            ) {
+                MonicaPlusBlurIslandSurface(
+                    settings = settings,
+                    enabledForThisSurface = !isEditing,
+                    modifier = Modifier.width(176.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                    hazeState = hazeState,
+                    hazeStyle = hazeStyle
+                ) {
+                    Column {
+                        EntryTypeChipOption.entries.forEach { option ->
+                            AddPasswordBlurEntryTypeMenuItem(
+                                option = option,
+                                selected = option == currentEntryType,
+                                onClick = { selectEntryType(option) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddPasswordBlurEntryTypeButton(
+    current: EntryTypeChipOption,
+    expanded: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(
+            imageVector = addPasswordEntryTypeIcon(current),
+            contentDescription = null,
+            modifier = Modifier.size(18.dp)
+        )
+        Text(
+            text = addPasswordEntryTypeLabel(current),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Icon(
+            imageVector = Icons.Default.ExpandMore,
+            contentDescription = null,
+            modifier = Modifier
+                .size(18.dp)
+                .rotate(if (expanded) 180f else 0f)
+        )
+    }
+}
+
+@Composable
+private fun AddPasswordBlurEntryTypeMenuItem(
+    option: EntryTypeChipOption,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val contentColor = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Icon(
+            imageVector = addPasswordEntryTypeIcon(option),
+            contentDescription = null,
+            tint = if (selected) contentColor else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp)
+        )
+        Text(
+            text = addPasswordEntryTypeLabel(option),
+            color = contentColor,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (selected) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun addPasswordEntryTypeLabel(option: EntryTypeChipOption): String = stringResource(
+    when (option) {
+        EntryTypeChipOption.PASSWORD -> R.string.entry_type_password
+        EntryTypeChipOption.WIFI -> R.string.entry_type_wifi
+        EntryTypeChipOption.SSH_KEY -> R.string.entry_type_ssh_key
+        EntryTypeChipOption.BARCODE -> R.string.entry_type_barcode
+    }
+)
+
+private fun addPasswordEntryTypeIcon(option: EntryTypeChipOption): ImageVector = when (option) {
+    EntryTypeChipOption.PASSWORD -> Icons.Default.Password
+    EntryTypeChipOption.WIFI -> Icons.Default.Wifi
+    EntryTypeChipOption.SSH_KEY -> Icons.Default.Key
+    EntryTypeChipOption.BARCODE -> Icons.Default.QrCode2
+}
+
+@Composable
+private fun AddPasswordBlurIslandIconButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    tint: Color = LocalContentColor.current
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(22.dp)
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1600,68 +1957,82 @@ fun AddEditPasswordScreen(
         setSelectedStorageTargets(listOf(defaultTarget))
     }
 
+    val addPasswordTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
+        settings = settings,
+        enabledForThisSurface = !isEditing
+    )
+    val addPasswordTopBarHazeState = remember { HazeState() }
+    val addPasswordTopBarHazeStyle =
+        rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
+    val layoutDirection = LocalLayoutDirection.current
+    val addPasswordBlurTopBarHeight =
+        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
+    val topBarTitle = stringResource(
+        when {
+            isBarcodeMode && isEditing -> R.string.edit_barcode_title
+            isBarcodeMode -> R.string.add_barcode_title
+            isEditing -> R.string.edit_password_title
+            else -> R.string.add_password_title
+        }
+    )
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        stringResource(
-                            when {
-                                isBarcodeMode && isEditing -> R.string.edit_barcode_title
-                                isBarcodeMode -> R.string.add_barcode_title
-                                isEditing -> R.string.edit_password_title
-                                else -> R.string.add_password_title
-                            }
-                        ),
-                        style = MaterialTheme.typography.titleLarge,
-                        maxLines = 1
+            if (!addPasswordTopBarBlurEnabled) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            topBarTitle,
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(MonicaIcons.Navigation.back, contentDescription = stringResource(R.string.back))
+                        }
+                    },
+                    actions = {
+                        if (onSwitchToWifi != null) {
+                            EntryTypeChip(
+                                current = if (isBarcodeMode) {
+                                    EntryTypeChipOption.BARCODE
+                                } else {
+                                    EntryTypeChipOption.PASSWORD
+                                },
+                                onSelect = { option ->
+                                    when (option) {
+                                        EntryTypeChipOption.WIFI ->
+                                            onSwitchToWifi(if (isEditing) passwordId else null)
+                                        EntryTypeChipOption.SSH_KEY ->
+                                            onSwitchToSshKey?.invoke(if (isEditing) passwordId else null)
+                                        EntryTypeChipOption.BARCODE -> {
+                                            loginType = LOGIN_TYPE_BARCODE
+                                        }
+                                        EntryTypeChipOption.PASSWORD -> {
+                                            loginType = "PASSWORD"
+                                        }
+                                    }
+                                },
+                                enabled = !isEditing
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        IconButton(onClick = { isFavorite = !isFavorite }) {
+                            Icon(
+                                if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = stringResource(R.string.favorite),
+                                tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
                     )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(MonicaIcons.Navigation.back, contentDescription = stringResource(R.string.back))
-                    }
-                },
-                actions = {
-                    if (onSwitchToWifi != null) {
-                        takagi.ru.monica.ui.components.EntryTypeChip(
-                            current = if (isBarcodeMode) {
-                                takagi.ru.monica.ui.components.EntryTypeChipOption.BARCODE
-                            } else {
-                                takagi.ru.monica.ui.components.EntryTypeChipOption.PASSWORD
-                            },
-                            onSelect = { option ->
-                                when (option) {
-                                    takagi.ru.monica.ui.components.EntryTypeChipOption.WIFI ->
-                                        onSwitchToWifi(if (isEditing) passwordId else null)
-                                    takagi.ru.monica.ui.components.EntryTypeChipOption.SSH_KEY ->
-                                        onSwitchToSshKey?.invoke(if (isEditing) passwordId else null)
-                                    takagi.ru.monica.ui.components.EntryTypeChipOption.BARCODE -> {
-                                        loginType = LOGIN_TYPE_BARCODE
-                                    }
-                                    takagi.ru.monica.ui.components.EntryTypeChipOption.PASSWORD -> {
-                                        loginType = "PASSWORD"
-                                    }
-                                }
-                            },
-                            enabled = !isEditing
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
-                    IconButton(onClick = { isFavorite = !isFavorite }) {
-                        Icon(
-                            if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = stringResource(R.string.favorite),
-                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
-            )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -1691,14 +2062,45 @@ fun AddEditPasswordScreen(
             }
         }
     ) { paddingValues ->
-        LazyColumn(
+        val contentWindowPadding = if (addPasswordTopBarBlurEnabled) {
+            PaddingValues(
+                start = paddingValues.calculateStartPadding(layoutDirection),
+                end = paddingValues.calculateEndPadding(layoutDirection),
+                bottom = paddingValues.calculateBottomPadding()
+            )
+        } else {
+            paddingValues
+        }
+        val listContentPadding = if (addPasswordTopBarBlurEnabled) {
+            PaddingValues(
+                top = addPasswordBlurTopBarHeight + 10.dp,
+                bottom = 120.dp
+            )
+        } else {
+            PaddingValues(bottom = 120.dp)
+        }
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(contentWindowPadding)
                 .imePadding()
-                .padding(horizontal = 16.dp),
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+                    .then(
+                        if (addPasswordTopBarBlurEnabled) {
+                            Modifier.haze(
+                                state = addPasswordTopBarHazeState,
+                                style = addPasswordTopBarHazeStyle
+                            )
+                        } else {
+                            Modifier
+                        }
+                    ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(bottom = 120.dp)
+            contentPadding = listContentPadding
         ) {
             // Vault/Storage Selector - 保管库选择器（类似Bitwarden）
             item {
@@ -3001,6 +3403,25 @@ fun AddEditPasswordScreen(
                 }
             }
             }  // Payment Info if 结束
+        }
+            if (addPasswordTopBarBlurEnabled) {
+                AddPasswordBlurIslandTopBar(
+                    title = topBarTitle,
+                    settings = settings,
+                    hazeState = addPasswordTopBarHazeState,
+                    hazeStyle = addPasswordTopBarHazeStyle,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    isBarcodeMode = isBarcodeMode,
+                    isEditing = isEditing,
+                    passwordId = passwordId,
+                    isFavorite = isFavorite,
+                    onNavigateBack = onNavigateBack,
+                    onFavoriteChange = { isFavorite = it },
+                    onSwitchToWifi = onSwitchToWifi,
+                    onSwitchToSshKey = onSwitchToSshKey,
+                    onLoginTypeChange = { loginType = it }
+                )
+            }
         }
     }
 

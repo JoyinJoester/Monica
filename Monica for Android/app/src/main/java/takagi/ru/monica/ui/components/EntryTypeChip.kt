@@ -55,7 +55,9 @@ fun EntryTypeChip(
     current: EntryTypeChipOption,
     onSelect: (EntryTypeChipOption) -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    drawContainer: Boolean = true,
+    contentColorOverride: Color? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
     val currentLabel = stringResource(current.labelRes())
@@ -65,13 +67,17 @@ fun EntryTypeChip(
 
     // 颜色：使用 secondaryContainer tonal 背景，enabled=false 时降到 0.38 alpha（M3 规范）。
     val targetContainer = MaterialTheme.colorScheme.secondaryContainer
-    val targetContent = MaterialTheme.colorScheme.onSecondaryContainer
+    val targetContent = contentColorOverride ?: if (drawContainer) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
     val alpha by animateFloatAsState(
         targetValue = if (enabled) 1f else 0.38f,
         label = "EntryTypeChipAlpha"
     )
     val containerColor by animateColorAsState(
-        targetValue = targetContainer.copy(alpha = alpha),
+        targetValue = if (drawContainer) targetContainer.copy(alpha = alpha) else Color.Transparent,
         label = "EntryTypeChipContainer"
     )
     val contentColor by animateColorAsState(

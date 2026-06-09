@@ -49,6 +49,14 @@ import takagi.ru.monica.data.model.applyToPasswordEntry
 import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.ui.model.SecretValueState
 import takagi.ru.monica.ui.model.plainValueOrEmpty
+import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.sync.SyncItemKind
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncRequest
+import takagi.ru.monica.sync.SyncTarget
+import takagi.ru.monica.sync.SyncTaskRunner
+import takagi.ru.monica.sync.SyncTrigger
 import takagi.ru.monica.util.TotpDataResolver
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -64,6 +72,7 @@ import java.util.Locale
 import java.util.UUID
 
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.bitwarden.sync.syncForUserVisibleRequest
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 
 sealed class CategoryFilter {
@@ -1195,21 +1204,68 @@ class PasswordViewModel(
     }
 
     private fun syncKeePassDatabase(databaseId: Long, forceRefresh: Boolean = false) {
-        val bridge = keepassBridge ?: return
-        viewModelScope.launch(Dispatchers.Default) {
-            runCatching {
-                if (forceRefresh) {
-                    KeePassKdbxService.invalidateProcessCache(databaseId)
-                }
-                val snapshot = bridge
-                    .loadLegacyWorkspace(databaseId, allowedSecureItemTypes = setOf(ItemType.TOTP))
-                    .getOrNull()
-                    ?: return@launch
-                upsertKeePassEntries(databaseId, snapshot.passwords)
-                syncKeePassTotpEntries(databaseId, snapshot.secureItems)
-            }.onFailure { error ->
-                Log.w("PasswordViewModel", "KeePass sync failed for databaseId=$databaseId", error)
+        val requestId = SyncDiagnostics.nextTaskId("kp-password")
+        viewModelScope.launch {
+            SyncTaskRunner.request(
+                request = SyncRequest(
+                    requestId = requestId,
+                    target = SyncTarget.KeePassCompatibilityIndex(
+                        databaseId = databaseId,
+                        itemTypes = setOf(SyncItemKind.PASSWORD, SyncItemKind.TOTP)
+                    ),
+                    trigger = if (forceRefresh) SyncTrigger.MANUAL else SyncTrigger.PAGE_VISIBLE,
+                    createdAtMillis = System.currentTimeMillis(),
+                    priority = if (forceRefresh) SyncPriority.MANUAL else SyncPriority.PAGE_VISIBLE,
+                    mode = if (forceRefresh) SyncMode.FOREGROUND else SyncMode.SILENT,
+                    throttleMs = if (forceRefresh) 0L else 30_000L
+                )
+            ) {
+                syncKeePassDatabaseNow(
+                    databaseId = databaseId,
+                    forceRefresh = forceRefresh,
+                    taskId = requestId
+                )
             }
+        }
+    }
+
+    private suspend fun syncKeePassDatabaseNow(
+        databaseId: Long,
+        forceRefresh: Boolean,
+        taskId: String
+    ) {
+        val target = "keepass:password:$databaseId"
+        val trigger = if (forceRefresh) "PASSWORD_MANUAL_REFRESH" else "PASSWORD_FILTER_ENTER"
+        SyncDiagnostics.queued(taskId, target, trigger, detail = "forceRefresh=$forceRefresh")
+        val bridge = keepassBridge ?: run {
+            SyncDiagnostics.skipped(taskId, target, trigger, "bridge_unavailable", detail = "forceRefresh=$forceRefresh")
+            return
+        }
+        val startedAt = SyncDiagnostics.start(taskId, target, trigger, detail = "forceRefresh=$forceRefresh")
+        try {
+            if (forceRefresh) {
+                KeePassKdbxService.invalidateProcessCache(databaseId)
+            }
+            val snapshot = bridge
+                .loadLegacyWorkspace(databaseId, allowedSecureItemTypes = setOf(ItemType.TOTP))
+                .getOrNull()
+                ?: run {
+                    SyncDiagnostics.skipped(taskId, target, trigger, "workspace_unavailable", startedAt)
+                    return
+                }
+            upsertKeePassEntries(databaseId, snapshot.passwords)
+            syncKeePassTotpEntries(databaseId, snapshot.secureItems)
+            SyncDiagnostics.success(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                startedAt = startedAt,
+                detail = "passwords=${snapshot.passwords.size} secureItems=${snapshot.secureItems.size}"
+            )
+        } catch (error: Exception) {
+            SyncDiagnostics.failed(taskId, target, trigger, startedAt, error)
+            Log.w("PasswordViewModel", "KeePass sync failed for databaseId=$databaseId", error)
+            throw error
         }
     }
 
@@ -2951,7 +3007,10 @@ class PasswordViewModel(
         val repositoryInstance = bitwardenRepository
             ?: return BitwardenRecoveryResult.Error("Bitwarden repository unavailable")
 
-        return when (val result = repositoryInstance.sync(vaultId)) {
+        return when (val result = repositoryInstance.syncForUserVisibleRequest(
+            vaultId = vaultId,
+            requestIdPrefix = "bw-password-recover-vault"
+        )) {
             is BitwardenRepository.SyncResult.Success -> BitwardenRecoveryResult.Success
             is BitwardenRepository.SyncResult.Error -> BitwardenRecoveryResult.Error(result.message)
             is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {

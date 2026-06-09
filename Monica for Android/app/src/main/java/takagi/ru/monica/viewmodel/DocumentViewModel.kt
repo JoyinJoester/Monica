@@ -30,6 +30,14 @@ import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.sync.SyncItemKind
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncRequest
+import takagi.ru.monica.sync.SyncTarget
+import takagi.ru.monica.sync.SyncTaskRunner
+import takagi.ru.monica.sync.SyncTrigger
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.KeePassKdbxService
@@ -96,18 +104,86 @@ class DocumentViewModel(
 
     fun syncAllKeePassDocuments() {
         viewModelScope.launch {
-            val dao = localKeePassDatabaseDao ?: return@launch
+            SyncTaskRunner.request(
+                request = SyncRequest(
+                    requestId = SyncDiagnostics.nextTaskId("kp-doc-all"),
+                    target = SyncTarget.KeePassCompatibilityIndex(
+                        databaseId = null,
+                        itemTypes = setOf(SyncItemKind.DOCUMENT)
+                    ),
+                    trigger = SyncTrigger.PAGE_VISIBLE,
+                    createdAtMillis = System.currentTimeMillis(),
+                    priority = SyncPriority.PAGE_VISIBLE,
+                    mode = SyncMode.SILENT,
+                    throttleMs = 30_000L
+                )
+            ) {
+                syncAllKeePassDocumentsNow()
+            }
+        }
+    }
+
+    suspend fun syncAllKeePassDocumentsNow() {
+        val taskId = SyncDiagnostics.nextTaskId("kp-doc-all")
+        val target = "keepass_compat:document:all"
+        val trigger = "CARD_WALLET_ENTER"
+        SyncDiagnostics.queued(taskId, target, trigger)
+        val startedAt = SyncDiagnostics.start(taskId, target, trigger)
+        try {
+            val dao = localKeePassDatabaseDao ?: run {
+                SyncDiagnostics.skipped(taskId, target, trigger, "dao_unavailable", startedAt)
+                return
+            }
             val dbs = withContext(Dispatchers.IO) { dao.getAllDatabasesSync() }
-            dbs.forEach { syncKeePassDocuments(it.id) }
+            dbs.forEach { syncKeePassDocumentsNow(it.id) }
+            SyncDiagnostics.success(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                startedAt = startedAt,
+                detail = "scheduledDatabases=${dbs.size}"
+            )
+        } catch (error: Exception) {
+            SyncDiagnostics.failed(taskId, target, trigger, startedAt, error)
+            throw error
         }
     }
 
     fun syncKeePassDocuments(databaseId: Long) {
         viewModelScope.launch {
+            SyncTaskRunner.request(
+                request = SyncRequest(
+                    requestId = SyncDiagnostics.nextTaskId("kp-doc"),
+                    target = SyncTarget.KeePassCompatibilityIndex(
+                        databaseId = databaseId,
+                        itemTypes = setOf(SyncItemKind.DOCUMENT)
+                    ),
+                    trigger = SyncTrigger.PAGE_VISIBLE,
+                    createdAtMillis = System.currentTimeMillis(),
+                    priority = SyncPriority.PAGE_VISIBLE,
+                    mode = SyncMode.SILENT,
+                    throttleMs = 30_000L
+                )
+            ) {
+                syncKeePassDocumentsNow(databaseId)
+            }
+        }
+    }
+
+    suspend fun syncKeePassDocumentsNow(databaseId: Long) {
+        val taskId = SyncDiagnostics.nextTaskId("kp-doc")
+        val target = "keepass_compat:document:$databaseId"
+        val trigger = "READ_LEGACY_SECURE_ITEMS"
+        SyncDiagnostics.queued(taskId, target, trigger)
+        val startedAt = SyncDiagnostics.start(taskId, target, trigger)
+        try {
             val snapshots = keepassBridge
                 ?.readLegacySecureItems(databaseId, setOf(ItemType.DOCUMENT))
                 ?.getOrNull()
-                ?: return@launch
+                ?: run {
+                    SyncDiagnostics.skipped(taskId, target, trigger, "bridge_or_read_unavailable", startedAt)
+                    return
+                }
 
             val existingDocs = repository.getItemsByType(ItemType.DOCUMENT).first()
             snapshots.forEach { snapshot ->
@@ -149,6 +225,16 @@ class DocumentViewModel(
                     )
                 }
             }
+            SyncDiagnostics.success(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                startedAt = startedAt,
+                detail = "items=${snapshots.size}"
+            )
+        } catch (error: Exception) {
+            SyncDiagnostics.failed(taskId, target, trigger, startedAt, error)
+            throw error
         }
     }
     

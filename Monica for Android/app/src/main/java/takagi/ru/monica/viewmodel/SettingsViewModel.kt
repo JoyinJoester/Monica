@@ -16,6 +16,8 @@ import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
+import takagi.ru.monica.data.MonicaBlurIntensity
+import takagi.ru.monica.data.MonicaBlurMode
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordSwipeSelectionMode
 import takagi.ru.monica.data.PresetCustomField
@@ -248,6 +250,30 @@ class SettingsViewModel(
     fun updateCopyNextCodeWhenExpiring(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateCopyNextCodeWhenExpiring(enabled)
+        }
+    }
+
+    fun updatePlusBlurEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePlusBlurEnabled(enabled)
+        }
+    }
+
+    fun updatePlusBlurMode(mode: MonicaBlurMode) {
+        viewModelScope.launch {
+            settingsManager.updatePlusBlurMode(mode)
+        }
+    }
+
+    fun updatePlusBlurIntensity(intensity: MonicaBlurIntensity) {
+        viewModelScope.launch {
+            settingsManager.updatePlusBlurIntensity(intensity)
+        }
+    }
+
+    fun updatePlusBlurReduceOnBatterySaver(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePlusBlurReduceOnBatterySaver(enabled)
         }
     }
 

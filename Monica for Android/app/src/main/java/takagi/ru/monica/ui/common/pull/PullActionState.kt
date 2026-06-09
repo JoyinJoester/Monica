@@ -22,6 +22,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.bitwarden.sync.syncForUserVisibleRequest
 import takagi.ru.monica.util.VibrationPatterns
 
 @Stable
@@ -182,7 +183,10 @@ fun rememberPullActionState(
                     return@launch
                 }
 
-                val syncResult = bitwardenRepository.sync(vaultId)
+                val syncResult = bitwardenRepository.syncForUserVisibleRequest(
+                    vaultId = vaultId,
+                    requestIdPrefix = "bw-pull-vault"
+                )
                 when (syncResult) {
                     is BitwardenRepository.SyncResult.Success -> {
                         syncFeedbackIsSuccess = true

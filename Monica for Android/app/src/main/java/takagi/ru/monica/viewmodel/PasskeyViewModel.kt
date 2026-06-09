@@ -18,6 +18,14 @@ import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.sync.SyncItemKind
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncRequest
+import takagi.ru.monica.sync.SyncTarget
+import takagi.ru.monica.sync.SyncTaskRunner
+import takagi.ru.monica.sync.SyncTrigger
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.OperationLogger
 
@@ -60,7 +68,7 @@ class PasskeyViewModel(
     init {
         viewModelScope.launch {
             repairLegacyDetachedKeePassPasskeys()
-            refreshKeePassPasskeys()
+            refreshKeePassPasskeys(trigger = "PASSKEY_INIT")
         }
     }
     
@@ -337,19 +345,70 @@ class PasskeyViewModel(
         return repository.getDiscoverablePasskeysByRpId(rpId)
     }
 
-    suspend fun refreshKeePassPasskeys() {
-        val bridge = keepassBridge ?: return
-        val dao = localKeePassDatabaseDao ?: return
-        withContext(Dispatchers.IO) {
-            dao.getAllDatabasesSync().forEach { database ->
-                bridge.readLegacyPasskeys(database.id)
-                    .onSuccess { imported ->
-                        repository.syncKeePassPasskeys(database.id, imported)
-                    }
-                    .onFailure { error ->
-                        Log.w(TAG, "Failed to refresh KeePass passkeys for database ${database.id}: ${error.message}")
-                    }
+    suspend fun refreshKeePassPasskeys(trigger: String = "PASSKEY_REFRESH") {
+        SyncTaskRunner.request(
+            request = SyncRequest(
+                requestId = SyncDiagnostics.nextTaskId("kp-passkey-refresh"),
+                target = SyncTarget.KeePassCompatibilityIndex(
+                    databaseId = null,
+                    itemTypes = setOf(SyncItemKind.PASSKEY)
+                ),
+                trigger = when (trigger) {
+                    "PASSKEY_INIT" -> SyncTrigger.APP_START
+                    "PASSKEY_PAGE_ENTER" -> SyncTrigger.PAGE_VISIBLE
+                    else -> SyncTrigger.PAGE_VISIBLE
+                },
+                createdAtMillis = System.currentTimeMillis(),
+                priority = SyncPriority.PAGE_VISIBLE,
+                mode = SyncMode.SILENT,
+                throttleMs = 30_000L
+            )
+        ) {
+            refreshKeePassPasskeysNow(trigger)
+        }
+    }
+
+    private suspend fun refreshKeePassPasskeysNow(trigger: String) {
+        val taskId = SyncDiagnostics.nextTaskId("kp-passkey")
+        val target = "keepass_compat:passkey:all"
+        SyncDiagnostics.queued(taskId, target, trigger)
+        val bridge = keepassBridge ?: run {
+            SyncDiagnostics.skipped(taskId, target, trigger, "bridge_unavailable")
+            return
+        }
+        val dao = localKeePassDatabaseDao ?: run {
+            SyncDiagnostics.skipped(taskId, target, trigger, "dao_unavailable")
+            return
+        }
+        val startedAt = SyncDiagnostics.start(taskId, target, trigger)
+        try {
+            var databaseCount = 0
+            var importedCount = 0
+            var failedDatabaseCount = 0
+            withContext(Dispatchers.IO) {
+                dao.getAllDatabasesSync().forEach { database ->
+                    databaseCount++
+                    bridge.readLegacyPasskeys(database.id)
+                        .onSuccess { imported ->
+                            importedCount += imported.size
+                            repository.syncKeePassPasskeys(database.id, imported)
+                        }
+                        .onFailure { error ->
+                            failedDatabaseCount++
+                            Log.w(TAG, "Failed to refresh KeePass passkeys for database ${database.id}: ${error.message}")
+                        }
+                }
             }
+            SyncDiagnostics.success(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                startedAt = startedAt,
+                detail = "databases=$databaseCount imported=$importedCount failedDatabases=$failedDatabaseCount"
+            )
+        } catch (error: Exception) {
+            SyncDiagnostics.failed(taskId, target, trigger, startedAt, error)
+            throw error
         }
     }
 

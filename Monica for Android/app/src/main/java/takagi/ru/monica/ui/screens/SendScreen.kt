@@ -11,7 +11,12 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -128,6 +133,7 @@ import takagi.ru.monica.bitwarden.BitwardenVaultPremiumStore
 import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.bitwarden.sync.buildHeadline
+import takagi.ru.monica.bitwarden.sync.isUserVisibleSyncInProgress
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.ui.components.ExpressiveTopBar
@@ -161,6 +167,7 @@ fun SendScreen(
     val unlockStateByVault by bitwardenViewModel.unlockStateByVault.collectAsState()
     val allVaults by bitwardenViewModel.vaults.collectAsState()
     val sendState by bitwardenViewModel.sendState.collectAsState()
+    val syncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -170,6 +177,8 @@ fun SendScreen(
     // 多账号场景下：只要有任一已解锁 Vault 就允许操作；空账号 / 全锁定时禁用刷新按钮
     val anyVaultUnlocked = unlockStateByVault.any { it.value == BitwardenViewModel.UnlockState.Unlocked }
     val canCreateSend = activeVault != null && unlockState == BitwardenViewModel.UnlockState.Unlocked
+    val isAnyVaultSyncing = syncStatusByVault.values.any { it.isUserVisibleSyncInProgress() }
+    val isSendSyncing = sendState is BitwardenViewModel.SendState.Syncing || isAnyVaultSyncing
 
     val vaultLookup = remember(allVaults) { allVaults.associateBy { it.id } }
 
@@ -263,10 +272,27 @@ fun SendScreen(
                     actions = {
                         IconButton(
                             onClick = { bitwardenViewModel.refreshAllUnlockedSends() },
-                            enabled = anyVaultUnlocked &&
-                                sendState !is BitwardenViewModel.SendState.Syncing
+                            enabled = anyVaultUnlocked && !isSendSyncing
                         ) {
-                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
+                            if (isSendSyncing) {
+                                val refreshRotation by rememberInfiniteTransition(label = "send_refresh_spin")
+                                    .animateFloat(
+                                        initialValue = 0f,
+                                        targetValue = 360f,
+                                        animationSpec = infiniteRepeatable(
+                                            animation = tween(durationMillis = 900, easing = LinearEasing),
+                                            repeatMode = RepeatMode.Restart
+                                        ),
+                                        label = "send_refresh_rotation"
+                                    )
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = stringResource(R.string.refresh),
+                                    modifier = Modifier.rotate(refreshRotation)
+                                )
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
+                            }
                         }
                         IconButton(onClick = { isSearchExpanded = true }) {
                             Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
@@ -322,6 +348,10 @@ fun SendScreen(
                         StateBanner((sendState as BitwardenViewModel.SendState.Error).message)
                     }
                     else -> Unit
+                }
+                if (sendState !is BitwardenViewModel.SendState.Syncing && isAnyVaultSyncing) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
 
                 when {

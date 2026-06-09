@@ -28,6 +28,14 @@ import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.sync.SyncDiagnostics
+import takagi.ru.monica.sync.SyncItemKind
+import takagi.ru.monica.sync.SyncMode
+import takagi.ru.monica.sync.SyncPriority
+import takagi.ru.monica.sync.SyncRequest
+import takagi.ru.monica.sync.SyncTarget
+import takagi.ru.monica.sync.SyncTaskRunner
+import takagi.ru.monica.sync.SyncTrigger
 import takagi.ru.monica.util.ImageManager
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
@@ -109,11 +117,40 @@ class NoteViewModel(
     }
 
     fun syncKeePassNotes(databaseId: Long) {
+        val requestId = SyncDiagnostics.nextTaskId("kp-note")
         viewModelScope.launch {
+            SyncTaskRunner.request(
+                request = SyncRequest(
+                    requestId = requestId,
+                    target = SyncTarget.KeePassCompatibilityIndex(
+                        databaseId = databaseId,
+                        itemTypes = setOf(SyncItemKind.NOTE)
+                    ),
+                    trigger = SyncTrigger.PAGE_VISIBLE,
+                    createdAtMillis = System.currentTimeMillis(),
+                    priority = SyncPriority.PAGE_VISIBLE,
+                    mode = SyncMode.SILENT,
+                    throttleMs = 30_000L
+                )
+            ) {
+                syncKeePassNotesNow(databaseId, requestId)
+            }
+        }
+    }
+
+    private suspend fun syncKeePassNotesNow(databaseId: Long, taskId: String) {
+        val target = "keepass_compat:note:$databaseId"
+        val trigger = "NOTE_FILTER_ENTER"
+        SyncDiagnostics.queued(taskId, target, trigger)
+        val startedAt = SyncDiagnostics.start(taskId, target, trigger)
+        try {
             val snapshots = keepassBridge
                 ?.readLegacySecureItems(databaseId, setOf(ItemType.NOTE))
                 ?.getOrNull()
-                ?: return@launch
+                ?: run {
+                    SyncDiagnostics.skipped(taskId, target, trigger, "bridge_or_read_unavailable", startedAt)
+                    return
+                }
 
             val existingNotes = repository.getItemsByType(ItemType.NOTE).first()
             snapshots.forEach { snapshot ->
@@ -155,6 +192,16 @@ class NoteViewModel(
                     )
                 }
             }
+            SyncDiagnostics.success(
+                taskId = taskId,
+                target = target,
+                trigger = trigger,
+                startedAt = startedAt,
+                detail = "items=${snapshots.size}"
+            )
+        } catch (error: Exception) {
+            SyncDiagnostics.failed(taskId, target, trigger, startedAt, error)
+            throw error
         }
     }
     

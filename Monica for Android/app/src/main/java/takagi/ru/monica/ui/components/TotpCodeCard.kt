@@ -43,7 +43,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
@@ -60,6 +59,7 @@ import takagi.ru.monica.util.VibrationPatterns
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
+import takagi.ru.monica.ui.rememberTotpTickerMillis
 
 /**
  * TOTP验证码卡片
@@ -85,6 +85,7 @@ fun TotpCodeCard(
     allowVibration: Boolean = false,
     boundPasswordSummary: String? = null,
     sharedTickSeconds: Long? = null,
+    sharedProgressTimeMillis: Long? = null,
     appSettings: AppSettings? = null
 ) {
     val context = LocalContext.current
@@ -102,24 +103,14 @@ fun TotpCodeCard(
     val totpData = remember(parsedTotpData) { normalizeTotpData(parsedTotpData) }
     
     // 共享定时器（外部传入时不再单独启动）
-    val internalTickSeconds by produceState(initialValue = System.currentTimeMillis() / 1000, key1 = sharedTickSeconds) {
-        if (sharedTickSeconds != null) {
-            value = sharedTickSeconds
-            return@produceState
-        }
-        while (true) {
-            value = System.currentTimeMillis() / 1000
-            delay(1000)
-        }
-    }
-    val currentSeconds = sharedTickSeconds ?: internalTickSeconds
-    val progressTimeMillis by produceState(initialValue = System.currentTimeMillis(), key1 = settings.validatorSmoothProgress) {
-        while (true) {
-            val now = System.currentTimeMillis()
-            value = now
-            val waitMillis = if (settings.validatorSmoothProgress) 50L else (1000L - (now % 1000L)).coerceAtLeast(16L)
-            delay(waitMillis)
-        }
+    val fallbackProgressTimeMillis = rememberTotpTickerMillis(settings.validatorSmoothProgress)
+    val progressTimeMillis = sharedProgressTimeMillis ?: fallbackProgressTimeMillis
+    val progressSeconds = progressTimeMillis / 1000L
+    val generationSeconds = sharedTickSeconds ?: progressSeconds
+    val effectiveProgressTimeMillis = if (settings.validatorSmoothProgress) {
+        progressTimeMillis
+    } else {
+        generationSeconds * 1000L
     }
 
     var isScreenStarted by remember {
@@ -151,44 +142,44 @@ fun TotpCodeCard(
     }
     
     // 根据当前秒数计算验证码/倒计时/进度
-    val currentCode = remember(currentSeconds, totpData, settings.totpTimeOffset) {
+    val currentCode = remember(generationSeconds, totpData, settings.totpTimeOffset) {
         when (totpData.otpType) {
             OtpType.HOTP -> TotpGenerator.generateOtp(totpData)
             else -> TotpGenerator.generateOtp(
                 totpData = totpData,
                 timeOffset = settings.totpTimeOffset,
-                currentSeconds = currentSeconds
+                currentSeconds = generationSeconds
             )
         }
     }
     
     // 下一个验证码（用于倒计时结束前5秒内复制）
-    val nextCode = remember(currentSeconds, totpData, settings.totpTimeOffset) {
+    val nextCode = remember(generationSeconds, totpData, settings.totpTimeOffset) {
         when (totpData.otpType) {
             OtpType.HOTP -> currentCode // HOTP 不支持下一个
             else -> TotpGenerator.generateOtp(
                 totpData = totpData,
                 timeOffset = settings.totpTimeOffset,
-                currentSeconds = currentSeconds + totpData.period
+                currentSeconds = generationSeconds + totpData.period
             )
         }
     }
 
-    val remainingSeconds = remember(currentSeconds, totpData, settings.totpTimeOffset) {
+    val remainingSeconds = remember(generationSeconds, totpData, settings.totpTimeOffset) {
         if (totpData.otpType == OtpType.HOTP) {
             0
         } else {
             TotpGenerator.getRemainingSeconds(
                 period = totpData.period,
                 timeOffset = settings.totpTimeOffset,
-                currentSeconds = currentSeconds
+                currentSeconds = generationSeconds
             )
         }
     }
 
     val progress = remember(
-        currentSeconds,
-        progressTimeMillis,
+        generationSeconds,
+        effectiveProgressTimeMillis,
         totpData,
         settings.totpTimeOffset,
         settings.validatorSmoothProgress
@@ -198,14 +189,14 @@ fun TotpCodeCard(
         } else {
             if (settings.validatorSmoothProgress) {
                 val periodMillis = (totpData.period * 1000L).coerceAtLeast(1000L)
-                val correctedMillis = progressTimeMillis + (settings.totpTimeOffset * 1000L)
+                val correctedMillis = effectiveProgressTimeMillis + (settings.totpTimeOffset * 1000L)
                 val elapsedInPeriod = ((correctedMillis % periodMillis) + periodMillis) % periodMillis
                 (elapsedInPeriod.toFloat() / periodMillis.toFloat()).coerceIn(0f, 1f)
             } else {
                 TotpGenerator.getProgress(
                     period = totpData.period,
                     timeOffset = settings.totpTimeOffset,
-                    currentSeconds = currentSeconds
+                    currentSeconds = generationSeconds
                 ).coerceIn(0f, 1f)
             }
         }

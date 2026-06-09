@@ -24,6 +24,13 @@ object PlusFeatures {
             isAvailable = true
         ),
         PlusFeature(
+            id = "plus_blur_effects",
+            icon = Icons.Default.AutoAwesome,
+            titleRes = R.string.plus_feature_blur_effects_title,
+            descriptionRes = R.string.plus_feature_blur_effects_desc,
+            isAvailable = true
+        ),
+        PlusFeature(
             id = "validator_vibration",
             icon = Icons.Default.Vibration,
             titleRes = R.string.plus_feature_validator_vibration_title,

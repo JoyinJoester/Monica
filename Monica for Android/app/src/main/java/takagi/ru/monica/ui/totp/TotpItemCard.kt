@@ -27,6 +27,7 @@ internal fun TotpItemCard(
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
     sharedTickSeconds: Long? = null,
+    sharedProgressTimeMillis: Long? = null,
     appSettings: AppSettings? = null
 ) {
     val context = LocalContext.current
@@ -53,6 +54,7 @@ internal fun TotpItemCard(
         isSelected = isSelected,
         allowVibration = true,
         sharedTickSeconds = sharedTickSeconds,
+        sharedProgressTimeMillis = sharedProgressTimeMillis,
         appSettings = appSettings
     )
 }

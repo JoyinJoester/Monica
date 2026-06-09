@@ -812,8 +812,160 @@ class MultiPasswordSaveRegressionGuardTest {
             storeSource.contains("suspend fun flushPendingWorkingCopy(") &&
                 viewModelSource.contains("fun flushPendingVaultUploads(") &&
                 viewModelSource.contains("MdbxSyncStatus.PENDING_UPLOAD.name") &&
-                viewModelSource.contains("vaultStore.flushPendingWorkingCopy(database.id)")
+                viewModelSource.contains("private suspend fun runMdbxPendingUploadThroughCoordinator(") &&
+                viewModelSource.contains("SyncTaskRunner.requestAndAwait(request)") &&
+                viewModelSource.substringAfter("fun flushPendingVaultUploads(")
+                    .substringBefore("fun showAdvancedTools(")
+                    .contains("runMdbxPendingUploadThroughCoordinator(") &&
+                !viewModelSource.substringAfter("fun flushPendingVaultUploads(")
+                    .substringBefore("fun showAdvancedTools(")
+                    .contains("vaultStore.flushPendingWorkingCopy(") &&
+                viewModelSource.substringAfter("fun flushPendingVaultUpload(")
+                    .substringBefore("private fun pendingUploadOperationState(")
+                    .contains("runMdbxPendingUploadThroughCoordinator(") &&
+                !viewModelSource.substringAfter("fun flushPendingVaultUpload(")
+                    .substringBefore("private fun pendingUploadOperationState(")
+                    .contains("vaultStore.flushPendingWorkingCopy(")
             )
+    }
+
+    @Test
+    fun keepassCompatibilityRefreshEntrypointsUseSyncTaskRunner() {
+        val passwordViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"
+        ).readText()
+        val noteViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/NoteViewModel.kt"
+        ).readText()
+        val totpViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/TotpViewModel.kt"
+        ).readText()
+        val bankCardViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/BankCardViewModel.kt"
+        ).readText()
+        val documentViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/DocumentViewModel.kt"
+        ).readText()
+
+        val passwordSyncEntrypoint = passwordViewModelSource
+            .substringAfter("private fun syncKeePassDatabase(")
+            .substringBefore("private suspend fun syncKeePassDatabaseNow(")
+        assertTrue(
+            "Password KeePass filter/manual refresh must run through SyncTaskRunner instead of launching a direct workspace scan.",
+            passwordSyncEntrypoint.contains("SyncTaskRunner.request(") &&
+                passwordSyncEntrypoint.contains("SyncTarget.KeePassCompatibilityIndex(") &&
+                passwordSyncEntrypoint.contains("SyncItemKind.PASSWORD") &&
+                passwordSyncEntrypoint.contains("SyncItemKind.TOTP") &&
+                !passwordSyncEntrypoint.contains("viewModelScope.launch(Dispatchers.Default)")
+        )
+
+        val noteSyncEntrypoint = noteViewModelSource
+            .substringAfter("fun syncKeePassNotes(")
+            .substringBefore("private suspend fun syncKeePassNotesNow(")
+        assertTrue(
+            "Note KeePass filter refresh must run through SyncTaskRunner so rapid filter changes do not spawn parallel scans.",
+            noteSyncEntrypoint.contains("SyncTaskRunner.request(") &&
+                noteSyncEntrypoint.contains("SyncTarget.KeePassCompatibilityIndex(") &&
+                noteSyncEntrypoint.contains("SyncItemKind.NOTE")
+        )
+
+        val totpSyncEntrypoint = totpViewModelSource
+            .substringAfter("private fun syncKeePassTotp(")
+            .substringBefore("private suspend fun syncKeePassTotpNow(")
+        assertTrue(
+            "TOTP KeePass filter refresh must run through SyncTaskRunner so repeated page/filter entry stays single-flight.",
+            totpSyncEntrypoint.contains("SyncTaskRunner.request(") &&
+                totpSyncEntrypoint.contains("SyncTarget.KeePassCompatibilityIndex(") &&
+                totpSyncEntrypoint.contains("SyncItemKind.TOTP")
+        )
+
+        val cardAllEntrypoint = bankCardViewModelSource
+            .substringAfter("fun syncAllKeePassCards(")
+            .substringBefore("suspend fun syncAllKeePassCardsNow(")
+        val cardSingleEntrypoint = bankCardViewModelSource
+            .substringAfter("fun syncKeePassCards(")
+            .substringBefore("suspend fun syncKeePassCardsNow(")
+        assertTrue(
+            "Bank-card KeePass compatibility refresh wrappers must also use SyncTaskRunner when called outside CardWalletScreen.",
+            cardAllEntrypoint.contains("SyncTaskRunner.request(") &&
+                cardAllEntrypoint.contains("SyncItemKind.BANK_CARD") &&
+                cardSingleEntrypoint.contains("SyncTaskRunner.request(") &&
+                cardSingleEntrypoint.contains("SyncItemKind.BANK_CARD")
+        )
+
+        val documentAllEntrypoint = documentViewModelSource
+            .substringAfter("fun syncAllKeePassDocuments(")
+            .substringBefore("suspend fun syncAllKeePassDocumentsNow(")
+        val documentSingleEntrypoint = documentViewModelSource
+            .substringAfter("fun syncKeePassDocuments(")
+            .substringBefore("suspend fun syncKeePassDocumentsNow(")
+        assertTrue(
+            "Document KeePass compatibility refresh wrappers must also use SyncTaskRunner when called outside CardWalletScreen.",
+            documentAllEntrypoint.contains("SyncTaskRunner.request(") &&
+                documentAllEntrypoint.contains("SyncItemKind.DOCUMENT") &&
+                documentSingleEntrypoint.contains("SyncTaskRunner.request(") &&
+            documentSingleEntrypoint.contains("SyncItemKind.DOCUMENT")
+        )
+    }
+
+    @Test
+    fun keepassRemoteManualAndVisibleSyncShareCoordinatorQueue() {
+        val localKeePassViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/LocalKeePassViewModel.kt"
+        ).readText()
+        val remoteUploadWorkerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/workers/KeePassRemoteUploadWorker.kt"
+        ).readText()
+        val syncContractsSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/sync/SyncContracts.kt"
+        ).readText()
+
+        val manualSyncEntrypoint = localKeePassViewModelSource
+            .substringAfter("fun syncRemoteDatabase(")
+            .substringBefore("fun autoSyncVisibleRemoteDatabase(")
+        val visibleSyncEntrypoint = localKeePassViewModelSource
+            .substringAfter("fun autoSyncVisibleRemoteDatabase(")
+            .substringBefore("private suspend fun syncRemoteDatabaseInternal(")
+
+        assertTrue(
+            "Manual/silent KeePass remote sync must await SyncTaskRunner so UI buttons cannot race visible auto-sync for the same remote KDBX.",
+            manualSyncEntrypoint.contains("SyncTaskRunner.requestAndAwait(") &&
+                manualSyncEntrypoint.contains("SyncTarget.KeePassDatabase(databaseId)") &&
+                manualSyncEntrypoint.contains("dedupeKey = SyncKey(VISIBLE_REMOTE_AUTO_SYNC_DEDUPE_KEY)") &&
+                manualSyncEntrypoint.contains("SyncTrigger.MANUAL") &&
+                manualSyncEntrypoint.contains("SyncTrigger.RETRY") &&
+                manualSyncEntrypoint.contains("SyncPriority.MANUAL") &&
+                manualSyncEntrypoint.contains("SyncPriority.REPAIR") &&
+                manualSyncEntrypoint.contains("SyncNetworkPolicy.REQUIRED")
+        )
+        assertTrue(
+            "Visible KeePass remote auto-sync must stay on the same coordinator dedupe queue as manual sync.",
+            visibleSyncEntrypoint.contains("SyncTaskRunner.request(") &&
+            visibleSyncEntrypoint.contains("dedupeKey = SyncKey(VISIBLE_REMOTE_AUTO_SYNC_DEDUPE_KEY)") &&
+                visibleSyncEntrypoint.contains("SyncNetworkPolicy.REQUIRED")
+        )
+        assertTrue(
+            "Background KeePass remote upload worker must share the same coordinator queue as foreground/visible remote sync.",
+            syncContractsSource.contains("const val KEEPASS_REMOTE_SYNC_DEDUPE_KEY = \"keepass_visible_remote\"") &&
+                localKeePassViewModelSource.contains("VISIBLE_REMOTE_AUTO_SYNC_DEDUPE_KEY = KEEPASS_REMOTE_SYNC_DEDUPE_KEY") &&
+                remoteUploadWorkerSource.contains("SyncTaskRunner.requestAndAwait(") &&
+                remoteUploadWorkerSource.contains("SyncTarget.KeePassDatabase(targetDatabaseId)") &&
+                remoteUploadWorkerSource.contains("dedupeKey = SyncKey(KEEPASS_REMOTE_SYNC_DEDUPE_KEY)") &&
+                remoteUploadWorkerSource.contains("SyncTrigger.WORKER_RECOVERY") &&
+                remoteUploadWorkerSource.contains("SyncNetworkPolicy.REQUIRED")
+        )
+        assertTrue(
+            "Background KeePass remote upload worker must be a single WorkManager drain task: KEEP avoids chain storms, and the worker loops pending databases itself.",
+            remoteUploadWorkerSource.contains("while (drainSteps < MAX_DRAIN_STEPS)") &&
+                remoteUploadWorkerSource.contains("resolveTargetDatabaseId(requestedDatabaseId, skippedDatabaseIds)") &&
+                remoteUploadWorkerSource.contains("requestedDatabaseId = null") &&
+                remoteUploadWorkerSource.contains("ExistingWorkPolicy.KEEP") &&
+                !remoteUploadWorkerSource.contains("ExistingWorkPolicy.APPEND_OR_REPLACE") &&
+                !remoteUploadWorkerSource.contains("private suspend fun enqueueNextPendingIfAny") &&
+                !remoteUploadWorkerSource.substringAfter("is UploadStepResult.Completed ->")
+                    .substringBefore("is UploadStepResult.Merged ->")
+                    .contains("enqueueIfPending(applicationContext)")
+        )
     }
 
     @Test
@@ -2450,9 +2602,10 @@ class MultiPasswordSaveRegressionGuardTest {
                 transparentSource.contains("[MDBX][autofill-save-complete] source=transparent")
         )
         assertTrue(
-            "MDBX object ids must preserve nonblank replicaGroupId values; rewriting them creates false orphan rows.",
-            repositorySource.contains("?.takeIf { it.isNotBlank() }") &&
-                !repositorySource.contains("startsWith(\"password:\")")
+            "MDBX object ids must preserve only real password object ids; accepting bare UUID replica ids creates false orphan rows.",
+            repositorySource.contains("?.takeIf { it.isMdbxPasswordObjectId() }") &&
+                repositorySource.contains("startsWith(\"password:\")") &&
+                !repositorySource.contains("?.takeIf { it.isNotBlank() }")
         )
         assertFalse(
             "Autofill save activities must not use a bare PasswordRepository that cannot write MDBX.",
@@ -2686,6 +2839,106 @@ class MultiPasswordSaveRegressionGuardTest {
             "Automatic WebDAV backup must use the same Monica-local scope as manual WebDAV backup.",
             autoBackupWorkerSource.contains("import takagi.ru.monica.utils.BackupContentScope") &&
             autoBackupWorkerSource.contains("contentScope = BackupContentScope.MONICA_LOCAL_ONLY")
+        )
+    }
+
+    @Test
+    fun webDavBackupWorkerSharesCoordinatorQueue() {
+        val autoBackupWorkerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/workers/AutoBackupWorker.kt"
+        ).readText()
+
+        assertTrue(
+            "WebDAV manual and scheduled backup workers must share SyncTaskRunner so two WorkManager entries cannot run two real backups at once.",
+            autoBackupWorkerSource.contains("SyncTarget.Backup(SyncBackupProvider.WEBDAV)") &&
+                autoBackupWorkerSource.contains("SyncTaskRunner.requestAndAwait(request)") &&
+                autoBackupWorkerSource.contains("networkPolicy = SyncNetworkPolicy.REQUIRED") &&
+                autoBackupWorkerSource.contains("SyncTrigger.MANUAL") &&
+                autoBackupWorkerSource.contains("SyncTrigger.BACKUP_SCHEDULE") &&
+                autoBackupWorkerSource.contains("is SyncTaskAwaitResult.Merged") &&
+                autoBackupWorkerSource.contains("merged_with_running_backup")
+        )
+    }
+
+    @Test
+    fun webDavBackupScreenManualCreateSharesCoordinatorQueue() {
+        val webDavScreenSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/WebDavBackupScreen.kt"
+        ).readText()
+        val manualCreateBody = webDavScreenSource
+            .substringAfter("val backupTarget = SyncTarget.Backup(SyncBackupProvider.WEBDAV)")
+            .substringBefore("Text(stringResource(R.string.webdav_create_new_backup))")
+
+        assertTrue(
+            "WebDAV screen manual create must share the same backup:webdav coordinator queue as AutoBackupWorker.",
+            webDavScreenSource.contains("val backupTarget = SyncTarget.Backup(SyncBackupProvider.WEBDAV)") &&
+                manualCreateBody.contains("SyncTaskRunner.requestAndAwait(") &&
+                manualCreateBody.contains("trigger = SyncTrigger.MANUAL") &&
+                manualCreateBody.contains("networkPolicy = SyncNetworkPolicy.REQUIRED") &&
+                manualCreateBody.contains("WEBDAV_SCREEN_MANUAL") &&
+                manualCreateBody.contains("merged_with_running_backup")
+        )
+        assertTrue(
+            "WebDAV screen manual create should keep existing permanent Monica-local backup behavior while moving scheduling into the coordinator.",
+            manualCreateBody.contains("isPermanent = true") &&
+                manualCreateBody.contains("isManualTrigger = true") &&
+                manualCreateBody.contains("contentScope = BackupContentScope.MONICA_LOCAL_ONLY") &&
+                manualCreateBody.contains(".getOrThrow()")
+        )
+        assertTrue(
+            "WebDAV screen manual create must release UI loading state even when coordinator skips, blocks, or fails.",
+            manualCreateBody.contains("finally") &&
+                manualCreateBody.contains("isLoading = false") &&
+                manualCreateBody.contains("isBackupInProgress = false")
+        )
+    }
+
+    @Test
+    fun webDavManualBackupWorkerDoesNotReplaceRunningWorker() {
+        val autoBackupManagerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/utils/AutoBackupManager.kt"
+        ).readText()
+        val triggerBody = autoBackupManagerSource.substringAfter("fun triggerBackupNow(): Boolean")
+            .substringBefore("fun getLastBackupStatus()")
+
+        assertTrue(
+            "Manual WebDAV backup must not use REPLACE because it can cancel a running Worker while SyncTaskRunner owns the actual backup.",
+            triggerBody.contains("ExistingWorkPolicy.KEEP")
+        )
+        assertFalse(
+            "Do not bring back REPLACE for manual WebDAV backup; duplicate taps should coalesce, not cancel the running backup.",
+            triggerBody.contains("ExistingWorkPolicy.REPLACE")
+        )
+    }
+
+    @Test
+    fun oneDriveBackupScreenManualCreateUsesCoordinatorQueue() {
+        val oneDriveScreenSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/OneDriveBackupScreen.kt"
+        ).readText()
+        val manualCreateBody = oneDriveScreenSource
+            .substringAfter("val backupTarget = SyncTarget.Backup(SyncBackupProvider.ONEDRIVE)")
+            .substringBefore("Text(if (creatingBackup) stringResource(R.string.webdav_backup_in_progress)")
+
+        assertTrue(
+            "OneDrive screen manual backup must be represented as backup:onedrive work in SyncTaskRunner.",
+            oneDriveScreenSource.contains("val backupTarget = SyncTarget.Backup(SyncBackupProvider.ONEDRIVE)") &&
+                manualCreateBody.contains("SyncTaskRunner.requestAndAwait(") &&
+                manualCreateBody.contains("trigger = SyncTrigger.MANUAL") &&
+                manualCreateBody.contains("networkPolicy = SyncNetworkPolicy.REQUIRED") &&
+                manualCreateBody.contains("ONEDRIVE_SCREEN_MANUAL") &&
+                manualCreateBody.contains("merged_with_running_backup")
+        )
+        assertTrue(
+            "OneDrive backup should keep the existing all-offline backup scope and permanent upload behavior while moving scheduling into the coordinator.",
+            manualCreateBody.contains("contentScope = BackupContentScope.ALL_OFFLINE") &&
+                manualCreateBody.contains("backupHelper.uploadBackup(file, isPermanent = true).getOrThrow()") &&
+                manualCreateBody.contains("file.delete()")
+        )
+        assertTrue(
+            "OneDrive screen manual backup must release its loading state after completed, skipped, blocked, canceled, or failed coordinator outcomes.",
+            manualCreateBody.contains("finally") &&
+                manualCreateBody.contains("creatingBackup = false")
         )
     }
 

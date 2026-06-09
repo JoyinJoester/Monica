@@ -3131,6 +3131,22 @@ fun MonicaContent(
                     navController.navigate(Screen.QuickSetup.route)
                 },
                 isPlusActivated = settings.isPlusActivated,
+                plusBlurEnabled = settings.plusBlurEnabled,
+                onPlusBlurEnabledChange = { enabled ->
+                    settingsViewModel.updatePlusBlurEnabled(enabled)
+                },
+                plusBlurMode = settings.plusBlurMode,
+                onPlusBlurModeChange = { mode ->
+                    settingsViewModel.updatePlusBlurMode(mode)
+                },
+                plusBlurIntensity = settings.plusBlurIntensity,
+                onPlusBlurIntensityChange = { intensity ->
+                    settingsViewModel.updatePlusBlurIntensity(intensity)
+                },
+                plusBlurReduceOnBatterySaver = settings.plusBlurReduceOnBatterySaver,
+                onPlusBlurReduceOnBatterySaverChange = { enabled ->
+                    settingsViewModel.updatePlusBlurReduceOnBatterySaver(enabled)
+                },
                 validatorVibrationEnabled = settings.validatorVibrationEnabled,
                 onValidatorVibrationChange = { enabled ->
                     settingsViewModel.updateValidatorVibrationEnabled(enabled)
@@ -3624,7 +3640,7 @@ fun MonicaContent(
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) {
-            // 临时使用空列表，待集成 SyncQueueManager
+            // Legacy queue page placeholder; Bitwarden sync now runs through SyncTaskRunner.
             var queueItems by remember { mutableStateOf(emptyList<takagi.ru.monica.bitwarden.ui.SyncQueueItem>()) }
             
             takagi.ru.monica.bitwarden.ui.SyncQueueScreen(
