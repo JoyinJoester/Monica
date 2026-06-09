@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-06-08T22:01:01.334Z",
+  "generatedAt": "2026-06-09T21:59:10.178Z",
   "range": {
-    "from": "2025-06-09",
-    "to": "2026-06-08"
+    "from": "2025-06-10",
+    "to": "2026-06-09"
   },
   "activity": [
-    {
-      "date": "2025-06-09",
-      "count": 0
-    },
     {
       "date": "2025-06-10",
       "count": 0
@@ -1465,10 +1461,50 @@
     },
     {
       "date": "2026-06-08",
-      "count": 5
+      "count": 6
+    },
+    {
+      "date": "2026-06-09",
+      "count": 3
     }
   ],
   "latest": [
+    {
+      "sha": "c4cd7f2bcdd9891c390d8b0ac65d875861c10e72",
+      "shortSha": "c4cd7f2",
+      "message": "Commit Android workspace updates",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-06-09T12:42:30Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/c4cd7f2bcdd9891c390d8b0ac65d875861c10e72"
+    },
+    {
+      "sha": "f87dc3a9acc928cd9985c48df34d9b0a7b494097",
+      "shortSha": "f87dc3a",
+      "message": "Update contributor flag SVG",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-09T12:38:37Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/f87dc3a9acc928cd9985c48df34d9b0a7b494097"
+    },
+    {
+      "sha": "30a41dd95759f7d656087dd6fe00c1d35deefb01",
+      "shortSha": "30a41dd",
+      "message": "Fix Android passkey discoverability compatibility",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-06-09T12:38:21Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/30a41dd95759f7d656087dd6fe00c1d35deefb01"
+    },
+    {
+      "sha": "dde696061f1adb41e847eba41a5db5df61ac2614",
+      "shortSha": "dde6960",
+      "message": "chore: update github commit data",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-08T22:01:01Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/dde696061f1adb41e847eba41a5db5df61ac2614"
+    },
     {
       "sha": "436c7948e41fe5d2670b44bd8c6ef1a3194d391d",
       "shortSha": "436c794",
@@ -1522,42 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
       "date": "2026-06-07T21:36:24Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/745d94108a940f9029e422777e21c0c891b6f253"
-    },
-    {
-      "sha": "85cb7e47c0cdf29607b46ab5d70e8e68dddb8eaf",
-      "shortSha": "85cb7e4",
-      "message": "Fix Android sync lag and category UI state",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-07T04:04:02Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/85cb7e47c0cdf29607b46ab5d70e8e68dddb8eaf"
-    },
-    {
-      "sha": "02769be64651aec91bccda158998e2b27689a269",
-      "shortSha": "02769be",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-07T02:12:47Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/02769be64651aec91bccda158998e2b27689a269"
-    },
-    {
-      "sha": "19916533cc15decff5f855df63296c2bc9b0ea2f",
-      "shortSha": "1991653",
-      "message": "Merge pull request #58 from Mrmiaomrzh/main",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-07T02:12:35Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/19916533cc15decff5f855df63296c2bc9b0ea2f"
-    },
-    {
-      "sha": "d030bf129359cbd6d0a92e48ada3b6b7860c5099",
-      "shortSha": "d030bf1",
-      "message": "Merge branch 'main' of https://github.com/Mrmiaomrzh/Monica",
-      "authorName": "Mrmiaomrzh",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/189438881?v=4",
-      "date": "2026-06-06T23:42:31Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/d030bf129359cbd6d0a92e48ada3b6b7860c5099"
     }
   ]
 }
