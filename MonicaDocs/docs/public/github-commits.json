@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-06-09T21:59:10.178Z",
+  "generatedAt": "2026-06-10T22:20:30.083Z",
   "range": {
-    "from": "2025-06-10",
-    "to": "2026-06-09"
+    "from": "2025-06-11",
+    "to": "2026-06-10"
   },
   "activity": [
-    {
-      "date": "2025-06-10",
-      "count": 0
-    },
     {
       "date": "2025-06-11",
       "count": 0
@@ -1465,10 +1461,23 @@
     },
     {
       "date": "2026-06-09",
-      "count": 3
+      "count": 4
+    },
+    {
+      "date": "2026-06-10",
+      "count": 0
     }
   ],
   "latest": [
+    {
+      "sha": "1e53619c95a64d2c02f96e8f4a456ffa0cf64782",
+      "shortSha": "1e53619",
+      "message": "chore: update github commit data",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-09T21:59:10Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/1e53619c95a64d2c02f96e8f4a456ffa0cf64782"
+    },
     {
       "sha": "c4cd7f2bcdd9891c390d8b0ac65d875861c10e72",
       "shortSha": "c4cd7f2",
@@ -1549,15 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "date": "2026-06-08T01:23:32Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/7de58070d3dd0e8cbfee76309eb262f901fbf092"
-    },
-    {
-      "sha": "745d94108a940f9029e422777e21c0c891b6f253",
-      "shortSha": "745d941",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-07T21:36:24Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/745d94108a940f9029e422777e21c0c891b6f253"
     }
   ]
 }
