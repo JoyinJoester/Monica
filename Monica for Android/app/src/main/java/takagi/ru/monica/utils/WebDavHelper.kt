@@ -34,6 +34,7 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.isEmpty
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -975,7 +976,57 @@ class WebDavHelper(
             }
         }
     }
-    
+
+    private fun portablePasswordForBackup(
+        entry: PasswordEntry,
+        securityManager: SecurityManager
+    ): PasswordEntry {
+        return entry.copy(
+            authenticatorKey = portableSensitiveBackupValue(
+                value = entry.authenticatorKey,
+                securityManager = securityManager,
+                fieldName = "password.authenticatorKey",
+                itemId = entry.id
+            )
+        )
+    }
+
+    private fun portableSecureItemForBackup(
+        item: SecureItem,
+        securityManager: SecurityManager
+    ): SecureItem {
+        if (
+            item.itemType != ItemType.TOTP &&
+            item.itemType != ItemType.BANK_CARD &&
+            item.itemType != ItemType.DOCUMENT
+        ) return item
+        return item.copy(
+            itemData = portableSensitiveBackupValue(
+                value = item.itemData,
+                securityManager = securityManager,
+                fieldName = "secureItem.itemData",
+                itemId = item.id
+            )
+        )
+    }
+
+    private fun portableSensitiveBackupValue(
+        value: String,
+        securityManager: SecurityManager,
+        fieldName: String,
+        itemId: Long
+    ): String {
+        if (value.isBlank() || !securityManager.looksLikeMonicaCiphertext(value)) {
+            return value
+        }
+        return runCatching { securityManager.decryptData(value) }.getOrElse { error ->
+            throw IllegalStateException(
+                "Cannot export encrypted $fieldName for backup item $itemId",
+                error
+            )
+        }
+    }
+
     /**
      * 创建备份文件 (通用方法，用于 WebDAV 上传和本地导出)
      * @param passwords 所有密码条目
@@ -1009,6 +1060,7 @@ class WebDavHelper(
             var successPasswordCount = 0
             var successNoteCount = 0
             var successImageCount = 0
+            val securityManager = SecurityManager(context)
 
             // 1. 创建临时导出文件/目录
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
@@ -1033,6 +1085,7 @@ class WebDavHelper(
                 val filteredPasswords = backupPasswordCandidates
                     .filter { BackupContentPolicy.shouldIncludePassword(it, contentScope) }
                     .map(BackupContentPolicy::sanitizePasswordForMonicaBackup)
+                    .map { portablePasswordForBackup(it, securityManager) }
                 val skippedExternalPasswordCount = backupPasswordCandidates.size - filteredPasswords.size
                 val repairedDetachedPasswordCount =
                     backupPasswordCandidates.count(BackupContentPolicy::isLikelyDetachedKeePassPassword)
@@ -1061,6 +1114,7 @@ class WebDavHelper(
                 val filteredSecureItems = backupSecureItemCandidates
                     .filter { BackupContentPolicy.shouldIncludeSecureItem(it, contentScope) }
                     .map(BackupContentPolicy::sanitizeSecureItemForMonicaBackup)
+                    .map { portableSecureItemForBackup(it, securityManager) }
                 val skippedExternalSecureItemCount =
                     backupSecureItemCandidates.size - filteredSecureItems.size
                 val repairedDetachedSecureItemCount =
@@ -1087,7 +1141,6 @@ class WebDavHelper(
                 val customFieldDao = database.customFieldDao()
                 val passwordHistoryDao = database.passwordHistoryDao()
                 val passkeyDao = database.passkeyDao()
-                val securityManager = SecurityManager(context)
                 val allCategories = try { categoryDao.getAllCategories().first() } catch (e: Exception) { emptyList() }
                 val categoryMap = allCategories.associateBy { it.id }
                 val passwordCategoryById = filteredPasswords.associate { it.id to it.categoryId }
@@ -1535,7 +1588,8 @@ class WebDavHelper(
                                 val allCategories = try { categoryDao.getAllCategories().first() } catch (e: Exception) { emptyList() }
                                 val categoryMap = allCategories.associateBy { it.id }
                                 
-                                val trashPasswordBackups = deletedPasswords.map { password ->
+                                val trashPasswordBackups = deletedPasswords.map { deletedPassword ->
+                                    val password = portablePasswordForBackup(deletedPassword, securityManager)
                                     val categoryName = password.categoryId?.let { id -> categoryMap[id]?.name }
                                     TrashPasswordBackupEntry(
                                         id = password.id,
@@ -1577,7 +1631,8 @@ class WebDavHelper(
                             
                             // 备份已删除的安全项目
                             if (deletedSecureItems.isNotEmpty()) {
-                                val trashSecureItemBackups = deletedSecureItems.map { item ->
+                                val trashSecureItemBackups = deletedSecureItems.map { deletedItem ->
+                                    val item = portableSecureItemForBackup(deletedItem, securityManager)
                                     val normalizedItemData = if (item.itemType == ItemType.TOTP) {
                                         normalizeRestoredTotpItemData(item.itemData, item.title)
                                     } else {
@@ -4056,7 +4111,11 @@ class WebDavHelper(
 
     private fun looksLikeEncryptedHistoryPayload(value: String): Boolean {
         val trimmed = value.trim()
-        if (trimmed.startsWith("MDK|") || trimmed.startsWith("V2|")) {
+        if (
+            trimmed.startsWith("MDK|") ||
+            trimmed.startsWith("V2|") ||
+            trimmed.startsWith("C2|")
+        ) {
             return true
         }
         return runCatching {
@@ -4214,7 +4273,10 @@ class WebDavHelper(
         }
 
         val candidateJson = JsonObject(normalizedMap).toString()
-        val totpData = runCatching { json.decodeFromString<TotpData>(candidateJson) }.getOrNull()
+        val totpData = TotpDataResolver.parseStoredItemData(
+            itemData = candidateJson,
+            fallbackIssuer = title
+        )
             ?: return if (changed) candidateJson else itemData
 
         val hasSteamMetadata = listOf(

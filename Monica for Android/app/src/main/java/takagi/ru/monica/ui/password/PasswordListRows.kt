@@ -55,7 +55,8 @@ internal fun LazyListScope.passwordPageListRows(
     context: Context,
     passwordEntries: List<PasswordEntry>,
     aggregateConfig: PasswordListAggregateConfig?,
-    aggregateUiState: PasswordListAggregateUiState
+    aggregateUiState: PasswordListAggregateUiState,
+    decryptAuthenticatorKey: ((String) -> String)? = null
 ) {
     val orderedSelectionKeys = passwordPageListItems.flatMap { item ->
         when (item) {
@@ -367,7 +368,8 @@ internal fun LazyListScope.passwordPageListRows(
                     showAuthenticator = appSettings.passwordCardShowAuthenticator,
                     hideOtherContentWhenAuthenticator = appSettings.passwordCardHideOtherContentWhenAuthenticator,
                     totpTimeOffsetSeconds = appSettings.totpTimeOffset,
-                    smoothAuthenticatorProgress = appSettings.validatorSmoothProgress
+                    smoothAuthenticatorProgress = appSettings.validatorSmoothProgress,
+                    decryptAuthenticatorKey = decryptAuthenticatorKey
                 )
             }
 
@@ -401,7 +403,8 @@ internal fun LazyListScope.passwordPageListRows(
                     showAuthenticator = appSettings.passwordCardShowAuthenticator,
                     hideOtherContentWhenAuthenticator = appSettings.passwordCardHideOtherContentWhenAuthenticator,
                     totpTimeOffsetSeconds = appSettings.totpTimeOffset,
-                    smoothAuthenticatorProgress = appSettings.validatorSmoothProgress
+                    smoothAuthenticatorProgress = appSettings.validatorSmoothProgress,
+                    decryptAuthenticatorKey = decryptAuthenticatorKey
                 )
             }
 
@@ -448,6 +451,7 @@ internal fun LazyListScope.passwordPageListRows(
                     hideOtherContentWhenAuthenticator = aggregateUiState.cardStyle.hideOtherContentWhenAuthenticator,
                     totpTimeOffsetSeconds = aggregateUiState.cardStyle.totpTimeOffsetSeconds,
                     smoothAuthenticatorProgress = aggregateUiState.cardStyle.smoothAuthenticatorProgress,
+                    decryptAuthenticatorKey = decryptAuthenticatorKey,
                     iconCardsEnabled = aggregateUiState.cardStyle.iconCardsEnabled,
                     enableSharedBounds = false,
                     badge = PasswordListCardBadge(

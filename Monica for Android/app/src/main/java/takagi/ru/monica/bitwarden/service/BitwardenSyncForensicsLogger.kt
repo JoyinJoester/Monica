@@ -91,6 +91,7 @@ object BitwardenSyncForensicsLogger {
     private const val EXPORT_RAW_FILE_MAX_CHARS = 80_000
     private const val MAX_ERROR_CHARS = 600
     private const val RAW_ENTRY_RECORD_LIMIT = 30
+    private const val MAX_SYNC_CIPHER_SNAPSHOTS_PER_RUN = 40
 
     private val fileLock = Any()
     private val fileFormatter = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US)
@@ -199,6 +200,11 @@ object BitwardenSyncForensicsLogger {
         synchronized(session) {
             session.append(summary)
         }
+    }
+
+    suspend fun isRawCaptureEnabled(context: Context): Boolean = withContext(Dispatchers.IO) {
+        val settings = SettingsManager(context.applicationContext).settingsFlow.first()
+        settings.bitwardenSyncForensicsEnabled && settings.bitwardenSyncForensicsRawCaptureEnabled
     }
 
     suspend fun finishSession(
@@ -336,23 +342,32 @@ object BitwardenSyncForensicsLogger {
         val appContext = context.applicationContext
         initialize(appContext)
         runCatching { BitwardenDiagLogger.initialize(appContext) }
-
-        ciphers.forEach { cipher ->
-            val cipherId = cipher.id.trim()
-            if (cipherId.isEmpty()) return@forEach
-            val payload = runCatching { json.encodeToString(cipher) }.getOrNull() ?: return@forEach
-            persistRawEntrySnapshot(
-                context = appContext,
-                vaultId = vaultId,
-                cipherId = cipherId,
-                operation = "sync_full",
-                endpoint = "/sync/ciphers/$cipherId",
-                payload = payload,
-                payloadSource = BitwardenSyncRawEntryRecord.SOURCE_SYNC_RESPONSE,
-                responseCode = 200,
-                success = true
-            )
+        val settings = SettingsManager(appContext).settingsFlow.first()
+        if (!settings.bitwardenSyncForensicsEnabled ||
+            !settings.bitwardenSyncForensicsRawCaptureEnabled
+        ) {
+            return@withContext
         }
+
+        ciphers.asSequence()
+            .filter { it.deletedDate == null }
+            .take(MAX_SYNC_CIPHER_SNAPSHOTS_PER_RUN)
+            .forEach { cipher ->
+                val cipherId = cipher.id.trim()
+                if (cipherId.isEmpty()) return@forEach
+                val payload = runCatching { json.encodeToString(cipher) }.getOrNull() ?: return@forEach
+                persistRawEntrySnapshot(
+                    context = appContext,
+                    vaultId = vaultId,
+                    cipherId = cipherId,
+                    operation = "sync_full",
+                    endpoint = "/sync/ciphers/$cipherId",
+                    payload = payload,
+                    payloadSource = BitwardenSyncRawEntryRecord.SOURCE_SYNC_RESPONSE,
+                    responseCode = 200,
+                    success = true
+                )
+            }
     }
 
     fun exportPersistedLogs(context: Context, maxFiles: Int = 20): String {

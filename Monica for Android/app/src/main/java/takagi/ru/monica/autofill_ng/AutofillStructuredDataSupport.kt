@@ -218,13 +218,25 @@ internal fun mapDocumentAutofillValue(rawHint: String?, data: DocumentData): Str
     }?.takeIf { it.isNotBlank() }
 }
 
-internal fun parseBankCardCandidate(item: SecureItem): Pair<SecureItem, BankCardData>? {
-    val data = CardWalletDataCodec.parseBankCardData(item.itemData) ?: return null
+internal fun parseBankCardCandidate(
+    item: SecureItem,
+    decryptIfNeeded: ((String) -> String)? = null
+): Pair<SecureItem, BankCardData>? {
+    val data = CardWalletDataCodec.parseBankCardData(
+        raw = item.itemData,
+        decryptIfNeeded = decryptIfNeeded
+    ) ?: return null
     return item to data
 }
 
-internal fun parseDocumentCandidate(item: SecureItem): Pair<SecureItem, DocumentData>? {
-    val data = CardWalletDataCodec.parseDocumentData(item.itemData) ?: return null
+internal fun parseDocumentCandidate(
+    item: SecureItem,
+    decryptIfNeeded: ((String) -> String)? = null
+): Pair<SecureItem, DocumentData>? {
+    val data = CardWalletDataCodec.parseDocumentData(
+        raw = item.itemData,
+        decryptIfNeeded = decryptIfNeeded
+    ) ?: return null
     return item to data
 }
 

@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
@@ -67,6 +70,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -79,6 +83,8 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
@@ -93,7 +99,10 @@ import takagi.ru.monica.ui.components.ImageDialog
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
 import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
+import takagi.ru.monica.ui.components.PlusBlurNoteEditTopBar
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.util.ImageManager
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.RememberedStorageTarget
@@ -582,82 +591,94 @@ fun AddEditNoteScreen(
             onRemoveTarget = { target -> editorViewModel.removeSelectedStorageTarget(target) }
         )
     }
+    val noteTopBarTitle = stringResource(if (isEditing) R.string.edit_note else R.string.new_note)
+    val noteTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
+        settings = appSettings,
+        enabledForThisSurface = true
+    )
+    val noteUseBlurTopBar = noteTopBarBlurEnabled && !isFullScreenEditor && !isEditorModeAnimating
+    val noteTopBarHazeState = remember { HazeState() }
+    val noteTopBarHazeStyle = rememberMonicaFrostedGlassHazeStyle(appSettings.plusBlurIntensity)
+    val noteBlurTopBarHeight =
+        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0.dp),
         topBar = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .height(NoteEditorTopBarHeight)
-            ) {
-                if (isEditorModeAnimating) {
-                    NoteEditorModeTopBar(
-                        fullScreen = transitionFromFullScreen,
-                        isEditing = isEditing,
-                        isFavorite = editorState.isFavorite,
-                        isMarkdownPreview = editorState.isMarkdownPreview,
-                        canSave = canSave,
-                        isSaving = editorState.isSaving,
-                        alpha = 1f - editorModeProgress.value,
-                        scale = 1f - (0.06f * editorModeProgress.value),
-                        onNavigateBack = onNavigateBack,
-                        onToggleFavorite = { editorViewModel.toggleFavorite() },
-                        onDelete = { showConfirmDelete = true },
-                        onEnterFullScreen = { animateEditorModeChange(true) },
-                        onExitFullScreen = { animateEditorModeChange(false) },
-                        onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
-                        onSave = {
-                            saveNote(shouldNavigateBack = false)
-                            animateEditorModeChange(false)
-                        },
-                        enabled = false
-                    )
-                    NoteEditorModeTopBar(
-                        fullScreen = transitionToFullScreen,
-                        isEditing = isEditing,
-                        isFavorite = editorState.isFavorite,
-                        isMarkdownPreview = editorState.isMarkdownPreview,
-                        canSave = canSave,
-                        isSaving = editorState.isSaving,
-                        alpha = editorModeProgress.value,
-                        scale = 0.96f + (0.04f * editorModeProgress.value),
-                        onNavigateBack = onNavigateBack,
-                        onToggleFavorite = { editorViewModel.toggleFavorite() },
-                        onDelete = { showConfirmDelete = true },
-                        onEnterFullScreen = { animateEditorModeChange(true) },
-                        onExitFullScreen = { animateEditorModeChange(false) },
-                        onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
-                        onSave = {
-                            saveNote(shouldNavigateBack = false)
-                            animateEditorModeChange(false)
-                        },
-                        enabled = false
-                    )
-                } else {
-                    NoteEditorModeTopBar(
-                        fullScreen = isFullScreenEditor,
-                        isEditing = isEditing,
-                        isFavorite = editorState.isFavorite,
-                        isMarkdownPreview = editorState.isMarkdownPreview,
-                        canSave = canSave,
-                        isSaving = editorState.isSaving,
-                        alpha = 1f,
-                        scale = 1f,
-                        onNavigateBack = onNavigateBack,
-                        onToggleFavorite = { editorViewModel.toggleFavorite() },
-                        onDelete = { showConfirmDelete = true },
-                        onEnterFullScreen = { animateEditorModeChange(true) },
-                        onExitFullScreen = { animateEditorModeChange(false) },
-                        onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
-                        onSave = {
-                            saveNote(shouldNavigateBack = false)
-                            animateEditorModeChange(false)
-                        },
-                        enabled = !isEditorModeAnimating
-                    )
+            if (!noteUseBlurTopBar) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .height(NoteEditorTopBarHeight)
+                ) {
+                    if (isEditorModeAnimating) {
+                        NoteEditorModeTopBar(
+                            fullScreen = transitionFromFullScreen,
+                            isEditing = isEditing,
+                            isFavorite = editorState.isFavorite,
+                            isMarkdownPreview = editorState.isMarkdownPreview,
+                            canSave = canSave,
+                            isSaving = editorState.isSaving,
+                            alpha = 1f - editorModeProgress.value,
+                            scale = 1f - (0.06f * editorModeProgress.value),
+                            onNavigateBack = onNavigateBack,
+                            onToggleFavorite = { editorViewModel.toggleFavorite() },
+                            onDelete = { showConfirmDelete = true },
+                            onEnterFullScreen = { animateEditorModeChange(true) },
+                            onExitFullScreen = { animateEditorModeChange(false) },
+                            onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
+                            onSave = {
+                                saveNote(shouldNavigateBack = false)
+                                animateEditorModeChange(false)
+                            },
+                            enabled = false
+                        )
+                        NoteEditorModeTopBar(
+                            fullScreen = transitionToFullScreen,
+                            isEditing = isEditing,
+                            isFavorite = editorState.isFavorite,
+                            isMarkdownPreview = editorState.isMarkdownPreview,
+                            canSave = canSave,
+                            isSaving = editorState.isSaving,
+                            alpha = editorModeProgress.value,
+                            scale = 0.96f + (0.04f * editorModeProgress.value),
+                            onNavigateBack = onNavigateBack,
+                            onToggleFavorite = { editorViewModel.toggleFavorite() },
+                            onDelete = { showConfirmDelete = true },
+                            onEnterFullScreen = { animateEditorModeChange(true) },
+                            onExitFullScreen = { animateEditorModeChange(false) },
+                            onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
+                            onSave = {
+                                saveNote(shouldNavigateBack = false)
+                                animateEditorModeChange(false)
+                            },
+                            enabled = false
+                        )
+                    } else {
+                        NoteEditorModeTopBar(
+                            fullScreen = isFullScreenEditor,
+                            isEditing = isEditing,
+                            isFavorite = editorState.isFavorite,
+                            isMarkdownPreview = editorState.isMarkdownPreview,
+                            canSave = canSave,
+                            isSaving = editorState.isSaving,
+                            alpha = 1f,
+                            scale = 1f,
+                            onNavigateBack = onNavigateBack,
+                            onToggleFavorite = { editorViewModel.toggleFavorite() },
+                            onDelete = { showConfirmDelete = true },
+                            onEnterFullScreen = { animateEditorModeChange(true) },
+                            onExitFullScreen = { animateEditorModeChange(false) },
+                            onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
+                            onSave = {
+                                saveNote(shouldNavigateBack = false)
+                                animateEditorModeChange(false)
+                            },
+                            enabled = !isEditorModeAnimating
+                        )
+                    }
                 }
             }
         },
@@ -741,117 +762,154 @@ fun AddEditNoteScreen(
             )
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            if (isEditorModeAnimating) {
-                NoteEditorModeBody(
-                    fullScreen = transitionFromFullScreen,
-                    alpha = 1f - editorModeProgress.value,
-                    scale = 1f - (0.06f * editorModeProgress.value),
-                    editorState = editorState,
-                    noteImageBitmaps = noteImageBitmaps,
-                    normalEditorScrollState = normalEditorScrollState,
-                    isEditing = isEditing,
-                    isBitwardenNoteTarget = isBitwardenNoteTarget,
-                    toolbarContent = toolbarContent,
-                    storageSelectorContent = storageSelectorContent,
-                    onTitleChange = { editorViewModel.updateTitle(it) },
-                    onContentChange = { editorViewModel.updateContent(it) },
-                    onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
-                    onTaskItemToggle = ::togglePreviewTask,
-                    onPreviewInlineImage = { fileName -> showNoteImageDialog = fileName },
-                    onTagsTextChange = { editorViewModel.updateTagsText(it) },
-                    onAddImageClick = {
-                        if (isBitwardenNoteTarget) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
-                                Toast.LENGTH_SHORT
-                            ).show()
+        val contentPadding = if (noteUseBlurTopBar) {
+            PaddingValues(
+                top = noteBlurTopBarHeight + 10.dp,
+                bottom = paddingValues.calculateBottomPadding()
+            )
+        } else {
+            paddingValues
+        }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (noteUseBlurTopBar) {
+                            Modifier.haze(
+                                state = noteTopBarHazeState,
+                                style = noteTopBarHazeStyle
+                            )
                         } else {
-                            pendingImageInsertionCursor = editorState.contentField.selection.start
-                                .coerceIn(0, editorState.contentField.text.length)
-                            showAddImageDialog = true
+                            Modifier
                         }
-                    },
-                    onRemoveImage = { fileName ->
-                        if (isBitwardenNoteTarget) return@NoteEditorModeBody
-                        editorViewModel.removeInlineImage(fileName)
-                    }
-                )
-                NoteEditorModeBody(
-                    fullScreen = transitionToFullScreen,
-                    alpha = editorModeProgress.value,
-                    scale = 0.96f + (0.04f * editorModeProgress.value),
-                    editorState = editorState,
-                    noteImageBitmaps = noteImageBitmaps,
-                    normalEditorScrollState = normalEditorScrollState,
+                    )
+                    .padding(contentPadding)
+            ) {
+                if (isEditorModeAnimating) {
+                    NoteEditorModeBody(
+                        fullScreen = transitionFromFullScreen,
+                        alpha = 1f - editorModeProgress.value,
+                        scale = 1f - (0.06f * editorModeProgress.value),
+                        editorState = editorState,
+                        noteImageBitmaps = noteImageBitmaps,
+                        normalEditorScrollState = normalEditorScrollState,
+                        isEditing = isEditing,
+                        isBitwardenNoteTarget = isBitwardenNoteTarget,
+                        toolbarContent = toolbarContent,
+                        storageSelectorContent = storageSelectorContent,
+                        onTitleChange = { editorViewModel.updateTitle(it) },
+                        onContentChange = { editorViewModel.updateContent(it) },
+                        onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
+                        onTaskItemToggle = ::togglePreviewTask,
+                        onPreviewInlineImage = { fileName -> showNoteImageDialog = fileName },
+                        onTagsTextChange = { editorViewModel.updateTagsText(it) },
+                        onAddImageClick = {
+                            if (isBitwardenNoteTarget) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                pendingImageInsertionCursor = editorState.contentField.selection.start
+                                    .coerceIn(0, editorState.contentField.text.length)
+                                showAddImageDialog = true
+                            }
+                        },
+                        onRemoveImage = { fileName ->
+                            if (isBitwardenNoteTarget) return@NoteEditorModeBody
+                            editorViewModel.removeInlineImage(fileName)
+                        }
+                    )
+                    NoteEditorModeBody(
+                        fullScreen = transitionToFullScreen,
+                        alpha = editorModeProgress.value,
+                        scale = 0.96f + (0.04f * editorModeProgress.value),
+                        editorState = editorState,
+                        noteImageBitmaps = noteImageBitmaps,
+                        normalEditorScrollState = normalEditorScrollState,
+                        isEditing = isEditing,
+                        isBitwardenNoteTarget = isBitwardenNoteTarget,
+                        toolbarContent = toolbarContent,
+                        storageSelectorContent = storageSelectorContent,
+                        onTitleChange = { editorViewModel.updateTitle(it) },
+                        onContentChange = { editorViewModel.updateContent(it) },
+                        onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
+                        onTaskItemToggle = ::togglePreviewTask,
+                        onPreviewInlineImage = { fileName -> showNoteImageDialog = fileName },
+                        onTagsTextChange = { editorViewModel.updateTagsText(it) },
+                        onAddImageClick = {
+                            if (isBitwardenNoteTarget) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                pendingImageInsertionCursor = editorState.contentField.selection.start
+                                    .coerceIn(0, editorState.contentField.text.length)
+                                showAddImageDialog = true
+                            }
+                        },
+                        onRemoveImage = { fileName ->
+                            if (isBitwardenNoteTarget) return@NoteEditorModeBody
+                            editorViewModel.removeInlineImage(fileName)
+                        }
+                    )
+                } else {
+                    NoteEditorModeBody(
+                        fullScreen = isFullScreenEditor,
+                        alpha = 1f,
+                        scale = 1f,
+                        editorState = editorState,
+                        noteImageBitmaps = noteImageBitmaps,
+                        normalEditorScrollState = normalEditorScrollState,
+                        isEditing = isEditing,
+                        isBitwardenNoteTarget = isBitwardenNoteTarget,
+                        toolbarContent = toolbarContent,
+                        storageSelectorContent = storageSelectorContent,
+                        onTitleChange = { editorViewModel.updateTitle(it) },
+                        onContentChange = { editorViewModel.updateContent(it) },
+                        onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
+                        onTaskItemToggle = ::togglePreviewTask,
+                        onPreviewInlineImage = { fileName -> showNoteImageDialog = fileName },
+                        onTagsTextChange = { editorViewModel.updateTagsText(it) },
+                        onAddImageClick = {
+                            if (isBitwardenNoteTarget) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                pendingImageInsertionCursor = editorState.contentField.selection.start
+                                    .coerceIn(0, editorState.contentField.text.length)
+                                showAddImageDialog = true
+                            }
+                        },
+                        onRemoveImage = { fileName ->
+                            if (isBitwardenNoteTarget) return@NoteEditorModeBody
+                            editorViewModel.removeInlineImage(fileName)
+                        }
+                    )
+                }
+            }
+
+            if (noteUseBlurTopBar) {
+                PlusBlurNoteEditTopBar(
+                    title = noteTopBarTitle,
+                    settings = appSettings,
+                    hazeState = noteTopBarHazeState,
+                    hazeStyle = noteTopBarHazeStyle,
                     isEditing = isEditing,
-                    isBitwardenNoteTarget = isBitwardenNoteTarget,
-                    toolbarContent = toolbarContent,
-                    storageSelectorContent = storageSelectorContent,
-                    onTitleChange = { editorViewModel.updateTitle(it) },
-                    onContentChange = { editorViewModel.updateContent(it) },
-                    onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
-                    onTaskItemToggle = ::togglePreviewTask,
-                    onPreviewInlineImage = { fileName -> showNoteImageDialog = fileName },
-                    onTagsTextChange = { editorViewModel.updateTagsText(it) },
-                    onAddImageClick = {
-                        if (isBitwardenNoteTarget) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        } else {
-                            pendingImageInsertionCursor = editorState.contentField.selection.start
-                                .coerceIn(0, editorState.contentField.text.length)
-                            showAddImageDialog = true
-                        }
-                    },
-                    onRemoveImage = { fileName ->
-                        if (isBitwardenNoteTarget) return@NoteEditorModeBody
-                        editorViewModel.removeInlineImage(fileName)
-                    }
-                )
-            } else {
-                NoteEditorModeBody(
-                    fullScreen = isFullScreenEditor,
-                    alpha = 1f,
-                    scale = 1f,
-                    editorState = editorState,
-                    noteImageBitmaps = noteImageBitmaps,
-                    normalEditorScrollState = normalEditorScrollState,
-                    isEditing = isEditing,
-                    isBitwardenNoteTarget = isBitwardenNoteTarget,
-                    toolbarContent = toolbarContent,
-                    storageSelectorContent = storageSelectorContent,
-                    onTitleChange = { editorViewModel.updateTitle(it) },
-                    onContentChange = { editorViewModel.updateContent(it) },
-                    onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
-                    onTaskItemToggle = ::togglePreviewTask,
-                    onPreviewInlineImage = { fileName -> showNoteImageDialog = fileName },
-                    onTagsTextChange = { editorViewModel.updateTagsText(it) },
-                    onAddImageClick = {
-                        if (isBitwardenNoteTarget) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        } else {
-                            pendingImageInsertionCursor = editorState.contentField.selection.start
-                                .coerceIn(0, editorState.contentField.text.length)
-                            showAddImageDialog = true
-                        }
-                    },
-                    onRemoveImage = { fileName ->
-                        if (isBitwardenNoteTarget) return@NoteEditorModeBody
-                        editorViewModel.removeInlineImage(fileName)
-                    }
+                    isFavorite = editorState.isFavorite,
+                    onNavigateBack = onNavigateBack,
+                    onToggleFavorite = { editorViewModel.toggleFavorite() },
+                    onDelete = { showConfirmDelete = true },
+                    onEnterFullScreen = { animateEditorModeChange(true) },
+                    modifier = Modifier.align(Alignment.TopCenter)
                 )
             }
         }

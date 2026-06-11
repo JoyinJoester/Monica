@@ -40,6 +40,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -67,8 +69,11 @@ import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
 import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
+import takagi.ru.monica.ui.components.PlusBlurEditTopBar
 import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
@@ -109,6 +114,7 @@ fun AddEditTotpScreen(
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     initialReplicaGroupId: String? = null,
+    initialIsFavorite: Boolean = false,
     categories: List<Category> = emptyList(),
     passwordViewModel: PasswordViewModel? = null,
     totpViewModel: TotpViewModel? = null,
@@ -117,6 +123,7 @@ fun AddEditTotpScreen(
         title: String,
         notes: String,
         totpData: TotpData,
+        isFavorite: Boolean,
         targets: List<StorageTarget>,
         onComplete: (Boolean) -> Unit
     ) -> Unit,
@@ -140,6 +147,7 @@ fun AddEditTotpScreen(
     var selectedOtpType by rememberSaveable { mutableStateOf(resolvedInitialData?.otpType ?: OtpType.TOTP) }
     var counter by rememberSaveable { mutableStateOf(resolvedInitialData?.counter?.toString() ?: "0") }
     var pin by rememberSaveable { mutableStateOf(resolvedInitialData?.pin ?: "") }
+    var isFavorite by rememberSaveable(totpId) { mutableStateOf(initialIsFavorite) }
     var selectedCategoryId by rememberSaveable { mutableStateOf(initialCategoryId) }
     var keepassGroupPath by rememberSaveable { mutableStateOf(initialKeePassGroupPath) }
     
@@ -321,6 +329,7 @@ fun AddEditTotpScreen(
                     PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
                 }
             }
+
         }
     }
 
@@ -608,7 +617,7 @@ fun AddEditTotpScreen(
         if (!originalUploaded.isNullOrBlank() && originalUploaded != currentUploaded) {
             PasswordCustomIconStore.deleteIconFile(context, originalUploaded)
         }
-        onSave(title, notes, totpData, effectiveTargets) { saved ->
+        onSave(title, notes, totpData, isFavorite, effectiveTargets) { saved ->
             if (!saved) {
                 isSaving = false
                 Toast.makeText(context, context.getString(R.string.save_failed), Toast.LENGTH_SHORT).show()
@@ -632,21 +641,42 @@ fun AddEditTotpScreen(
         }
     }
     
+    val topBarTitle = stringResource(if (isEditing) R.string.edit_totp_title else R.string.add_totp_title)
+    val totpTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
+        settings = settings,
+        enabledForThisSurface = true
+    )
+    val totpTopBarHazeState = remember { HazeState() }
+    val totpTopBarHazeStyle = rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
+    val totpBlurTopBarHeight =
+        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(if (isEditing) R.string.edit_totp_title else R.string.add_totp_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
+            if (!totpTopBarBlurEnabled) {
+                TopAppBar(
+                    title = { Text(topBarTitle) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { isFavorite = !isFavorite }) {
+                            Icon(
+                                if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = stringResource(R.string.favorite),
+                                tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 )
-            )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -676,30 +706,53 @@ fun AddEditTotpScreen(
             }
         }
     ) { paddingValues ->
-        LazyColumn(
+        val contentPadding = if (totpTopBarBlurEnabled) {
+            PaddingValues(
+                top = totpBlurTopBarHeight + 10.dp,
+                bottom = paddingValues.calculateBottomPadding()
+            )
+        } else {
+            paddingValues
+        }
+
+        Box(
             modifier = modifier
                 .fillMaxSize()
-                .padding(paddingValues)
                 .imePadding()
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            // Vault Selector
-            item {
-                MultiStorageTargetSelectorCard(
-                    selectedTargets = selectedStorageTargets,
-                    existingTargetKeys = existingReplicaTargetKeys,
-                    categories = categories,
-                    keepassDatabases = keepassDatabases,
-                    mdbxDatabases = mdbxDatabases,
-                    bitwardenVaults = bitwardenVaults,
-                    bitwardenFolderDao = database.bitwardenFolderDao(),
-                    isEditing = isEditing,
-                    onAddTargetClick = { showStorageTargetSheet = true },
-                    onRemoveTarget = ::removeSelectedStorageTarget
-                )
-            }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (totpTopBarBlurEnabled) {
+                            Modifier.haze(
+                                state = totpTopBarHazeState,
+                                style = totpTopBarHazeStyle
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .padding(contentPadding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(bottom = 32.dp)
+            ) {
+                // Vault Selector
+                item {
+                    MultiStorageTargetSelectorCard(
+                        selectedTargets = selectedStorageTargets,
+                        existingTargetKeys = existingReplicaTargetKeys,
+                        categories = categories,
+                        keepassDatabases = keepassDatabases,
+                        mdbxDatabases = mdbxDatabases,
+                        bitwardenVaults = bitwardenVaults,
+                        bitwardenFolderDao = database.bitwardenFolderDao(),
+                        isEditing = isEditing,
+                        onAddTargetClick = { showStorageTargetSheet = true },
+                        onRemoveTarget = ::removeSelectedStorageTarget
+                    )
+                }
 
             // Basic Info Card
             item {
@@ -1135,6 +1188,20 @@ fun AddEditTotpScreen(
                         }
                     }
                 }
+            }
+            }
+
+            if (totpTopBarBlurEnabled) {
+                PlusBlurEditTopBar(
+                    title = topBarTitle,
+                    settings = settings,
+                    hazeState = totpTopBarHazeState,
+                    hazeStyle = totpTopBarHazeStyle,
+                    isFavorite = isFavorite,
+                    onNavigateBack = onNavigateBack,
+                    onFavoriteChange = { isFavorite = it },
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
             }
         }
     }

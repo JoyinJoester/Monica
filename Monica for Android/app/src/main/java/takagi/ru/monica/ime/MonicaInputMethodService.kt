@@ -763,7 +763,8 @@ class MonicaInputMethodService : InputMethodService() {
         val parsed = TotpDataResolver.parseStoredItemData(
             itemData = itemData,
             fallbackIssuer = title,
-            fallbackAccountName = ""
+            fallbackAccountName = "",
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
         ) ?: return null
         val resolved = parsed.resolveReadableTotpData() ?: return null
         val code = TotpGenerator.generateOtp(resolved)
@@ -797,6 +798,12 @@ class MonicaInputMethodService : InputMethodService() {
         )
     }
 
+    private fun decryptStoredSensitiveValue(value: String): String {
+        return runCatching {
+            securityManager.decryptDataIfMonicaCiphertext(value)
+        }.getOrDefault(value)
+    }
+
     private fun PasswordEntry.toVirtualImeAuthenticatorEntryOrNull(
         keepassLookup: Map<Long, LocalKeePassDatabase>,
         bitwardenLookup: Map<Long, BitwardenVault>,
@@ -805,7 +812,7 @@ class MonicaInputMethodService : InputMethodService() {
         bitwardenLabel: String
     ): MonicaImeAuthenticatorEntry? {
         val parsed = TotpDataResolver.fromAuthenticatorKey(
-            rawKey = authenticatorKey,
+            rawKey = decryptStoredSensitiveValue(authenticatorKey),
             fallbackIssuer = title,
             fallbackAccountName = username
         ) ?: return null
@@ -881,7 +888,10 @@ class MonicaInputMethodService : InputMethodService() {
         keepassLabel: String,
         bitwardenLabel: String
     ): MonicaImeCardWalletEntry? {
-        val data = CardWalletDataCodec.parseBankCardData(itemData) ?: return null
+        val data = CardWalletDataCodec.parseBankCardData(
+            raw = itemData,
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+        ) ?: return null
         val fields = listOfNotNull(
             fieldOrNull(getString(takagi.ru.monica.R.string.card_number), resolveSecretValue(data.cardNumber)),
             fieldOrNull(getString(takagi.ru.monica.R.string.cardholder_name), data.cardholderName),
@@ -929,7 +939,10 @@ class MonicaInputMethodService : InputMethodService() {
         keepassLabel: String,
         bitwardenLabel: String
     ): MonicaImeCardWalletEntry? {
-        val data = CardWalletDataCodec.parseDocumentData(itemData) ?: return null
+        val data = CardWalletDataCodec.parseDocumentData(
+            raw = itemData,
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+        ) ?: return null
         val fullName = data.displayName()
         val fields = listOfNotNull(
             fieldOrNull(getString(takagi.ru.monica.R.string.document_number), resolveSecretValue(data.documentNumber)),
@@ -981,7 +994,7 @@ class MonicaInputMethodService : InputMethodService() {
         // 如果密码条目绑定了验证器密钥，生成当前 TOTP 码
         val totpCode = runCatching {
             val parsed = TotpDataResolver.fromAuthenticatorKey(
-                rawKey = authenticatorKey,
+                rawKey = decryptStoredSensitiveValue(authenticatorKey),
                 fallbackIssuer = title,
                 fallbackAccountName = username
             )

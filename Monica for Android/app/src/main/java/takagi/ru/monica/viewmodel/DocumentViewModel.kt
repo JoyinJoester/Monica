@@ -44,11 +44,16 @@ import takagi.ru.monica.utils.KeePassKdbxService
 import java.util.Date
 import java.util.UUID
 
+data class ParsedDocumentItem(
+    val item: SecureItem,
+    val documentData: DocumentData
+)
+
 class DocumentViewModel(
     private val repository: SecureItemRepository,
     context: Context? = null,
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
-    securityManager: SecurityManager? = null
+    private val securityManager: SecurityManager? = null
 ) : ViewModel() {
     private data class KeePassMutationIdentity(
         val groupPath: String?,
@@ -77,6 +82,27 @@ class DocumentViewModel(
     private val keepassSecureItemDeleteExecutor = KeePassSecureItemDeleteExecutor(keepassBridge)
     private val keepassSecureItemUpdateExecutor = KeePassSecureItemUpdateExecutor(keepassBridge)
 
+    private fun decryptStoredSensitiveValue(value: String): String {
+        return securityManager
+            ?.let { manager -> runCatching { manager.decryptDataIfMonicaCiphertext(value) }.getOrDefault(value) }
+            ?: value
+    }
+
+    private fun encodeStoredSensitiveValueForNewWrite(plainValue: String): String {
+        if (plainValue.isBlank()) return plainValue
+        return securityManager?.encryptDataLegacyCompat(plainValue) ?: plainValue
+    }
+
+    private fun encodeDocumentDataForLocalStorage(documentData: DocumentData): String {
+        return encodeStoredSensitiveValueForNewWrite(
+            CardWalletDataCodec.encodeDocumentData(documentData)
+        )
+    }
+
+    private fun encodeIncomingItemDataForLocalStorage(itemData: String): String {
+        return encodeStoredSensitiveValueForNewWrite(decryptStoredSensitiveValue(itemData))
+    }
+
     init {
         viewModelScope.launch {
             repairLegacyDetachedKeePassItems()
@@ -90,6 +116,23 @@ class DocumentViewModel(
     val allDocuments: Flow<List<SecureItem>> = repository.getItemsByType(ItemType.DOCUMENT)
         .onStart { _isLoading.value = true }
         .onEach { _isLoading.value = false }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val parsedDocuments: StateFlow<List<ParsedDocumentItem>> = allDocuments
+        .map { items ->
+            withContext(Dispatchers.Default) {
+                items.map { item ->
+                    ParsedDocumentItem(
+                        item = item,
+                        documentData = parseDocumentData(item.itemData) ?: emptyDocumentData()
+                    )
+                }
+            }
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -203,15 +246,19 @@ class DocumentViewModel(
                         it.title == incoming.title
                 }
 
+                val incomingForLocalStorage = incoming.copy(
+                    itemData = encodeIncomingItemDataForLocalStorage(incoming.itemData)
+                )
+
                 if (existing == null) {
-                    repository.insertItem(incoming)
+                    repository.insertItem(incomingForLocalStorage)
                 } else {
                     val isInRecycleBin = snapshot.isInRecycleBin
                     repository.updateItem(
                         existing.copy(
                             title = incoming.title,
                             notes = incoming.notes,
-                            itemData = incoming.itemData,
+                            itemData = incomingForLocalStorage.itemData,
                             isFavorite = incoming.isFavorite,
                             imagePaths = incoming.imagePaths,
                             keepassDatabaseId = incoming.keepassDatabaseId,
@@ -264,7 +311,7 @@ class DocumentViewModel(
                 id = 0,
                 itemType = ItemType.DOCUMENT,
                 title = title,
-                itemData = CardWalletDataCodec.encodeDocumentData(documentData),
+                itemData = encodeDocumentDataForLocalStorage(documentData),
                 notes = notes,
                 isFavorite = isFavorite,
                 categoryId = categoryId,
@@ -344,7 +391,7 @@ class DocumentViewModel(
                 
                 val updatedItem = existingItem.copy(
                     title = title,
-                    itemData = CardWalletDataCodec.encodeDocumentData(documentData),
+                    itemData = encodeDocumentDataForLocalStorage(documentData),
                     notes = notes,
                     isFavorite = isFavorite,
                     categoryId = categoryId,
@@ -928,8 +975,19 @@ class DocumentViewModel(
     
     // 解析证件数据
     fun parseDocumentData(jsonData: String): DocumentData? {
-        return CardWalletDataCodec.parseDocumentData(jsonData)
+        return CardWalletDataCodec.parseDocumentData(
+            raw = jsonData,
+            decryptIfNeeded = ::decryptStoredSensitiveValue
+        )
     }
+
+    private fun emptyDocumentData() = DocumentData(
+        documentNumber = "",
+        documentType = takagi.ru.monica.data.model.DocumentType.ID_CARD,
+        fullName = "",
+        issuedDate = "",
+        expiryDate = ""
+    )
 
     private suspend fun repairLegacyDetachedKeePassItems() {
         repository.repairLegacyDetachedKeePassItems(::hasKeePassDatabase)

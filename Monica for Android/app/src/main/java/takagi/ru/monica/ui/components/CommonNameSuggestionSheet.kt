@@ -47,17 +47,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.flow.flowOf
 import takagi.ru.monica.R
 import takagi.ru.monica.data.CommonAccountPreferences
 import takagi.ru.monica.data.CommonAccountTemplate
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.SecureItem
-import takagi.ru.monica.data.model.BankCardData
-import takagi.ru.monica.data.model.DocumentData
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.displayFullName
+import takagi.ru.monica.security.SecurityManager
 import java.util.Locale
 
 enum class CommonNameSuggestionSource {
@@ -93,21 +92,31 @@ private data class CommonNameAggregate(
 
 @Composable
 fun rememberCommonNameSuggestionState(
-    database: PasswordDatabase
+    database: PasswordDatabase,
+    includeAnalyzedItems: Boolean = true
 ): CommonNameSuggestionState {
     val context = LocalContext.current
     val preferences = remember(context) { CommonAccountPreferences(context) }
+    val securityManager = remember(context) { SecurityManager(context.applicationContext) }
     val templates by preferences.templatesFlow.collectAsState(initial = emptyList())
-    val secureItems by database.secureItemDao().getAllItems().collectAsState(initial = emptyList())
+    val secureItemFlow = remember(database, includeAnalyzedItems) {
+        if (includeAnalyzedItems) {
+            database.secureItemDao().getAllItems()
+        } else {
+            flowOf(emptyList())
+        }
+    }
+    val secureItems by secureItemFlow.collectAsState(initial = emptyList())
     val localizedNameType = stringResource(R.string.common_account_type_name)
     val analyzedLabel = stringResource(R.string.common_name_fill_from_analysis)
 
-    return remember(templates, secureItems, localizedNameType, analyzedLabel) {
+    return remember(templates, secureItems, localizedNameType, analyzedLabel, securityManager) {
         buildCommonNameSuggestionState(
             templates = templates,
             secureItems = secureItems,
             localizedNameType = localizedNameType,
-            analyzedLabel = analyzedLabel
+            analyzedLabel = analyzedLabel,
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
         )
     }
 }
@@ -360,7 +369,8 @@ private fun buildCommonNameSuggestionState(
     templates: List<CommonAccountTemplate>,
     secureItems: List<SecureItem>,
     localizedNameType: String,
-    analyzedLabel: String
+    analyzedLabel: String,
+    decryptIfNeeded: ((String) -> String)? = null
 ): CommonNameSuggestionState {
     val templateSuggestions = templates
         .asSequence()
@@ -387,7 +397,7 @@ private fun buildCommonNameSuggestionState(
     secureItems.asSequence()
         .filterNot { it.isDeleted }
         .forEach { item ->
-            val extractedName = extractCommonName(item)
+            val extractedName = extractCommonName(item, decryptIfNeeded)
             if (extractedName.isBlank()) return@forEach
 
             val normalizedName = normalizeCommonNameValue(extractedName)
@@ -434,14 +444,19 @@ private fun isCommonNameTemplateType(rawType: String, localizedNameType: String)
         normalized == "姓名"
 }
 
-private fun extractCommonName(item: SecureItem): String {
+private fun extractCommonName(
+    item: SecureItem,
+    decryptIfNeeded: ((String) -> String)? = null
+): String {
     return when (item.itemType) {
-        ItemType.BANK_CARD -> runCatching {
-            Json.decodeFromString<BankCardData>(item.itemData).cardholderName
-        }.getOrDefault("")
-        ItemType.DOCUMENT -> runCatching {
-            Json.decodeFromString<DocumentData>(item.itemData).displayFullName()
-        }.getOrDefault("")
+        ItemType.BANK_CARD -> CardWalletDataCodec.parseBankCardData(
+            raw = item.itemData,
+            decryptIfNeeded = decryptIfNeeded
+        )?.cardholderName.orEmpty()
+        ItemType.DOCUMENT -> CardWalletDataCodec.parseDocumentData(
+            raw = item.itemData,
+            decryptIfNeeded = decryptIfNeeded
+        )?.displayFullName().orEmpty()
         else -> ""
     }
 }

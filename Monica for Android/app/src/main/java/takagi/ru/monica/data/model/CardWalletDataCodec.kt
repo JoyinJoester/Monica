@@ -16,23 +16,40 @@ object CardWalletDataCodec {
         encodeDefaults = true
     }
 
-    fun parseBankCardData(raw: String): BankCardData? {
-        return runCatching { json.decodeFromString<BankCardData>(raw) }
+    fun parseBankCardData(
+        raw: String,
+        decryptIfNeeded: ((String) -> String)? = null
+    ): BankCardData? {
+        val resolvedRaw = resolveStoredData(raw, decryptIfNeeded)
+        return runCatching { json.decodeFromString<BankCardData>(resolvedRaw) }
             .getOrElse {
-                parseLegacyBankCardData(raw)
+                parseLegacyBankCardData(resolvedRaw)
             }
     }
 
-    fun parseDocumentData(raw: String): DocumentData? {
-        return runCatching { json.decodeFromString<DocumentData>(raw) }
+    fun parseDocumentData(
+        raw: String,
+        decryptIfNeeded: ((String) -> String)? = null
+    ): DocumentData? {
+        val resolvedRaw = resolveStoredData(raw, decryptIfNeeded)
+        return runCatching { json.decodeFromString<DocumentData>(resolvedRaw) }
             .getOrElse {
-                parseLegacyDocumentData(raw)
+                parseLegacyDocumentData(resolvedRaw)
             }
     }
 
     fun encodeBankCardData(data: BankCardData): String = json.encodeToString(BankCardData.serializer(), data)
 
     fun encodeDocumentData(data: DocumentData): String = json.encodeToString(DocumentData.serializer(), data)
+
+    private fun resolveStoredData(
+        raw: String,
+        decryptIfNeeded: ((String) -> String)?
+    ): String {
+        return decryptIfNeeded
+            ?.let { decrypt -> runCatching { decrypt(raw) }.getOrDefault(raw) }
+            ?: raw
+    }
 
     fun parseBillingAddress(raw: String): BillingAddress {
         if (raw.isBlank()) return BillingAddress()

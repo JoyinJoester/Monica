@@ -78,6 +78,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Velocity
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -117,6 +120,9 @@ import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
+import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.sync.SyncDiagnostics
 import takagi.ru.monica.sync.SyncItemKind
@@ -170,6 +176,12 @@ fun CardWalletScreen(
     val appSettings by settingsManager.settingsFlow.collectAsState(
         initial = AppSettings(biometricEnabled = false)
     )
+    val plusBlurMenuHazeState = remember { HazeState() }
+    val plusBlurMenuHazeStyle = rememberMonicaFrostedGlassHazeStyle(appSettings.plusBlurIntensity)
+    val plusBlurMenuEnabled = rememberMonicaPlusBlurEnabledForSurface(
+        settings = appSettings,
+        enabledForThisSurface = true
+    )
     val savedCategoryFilterState by settingsManager
         .categoryFilterStateFlow(SettingsManager.CategoryFilterScope.CARD_WALLET)
         .collectAsState(initial = null)
@@ -204,8 +216,12 @@ fun CardWalletScreen(
         }
     }
 
-    val cards by bankCardViewModel.allCards.collectAsState(initial = emptyList())
-    val documents by documentViewModel.allDocuments.collectAsState(initial = emptyList())
+    val parsedCards by bankCardViewModel.parsedCards.collectAsState(initial = emptyList())
+    val parsedDocuments by documentViewModel.parsedDocuments.collectAsState(initial = emptyList())
+    val cards = remember(parsedCards) { parsedCards.map { it.item } }
+    val documents = remember(parsedDocuments) { parsedDocuments.map { it.item } }
+    val cardDataById = remember(parsedCards) { parsedCards.associate { it.item.id to it.cardData } }
+    val documentDataById = remember(parsedDocuments) { parsedDocuments.associate { it.item.id to it.documentData } }
     val bankLoading by bankCardViewModel.isLoading.collectAsState()
     val documentLoading by documentViewModel.isLoading.collectAsState()
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
@@ -279,6 +295,7 @@ fun CardWalletScreen(
         }
     }
     LaunchedEffect(Unit) {
+        delay(1_200L)
         SyncTaskRunner.request(
             request = SyncRequest(
                 requestId = SyncDiagnostics.nextTaskId("kp-card-wallet"),
@@ -320,6 +337,7 @@ fun CardWalletScreen(
 
     LaunchedEffect(selectedBitwardenVaultId) {
         selectedBitwardenVaultId?.let { vaultId ->
+            delay(1_200L)
             bitwardenViewModel.requestPageEnterAutoSync(vaultId)
         }
     }
@@ -797,7 +815,7 @@ fun CardWalletScreen(
         }
     }
 
-    val filteredItems = remember(allItems, currentTab, searchQuery, selectedCategoryFilter) {
+    val filteredItems = remember(allItems, currentTab, searchQuery, selectedCategoryFilter, cardDataById, documentDataById) {
         val query = searchQuery.trim()
         allItems
             .asSequence()
@@ -818,8 +836,8 @@ fun CardWalletScreen(
                     itemMatchesSearch(
                         item = item,
                         query = query,
-                        bankCardViewModel = bankCardViewModel,
-                        documentViewModel = documentViewModel
+                        cardDataById = cardDataById,
+                        documentDataById = documentDataById
                     )
                 }
             }
@@ -938,7 +956,20 @@ fun CardWalletScreen(
         return
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .then(
+                if (plusBlurMenuEnabled) {
+                    Modifier.haze(
+                        state = plusBlurMenuHazeState,
+                        style = plusBlurMenuHazeStyle
+                    )
+                } else {
+                    Modifier
+                }
+            )
+    ) {
         ExpressiveTopBar(
             title = topBarTitle,
             searchQuery = searchQuery,
@@ -985,7 +1016,10 @@ fun CardWalletScreen(
                         UnifiedCategoryFilterChipMenuDropdown(
                             expanded = showCategoryFilterDialog,
                             onDismissRequest = { showCategoryFilterDialog = false },
-                            offset = UnifiedCategoryFilterChipMenuOffset
+                            offset = UnifiedCategoryFilterChipMenuOffset,
+                            plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
+                            plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+                            plusBlurHazeStyle = plusBlurMenuHazeStyle
                         ) {
                             UnifiedCategoryFilterChipMenu(
                                 visible = true,
@@ -1015,27 +1049,13 @@ fun CardWalletScreen(
                             )
                         }
                     }
-                    MaterialTheme(
-                        shapes = MaterialTheme.shapes.copy(
-                            extraSmall = RoundedCornerShape(20.dp),
-                            small = RoundedCornerShape(20.dp)
-                        )
+                    PasswordTopActionsDropdownMenu(
+                        expanded = showTopActionsMenu,
+                        onDismissRequest = { showTopActionsMenu = false },
+                        plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
+                        plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+                        plusBlurHazeStyle = plusBlurMenuHazeStyle
                     ) {
-                        DropdownMenu(
-                            expanded = showTopActionsMenu,
-                            onDismissRequest = { showTopActionsMenu = false },
-                            offset = DpOffset(x = 48.dp, y = 6.dp),
-                            modifier = Modifier
-                                .widthIn(min = 220.dp, max = 260.dp)
-                                .shadow(10.dp, RoundedCornerShape(20.dp))
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                .border(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
-                                    shape = RoundedCornerShape(20.dp)
-                                )
-                        ) {
                             if (showStandaloneSettingsEntry) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.nav_settings)) },
@@ -1127,7 +1147,6 @@ fun CardWalletScreen(
                             )
                         }
                     }
-                }
             }
         )
 
@@ -1278,7 +1297,8 @@ fun CardWalletScreen(
                                             },
                                             modifier = Modifier
                                                 .padding(bottom = 8.dp)
-                                                .then(dragModifier)
+                                                .then(dragModifier),
+                                            cardData = cardDataById[item.id]
                                         )
 
                                         ItemType.DOCUMENT -> DocumentCard(
@@ -1306,7 +1326,8 @@ fun CardWalletScreen(
                                             },
                                             modifier = Modifier
                                                 .padding(bottom = 8.dp)
-                                                .then(dragModifier)
+                                                .then(dragModifier),
+                                            documentData = documentDataById[item.id]
                                         )
 
                                         else -> Unit
@@ -1567,20 +1588,20 @@ private fun decodeCardWalletCategoryFilter(state: SavedCategoryFilterState): Uni
 private fun itemMatchesSearch(
     item: SecureItem,
     query: String,
-    bankCardViewModel: BankCardViewModel,
-    documentViewModel: DocumentViewModel
+    cardDataById: Map<Long, takagi.ru.monica.data.model.BankCardData>,
+    documentDataById: Map<Long, takagi.ru.monica.data.model.DocumentData>
 ): Boolean {
     if (item.title.contains(query, ignoreCase = true) || item.notes.contains(query, ignoreCase = true)) {
         return true
     }
     return when (item.itemType) {
-        ItemType.BANK_CARD -> bankCardViewModel.parseCardData(item.itemData)?.let { card ->
+        ItemType.BANK_CARD -> cardDataById[item.id]?.let { card ->
             card.cardNumber.contains(query, ignoreCase = true) ||
                 card.bankName.contains(query, ignoreCase = true) ||
                 card.cardholderName.contains(query, ignoreCase = true)
         } ?: false
 
-        ItemType.DOCUMENT -> documentViewModel.parseDocumentData(item.itemData)?.let { document ->
+        ItemType.DOCUMENT -> documentDataById[item.id]?.let { document ->
             document.documentNumber.contains(query, ignoreCase = true) ||
                 document.fullName.contains(query, ignoreCase = true) ||
                 document.issuedBy.contains(query, ignoreCase = true) ||

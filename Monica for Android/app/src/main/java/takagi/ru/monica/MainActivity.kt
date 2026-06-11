@@ -87,6 +87,7 @@ import takagi.ru.monica.repository.MdbxRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.MdbxVaultStore
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.security.SensitiveFieldMigrationManager
 import takagi.ru.monica.security.lock.MainAppAccessState
 import takagi.ru.monica.security.lock.MainAppLockPolicy
 import takagi.ru.monica.ui.SimpleMainScreen
@@ -352,7 +353,8 @@ class MainActivity : BaseMonicaActivity() {
         )
         val secureItemRepository = takagi.ru.monica.repository.SecureItemRepository(
             database.secureItemDao(),
-            mdbxRepository
+            mdbxRepository,
+            securityManager::decryptDataIfMonicaCiphertext
         )
         val settingsManager = SettingsManager(this)
         
@@ -706,6 +708,13 @@ fun MonicaContent(
     val settings by settingsViewModel.settings.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val sensitiveFieldMigrationManager = remember(database, securityManager) {
+        SensitiveFieldMigrationManager(
+            context = context.applicationContext,
+            database = database,
+            securityManager = securityManager
+        )
+    }
 
     val isFirstTime = initialAuthState.isFirstTime
     val currentRoute = navBackStackEntry?.destination?.route
@@ -720,12 +729,31 @@ fun MonicaContent(
         )
     }
     var hasRenderedLoginFirstFrame by remember { mutableStateOf(false) }
-    val mainAppAccessState = MainAppLockPolicy.resolveAccessState(
-        securityManager,
-        context.applicationContext,
+    val authenticatedAccessState = remember {
+        MainAppAccessState(
+            isFirstTime = false,
+            bypassEnabled = false,
+            canRestoreSession = true,
+            reason = "already_authenticated"
+        )
+    }
+    val mainAppAccessState = remember(
+        isAuthenticated,
         settings.autoLockMinutes,
-        settings.disablePasswordVerification
-    )
+        settings.disablePasswordVerification,
+        initialAuthState
+    ) {
+        if (isAuthenticated) {
+            authenticatedAccessState
+        } else {
+            MainAppLockPolicy.resolveAccessState(
+                securityManager,
+                context.applicationContext,
+                settings.autoLockMinutes,
+                settings.disablePasswordVerification
+            )
+        }
+    }
     val shouldRequireAuthentication = !isAuthenticated && !mainAppAccessState.canEnterMainApp
     val isOnAuthRoute = currentRoute != null && currentRoute in authRouteSet
     val showAuthTransitionGate = shouldRequireAuthentication && (
@@ -815,6 +843,17 @@ fun MonicaContent(
             if (currentRoute == Screen.Login.route) {
                 navController.navigate(Screen.Main.createRoute()) {
                     popUpTo(Screen.Login.route) { inclusive = true }
+                }
+            }
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    delay(15_000)
+                    sensitiveFieldMigrationManager.runUnlockedSmallBatch()
+                }.onFailure { error ->
+                    Log.w(
+                        "SensitiveMigration",
+                        "Unlocked sensitive field migration failed: ${error.javaClass.simpleName}"
+                    )
                 }
             }
         } else {
@@ -1530,6 +1569,7 @@ fun MonicaContent(
             var initialBitwardenVaultId by remember { mutableStateOf<Long?>(null) }
             var initialBitwardenFolderId by remember { mutableStateOf<String?>(null) }
             var initialReplicaGroupId by remember { mutableStateOf<String?>(null) }
+            var initialIsFavorite by remember { mutableStateOf(false) }
             var isLoading by remember { mutableStateOf(true) }
 
             // 从QR扫描获取的数据
@@ -1551,11 +1591,8 @@ fun MonicaContent(
                     initialBitwardenVaultId = item.bitwardenVaultId
                     initialBitwardenFolderId = item.bitwardenFolderId
                     initialReplicaGroupId = item.replicaGroupId
-                    initialData = try {
-                        kotlinx.serialization.json.Json.decodeFromString(item.itemData)
-                    } catch (e: Exception) {
-                        null
-                    }
+                    initialIsFavorite = item.isFavorite
+                    initialData = totpViewModel.parseTotpDataForDisplay(item)
                 }
                 isLoading = false
             }
@@ -1654,6 +1691,7 @@ fun MonicaContent(
                     initialBitwardenVaultId = initialVaultId,
                     initialBitwardenFolderId = initialFolderId,
                     initialReplicaGroupId = initialReplicaGroupId,
+                    initialIsFavorite = initialIsFavorite,
                     categories = totpCategories,
                     passwordViewModel = viewModel,
                     totpViewModel = totpViewModel,
@@ -1664,12 +1702,13 @@ fun MonicaContent(
                             ?.savedStateHandle
                             ?.remove<String>("qr_result")
                     },
-                    onSave = { title, notes, totpData, targets, onComplete ->
+                    onSave = { title, notes, totpData, isFavorite, targets, onComplete ->
                         totpViewModel.saveTotpAcrossTargets(
                             id = if (totpId > 0) totpId else null,
                             title = title,
                             notes = notes,
                             totpData = totpData,
+                            isFavorite = isFavorite,
                             targets = targets,
                             onComplete = { saved ->
                                 if (saved) {
@@ -3134,14 +3173,6 @@ fun MonicaContent(
                 plusBlurEnabled = settings.plusBlurEnabled,
                 onPlusBlurEnabledChange = { enabled ->
                     settingsViewModel.updatePlusBlurEnabled(enabled)
-                },
-                plusBlurMode = settings.plusBlurMode,
-                onPlusBlurModeChange = { mode ->
-                    settingsViewModel.updatePlusBlurMode(mode)
-                },
-                plusBlurIntensity = settings.plusBlurIntensity,
-                onPlusBlurIntensityChange = { intensity ->
-                    settingsViewModel.updatePlusBlurIntensity(intensity)
                 },
                 plusBlurReduceOnBatterySaver = settings.plusBlurReduceOnBatterySaver,
                 onPlusBlurReduceOnBatterySaverChange = { enabled ->

@@ -96,10 +96,15 @@ object TotpDataResolver {
     fun parseStoredItemData(
         itemData: String,
         fallbackIssuer: String = "",
-        fallbackAccountName: String = ""
+        fallbackAccountName: String = "",
+        decryptIfNeeded: ((String) -> String)? = null
     ): TotpData? {
+        val resolvedItemData = decryptIfNeeded?.let { decrypt ->
+            runCatching { decrypt(itemData) }.getOrDefault(itemData)
+        } ?: itemData
+
         runCatching {
-            json.decodeFromString<TotpData>(itemData)
+            json.decodeFromString<TotpData>(resolvedItemData)
         }.getOrNull()?.let { decoded ->
             return normalizeTotpData(
                 decoded.copy(
@@ -110,7 +115,7 @@ object TotpDataResolver {
         }
 
         runCatching {
-            json.parseToJsonElement(itemData) as? JsonObject
+            json.parseToJsonElement(resolvedItemData) as? JsonObject
         }.getOrNull()?.let { obj ->
             val secret = obj["secret"]?.jsonPrimitive?.content
                 ?: obj["key"]?.jsonPrimitive?.content
@@ -140,7 +145,7 @@ object TotpDataResolver {
         }
 
         return fromAuthenticatorKey(
-            rawKey = itemData,
+            rawKey = resolvedItemData,
             fallbackIssuer = fallbackIssuer,
             fallbackAccountName = fallbackAccountName
         )

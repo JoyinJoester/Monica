@@ -89,6 +89,7 @@ fun PasswordListItem(
     showDropdownMenu: Boolean = false,
     iconCardsEnabled: Boolean = false,
     showSmartCopyOptions: Boolean = false,
+    onPrepareAutofill: ((PasswordEntry) -> Unit)? = null,
     onAction: ((PasswordItemAction) -> Unit)? = null,
     onItemClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -102,6 +103,7 @@ fun PasswordListItem(
             .fillMaxWidth()
             .clickable {
                 if (showDropdownMenu && onAction != null) {
+                    onPrepareAutofill?.invoke(password)
                     expanded = true
                 } else {
                     onItemClick?.invoke()
@@ -449,6 +451,7 @@ fun SuggestedPasswordListItem(
     password: PasswordEntry,
     iconCardsEnabled: Boolean = false,
     showSmartCopyOptions: Boolean = false,
+    onPrepareAutofill: ((PasswordEntry) -> Unit)? = null,
     onAction: (PasswordItemAction) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -460,7 +463,10 @@ fun SuggestedPasswordListItem(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable { expanded = true },
+            .clickable {
+                onPrepareAutofill?.invoke(password)
+                expanded = true
+            },
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
         ),

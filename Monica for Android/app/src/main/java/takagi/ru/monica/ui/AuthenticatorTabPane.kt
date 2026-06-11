@@ -7,7 +7,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.common.layout.DetailPane
 import takagi.ru.monica.ui.common.layout.ListPane
 import takagi.ru.monica.ui.screens.AddEditTotpScreen
@@ -64,12 +63,9 @@ internal fun AuthenticatorTabPane(
                 totpItems.firstOrNull { it.id == selectedId }
             }
         }
-        val selectedTotpData = remember(selectedTotpItem?.itemData) {
-            selectedTotpItem?.itemData?.let { itemData ->
-                runCatching {
-                    kotlinx.serialization.json.Json.decodeFromString<TotpData>(itemData)
-                }.getOrNull()
-            }
+        val parsedTotpItems by totpViewModel.parsedTotpItems.collectAsState()
+        val selectedTotpData = remember(selectedTotpId, parsedTotpItems) {
+            parsedTotpItems.firstOrNull { it.item.id == selectedTotpId }?.totpData
         }
         val totpCategories by totpViewModel.categories.collectAsState()
 
@@ -96,16 +92,18 @@ internal fun AuthenticatorTabPane(
                         initialKeePassGroupPath = totpNewItemDefaults.keepassGroupPath,
                         initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
                         initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
+                        initialIsFavorite = false,
                         categories = totpCategories,
                         passwordViewModel = passwordViewModel,
                         totpViewModel = totpViewModel,
                         localKeePassViewModel = localKeePassViewModel,
-                        onSave = { title, notes, totpData, targets, onComplete ->
+                        onSave = { title, notes, totpData, isFavorite, targets, onComplete ->
                             totpViewModel.saveTotpAcrossTargets(
                                 id = null,
                                 title = title,
                                 notes = notes,
                                 totpData = totpData,
+                                isFavorite = isFavorite,
                                 targets = targets,
                                 onComplete = { saved ->
                                     if (saved) {
@@ -154,16 +152,18 @@ internal fun AuthenticatorTabPane(
                         initialBitwardenVaultId = selectedTotpItem.bitwardenVaultId,
                         initialBitwardenFolderId = selectedTotpItem.bitwardenFolderId,
                         initialReplicaGroupId = selectedTotpItem.replicaGroupId,
+                        initialIsFavorite = selectedTotpItem.isFavorite,
                         categories = totpCategories,
                         passwordViewModel = passwordViewModel,
                         totpViewModel = totpViewModel,
                         localKeePassViewModel = localKeePassViewModel,
-                        onSave = { title, notes, totpData, targets, onComplete ->
+                        onSave = { title, notes, totpData, isFavorite, targets, onComplete ->
                             totpViewModel.saveTotpAcrossTargets(
                                 id = selectedTotpItem.id,
                                 title = title,
                                 notes = notes,
                                 totpData = totpData,
+                                isFavorite = isFavorite,
                                 targets = targets,
                                 onComplete = { saved ->
                                     if (saved) {

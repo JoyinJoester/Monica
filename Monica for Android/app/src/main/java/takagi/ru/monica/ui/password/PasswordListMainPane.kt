@@ -20,6 +20,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.haze
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.PasswordListQuickFilterItem
@@ -100,11 +103,21 @@ internal fun PasswordListMainPane(
     categoryQuickFilterShortcuts: List<PasswordQuickFolderShortcut>,
     quickFolderShortcuts: List<PasswordQuickFolderShortcut>,
     quickFolderStyle: PasswordListQuickFolderStyle,
+    plusBlurMenuHazeState: HazeState? = null,
+    plusBlurMenuHazeStyle: HazeStyle = HazeStyle.Unspecified,
     renderPasswordRows: LazyListScope.() -> Unit
 ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .then(
+                plusBlurMenuHazeState?.let {
+                    Modifier.haze(
+                        state = it,
+                        style = plusBlurMenuHazeStyle
+                    )
+                } ?: Modifier
+            )
             .clickable(
                 enabled = canCollapseExpandedGroups,
                 interactionSource = outsideTapInteractionSource,

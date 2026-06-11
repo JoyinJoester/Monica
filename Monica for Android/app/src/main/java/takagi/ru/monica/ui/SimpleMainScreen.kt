@@ -106,8 +106,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AddButtonBehaviorMode
+import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.AddButtonMenuAction
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.PasskeyEntry
@@ -117,6 +120,7 @@ import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.passkey.managementKey
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
@@ -160,6 +164,8 @@ import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.PasswordQuickAccessItem
 import takagi.ru.monica.ui.components.PasswordQuickAccessSheet
+import takagi.ru.monica.ui.components.CardWalletAddTypeChip
+import takagi.ru.monica.ui.components.PlusBlurCardWalletAddTopBar
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
@@ -194,6 +200,8 @@ import takagi.ru.monica.ui.password.getPasswordInfoKey
 import takagi.ru.monica.ui.vaultv2.VaultV2Pane
 import takagi.ru.monica.ui.vaultv2.VaultV2PaneState
 import takagi.ru.monica.ui.vaultv2.rememberVaultV2PaneState
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.bitwarden.sync.SyncBlockReason
@@ -238,22 +246,34 @@ fun UnifiedWalletAddScreen(
     initialBitwardenFolderId: String? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var isFavorite by remember { mutableStateOf(false) }
     var canSave by remember { mutableStateOf(false) }
     var onSaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var onToggleFavoriteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val settingsManager = remember { SettingsManager(context) }
+    val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
+    val walletTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
+        settings = settings,
+        enabledForThisSurface = true
+    )
+    val walletTopBarHazeState = remember { HazeState() }
+    val walletTopBarHazeStyle = rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
+    val walletBlurTopBarHeight =
+        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
 
     val titleRes = when (selectedType) {
         CardWalletTab.DOCUMENTS -> R.string.add_document_title
         else -> R.string.add_bank_card_title
     }
+    val topBarTitle = stringResource(titleRes)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            Column {
+            if (!walletTopBarBlurEnabled) {
                 TopAppBar(
-                    title = { Text(stringResource(titleRes)) },
+                    title = { Text(topBarTitle) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(
@@ -263,6 +283,11 @@ fun UnifiedWalletAddScreen(
                         }
                     },
                     actions = {
+                        CardWalletAddTypeChip(
+                            current = selectedType,
+                            onSelect = onTypeSelected
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
                         IconButton(
                             onClick = {
                                 onToggleFavoriteAction?.invoke()
@@ -282,36 +307,6 @@ fun UnifiedWalletAddScreen(
                         titleContentColor = MaterialTheme.colorScheme.onSurface
                     )
                 )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = selectedType != CardWalletTab.DOCUMENTS,
-                        onClick = { onTypeSelected(CardWalletTab.BANK_CARDS) },
-                        label = { Text(stringResource(R.string.quick_action_add_card)) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.CreditCard,
-                                contentDescription = null
-                            )
-                        }
-                    )
-                    FilterChip(
-                        selected = selectedType == CardWalletTab.DOCUMENTS,
-                        onClick = { onTypeSelected(CardWalletTab.DOCUMENTS) },
-                        label = { Text(stringResource(R.string.quick_action_add_document)) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Badge,
-                                contentDescription = null
-                            )
-                        }
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
             }
         },
         floatingActionButton = {
@@ -332,55 +327,93 @@ fun UnifiedWalletAddScreen(
             }
         }
     ) { paddingValues ->
+        val contentPadding = if (walletTopBarBlurEnabled) {
+            PaddingValues(
+                top = walletBlurTopBarHeight + 10.dp,
+                bottom = paddingValues.calculateBottomPadding()
+            )
+        } else {
+            paddingValues
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
         ) {
-            if (selectedType == CardWalletTab.DOCUMENTS) {
-                stateHolder.SaveableStateProvider("wallet_add_document") {
-                    AddEditDocumentScreen(
-                        viewModel = documentViewModel,
-                        documentId = null,
-                        onNavigateBack = onNavigateBack,
-                        initialCategoryId = initialCategoryId,
-                        initialKeePassDatabaseId = initialKeePassDatabaseId,
-                        initialKeePassGroupPath = initialKeePassGroupPath,
-                        initialMdbxDatabaseId = initialMdbxDatabaseId,
-                        initialMdbxFolderId = initialMdbxFolderId,
-                        initialBitwardenVaultId = initialBitwardenVaultId,
-                        initialBitwardenFolderId = initialBitwardenFolderId,
-                        showTopBar = false,
-                        showFab = false,
-                        onFavoriteStateChanged = { isFavorite = it },
-                        onCanSaveChanged = { canSave = it },
-                        onSaveActionChanged = { onSaveAction = it },
-                        onToggleFavoriteActionChanged = { onToggleFavoriteAction = it },
-                        modifier = Modifier.fillMaxSize()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (walletTopBarBlurEnabled) {
+                            Modifier.haze(
+                                state = walletTopBarHazeState,
+                                style = walletTopBarHazeStyle
+                            )
+                        } else {
+                            Modifier
+                        }
                     )
+                    .padding(contentPadding)
+            ) {
+                if (selectedType == CardWalletTab.DOCUMENTS) {
+                    stateHolder.SaveableStateProvider("wallet_add_document") {
+                        AddEditDocumentScreen(
+                            viewModel = documentViewModel,
+                            documentId = null,
+                            onNavigateBack = onNavigateBack,
+                            initialCategoryId = initialCategoryId,
+                            initialKeePassDatabaseId = initialKeePassDatabaseId,
+                            initialKeePassGroupPath = initialKeePassGroupPath,
+                            initialMdbxDatabaseId = initialMdbxDatabaseId,
+                            initialMdbxFolderId = initialMdbxFolderId,
+                            initialBitwardenVaultId = initialBitwardenVaultId,
+                            initialBitwardenFolderId = initialBitwardenFolderId,
+                            showTopBar = false,
+                            showFab = false,
+                            onFavoriteStateChanged = { isFavorite = it },
+                            onCanSaveChanged = { canSave = it },
+                            onSaveActionChanged = { onSaveAction = it },
+                            onToggleFavoriteActionChanged = { onToggleFavoriteAction = it },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                } else {
+                    stateHolder.SaveableStateProvider("wallet_add_bank") {
+                        AddEditBankCardScreen(
+                            viewModel = bankCardViewModel,
+                            cardId = null,
+                            onNavigateBack = onNavigateBack,
+                            initialCategoryId = initialCategoryId,
+                            initialKeePassDatabaseId = initialKeePassDatabaseId,
+                            initialKeePassGroupPath = initialKeePassGroupPath,
+                            initialMdbxDatabaseId = initialMdbxDatabaseId,
+                            initialMdbxFolderId = initialMdbxFolderId,
+                            initialBitwardenVaultId = initialBitwardenVaultId,
+                            initialBitwardenFolderId = initialBitwardenFolderId,
+                            showTopBar = false,
+                            showFab = false,
+                            onFavoriteStateChanged = { isFavorite = it },
+                            onCanSaveChanged = { canSave = it },
+                            onSaveActionChanged = { onSaveAction = it },
+                            onToggleFavoriteActionChanged = { onToggleFavoriteAction = it },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
-            } else {
-                stateHolder.SaveableStateProvider("wallet_add_bank") {
-                    AddEditBankCardScreen(
-                        viewModel = bankCardViewModel,
-                        cardId = null,
-                        onNavigateBack = onNavigateBack,
-                        initialCategoryId = initialCategoryId,
-                        initialKeePassDatabaseId = initialKeePassDatabaseId,
-                        initialKeePassGroupPath = initialKeePassGroupPath,
-                        initialMdbxDatabaseId = initialMdbxDatabaseId,
-                        initialMdbxFolderId = initialMdbxFolderId,
-                        initialBitwardenVaultId = initialBitwardenVaultId,
-                        initialBitwardenFolderId = initialBitwardenFolderId,
-                        showTopBar = false,
-                        showFab = false,
-                        onFavoriteStateChanged = { isFavorite = it },
-                        onCanSaveChanged = { canSave = it },
-                        onSaveActionChanged = { onSaveAction = it },
-                        onToggleFavoriteActionChanged = { onToggleFavoriteAction = it },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+            }
+
+            if (walletTopBarBlurEnabled) {
+                PlusBlurCardWalletAddTopBar(
+                    settings = settings,
+                    hazeState = walletTopBarHazeState,
+                    hazeStyle = walletTopBarHazeStyle,
+                    currentType = selectedType,
+                    isFavorite = isFavorite,
+                    onNavigateBack = onNavigateBack,
+                    onFavoriteClick = { onToggleFavoriteAction?.invoke() },
+                    onTypeSelect = onTypeSelected,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
             }
         }
     }

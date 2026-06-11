@@ -211,6 +211,55 @@ class PasswordViewModel(
         ),
         fallbackProvider = defaultPasswordProvider
     )
+
+    private fun decryptStoredSensitiveValue(value: String): String {
+        return runCatching {
+            securityManager.decryptDataIfMonicaCiphertext(value)
+        }.getOrDefault(value)
+    }
+
+    private fun looksLikeStoredSensitiveCiphertext(value: String): Boolean {
+        return securityManager.looksLikeMonicaCiphertext(value)
+    }
+
+    private fun encodeStoredSensitiveValueForCopy(originalValue: String?, plainValue: String): String {
+        return if (!originalValue.isNullOrBlank() && looksLikeStoredSensitiveCiphertext(originalValue)) {
+            securityManager.encryptDataLegacyCompat(plainValue)
+        } else {
+            plainValue
+        }
+    }
+
+    private fun encodeStoredSensitiveValueForNewWrite(plainValue: String): String {
+        if (plainValue.isBlank()) return plainValue
+        return securityManager.encryptDataLegacyCompat(plainValue)
+    }
+
+    private fun encodeAuthenticatorKeyForStorage(value: String): String {
+        if (value.isBlank()) return ""
+        val plainValue = decryptStoredSensitiveValue(value)
+        return encodeStoredSensitiveValueForNewWrite(plainValue)
+    }
+
+    private fun parseStoredTotpData(item: SecureItem): TotpData? {
+        return TotpDataResolver.parseStoredItemData(
+            itemData = item.itemData,
+            fallbackIssuer = item.title,
+            decryptIfNeeded = ::decryptStoredSensitiveValue
+        )
+    }
+
+    private fun parseStoredAuthenticatorKey(
+        password: PasswordEntry,
+        fallbackIssuer: String = password.website.takeIf { it.isNotBlank() } ?: password.title,
+        fallbackAccountName: String = password.username.takeIf { it.isNotBlank() } ?: password.title
+    ): TotpData? {
+        return TotpDataResolver.fromAuthenticatorKey(
+            rawKey = decryptStoredSensitiveValue(password.authenticatorKey),
+            fallbackIssuer = fallbackIssuer,
+            fallbackAccountName = fallbackAccountName
+        )
+    }
     
     // Trash settings
     private val trashSettings = settingsManager?.settingsFlow?.map { 
@@ -2084,6 +2133,7 @@ class PasswordViewModel(
             } else {
                 securityManager.encryptData(normalizedBoundEntry.password)
             },
+            authenticatorKey = encodeAuthenticatorKeyForStorage(normalizedBoundEntry.authenticatorKey),
             createdAt = Date(),
             updatedAt = Date()
         )
@@ -2271,6 +2321,7 @@ class PasswordViewModel(
         repository.updatePasswordEntry(
             entryToUpdate.copy(
                 password = resolvedPassword,
+                authenticatorKey = encodeAuthenticatorKeyForStorage(entryToUpdate.authenticatorKey),
                 updatedAt = Date()
             )
         )
@@ -2977,7 +3028,7 @@ class PasswordViewModel(
      */
     fun updateAuthenticatorKey(id: Long, authenticatorKey: String) {
         viewModelScope.launch {
-            repository.updateAuthenticatorKey(id, authenticatorKey)
+            repository.updateAuthenticatorKey(id, encodeAuthenticatorKeyForStorage(authenticatorKey))
         }
     }
 
@@ -3095,11 +3146,7 @@ class PasswordViewModel(
         return combine(itemFlow, repository.getAllPasswordEntries()) { items, passwords ->
             val boundPassword = passwords.firstOrNull { it.id == passwordId }
             val candidates = items.mapNotNull { item ->
-                val data = try {
-                    Json.decodeFromString<TotpData>(item.itemData)
-                } catch (e: Exception) {
-                    null
-                }
+                val data = parseStoredTotpData(item)
                 if (data?.boundPasswordId == passwordId) item to data else null
             }
             val preferred = if (boundPassword?.mdbxDatabaseId != null) {
@@ -3112,7 +3159,7 @@ class PasswordViewModel(
                 }
             } ?: candidates.firstOrNull()
             preferred?.second
-        }
+        }.flowOn(Dispatchers.Default)
     }
 
     suspend fun copyBoundTotpsForPasswordCopies(idPairs: List<Pair<Long, Long>>): Int {
@@ -3126,7 +3173,7 @@ class PasswordViewModel(
         val storedTotps = secureRepository.getItemsByType(ItemType.TOTP)
             .first()
             .mapNotNull { item ->
-                val data = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull()
+                val data = parseStoredTotpData(item)
                     ?: return@mapNotNull null
                 item to data
             }
@@ -3158,7 +3205,10 @@ class PasswordViewModel(
                     id = 0,
                     title = sourceTotp.title,
                     notes = sourceTotp.notes,
-                    itemData = Json.encodeToString(normalizedData),
+                    itemData = encodeStoredSensitiveValueForCopy(
+                        sourceTotp.item.itemData,
+                        Json.encodeToString(normalizedData)
+                    ),
                     categoryId = null,
                     keepassDatabaseId = null,
                     keepassGroupPath = null,
@@ -3192,8 +3242,11 @@ class PasswordViewModel(
 
                 secureRepository.insertItem(copiedItem)
                 val authenticatorPayload = TotpDataResolver.toBitwardenPayload(sourceTotp.title, normalizedData)
-                if (authenticatorPayload.isNotBlank() && newPassword.authenticatorKey != authenticatorPayload) {
-                    repository.updateAuthenticatorKey(newPassword.id, authenticatorPayload)
+                if (
+                    authenticatorPayload.isNotBlank() &&
+                    decryptStoredSensitiveValue(newPassword.authenticatorKey) != authenticatorPayload
+                ) {
+                    repository.updateAuthenticatorKey(newPassword.id, encodeAuthenticatorKeyForStorage(authenticatorPayload))
                 }
                 copiedCount += 1
             }.onFailure { error ->
@@ -3217,11 +3270,7 @@ class PasswordViewModel(
         sourcePassword: PasswordEntry,
         storedTotps: List<Pair<SecureItem, TotpData>>
     ): BoundTotpCopySource? {
-        val passwordTotpData = TotpDataResolver.fromAuthenticatorKey(
-            rawKey = sourcePassword.authenticatorKey,
-            fallbackIssuer = sourcePassword.website.takeIf { it.isNotBlank() } ?: sourcePassword.title,
-            fallbackAccountName = sourcePassword.username.takeIf { it.isNotBlank() } ?: sourcePassword.title
-        )?.copy(
+        val passwordTotpData = parseStoredAuthenticatorKey(sourcePassword)?.copy(
             boundPasswordId = sourcePassword.id,
             categoryId = sourcePassword.categoryId
         )
@@ -3808,6 +3857,7 @@ class PasswordViewModel(
             }
             normalizedEntry.copy(
                 password = securityManager.encryptData(normalizedEntry.password),
+                authenticatorKey = encodeAuthenticatorKeyForStorage(normalizedEntry.authenticatorKey),
                 createdAt = Date(),
                 updatedAt = Date()
             )
@@ -3825,6 +3875,7 @@ class PasswordViewModel(
             }
             normalizedEntry.copy(
                 password = normalizedEntry.password,
+                authenticatorKey = encodeAuthenticatorKeyForStorage(normalizedEntry.authenticatorKey),
                 createdAt = Date(),
                 updatedAt = Date()
             )

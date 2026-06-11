@@ -543,7 +543,15 @@ internal fun rememberPasswordAggregateUiState(
             notes = aggregateNotes,
             totpItems = aggregateTotpItems,
             passkeys = aggregatePasskeys,
-            categoryFilter = currentFilter
+            categoryFilter = currentFilter,
+            parseTotpData = aggregateConfig?.totpViewModel?.let { viewModel ->
+                { item: SecureItem -> viewModel.parseTotpDataForDisplay(item) }
+            } ?: {
+                takagi.ru.monica.util.TotpDataResolver.parseStoredItemData(
+                    itemData = it.itemData,
+                    fallbackIssuer = it.title
+                )
+            }
         )
     }
     val aggregateSelectedContentTypes = aggregateConfig?.selectedContentTypes ?: emptySet()
@@ -628,7 +636,25 @@ internal fun rememberPasswordAggregateUiState(
             totpItems = aggregateTotpItems,
             passkeys = aggregatePasskeys,
             searchQuery = searchQuery,
-            categoryFilter = currentFilter
+            categoryFilter = currentFilter,
+            parseBankCardData = aggregateConfig?.bankCardViewModel?.let { viewModel ->
+                { item: SecureItem -> viewModel.parseCardData(item.itemData) }
+            } ?: {
+                takagi.ru.monica.data.model.CardWalletDataCodec.parseBankCardData(it.itemData)
+            },
+            parseDocumentData = aggregateConfig?.documentViewModel?.let { viewModel ->
+                { item: SecureItem -> viewModel.parseDocumentData(item.itemData) }
+            } ?: {
+                takagi.ru.monica.data.model.CardWalletDataCodec.parseDocumentData(it.itemData)
+            },
+            parseTotpData = aggregateConfig?.totpViewModel?.let { viewModel ->
+                { item: SecureItem -> viewModel.parseTotpDataForDisplay(item) }
+            } ?: {
+                takagi.ru.monica.util.TotpDataResolver.parseStoredItemData(
+                    itemData = it.itemData,
+                    fallbackIssuer = it.title
+                )
+            }
         )
         if (aggregateContentTypeFilterTypes.isEmpty()) {
             allVisibleItems

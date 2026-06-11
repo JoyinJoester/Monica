@@ -7,6 +7,7 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.SecureItemDao
 import takagi.ru.monica.data.SecureItemOwnership
 import takagi.ru.monica.data.resolveOwnership
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.decodeFromString
@@ -14,7 +15,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.util.TotpDataResolver
 import java.net.URLDecoder
 import java.util.Date
 import java.util.Locale
@@ -24,7 +25,8 @@ import java.util.Locale
  */
 class SecureItemRepository(
     private val secureItemDao: SecureItemDao,
-    private val mdbxRepository: MdbxRepository? = null
+    private val mdbxRepository: MdbxRepository? = null,
+    private val decryptSensitiveValue: ((String) -> String)? = null
 ) {
     companion object {
         private const val TAG = "SecureItemRepository"
@@ -281,40 +283,26 @@ class SecureItemRepository(
         return when (itemType) {
             ItemType.DOCUMENT -> {
                 // 解析新项目的证件号码
-                val newDocNumber = try {
-                    kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                        .decodeFromString<takagi.ru.monica.data.model.DocumentData>(itemData).documentNumber
-                } catch (e: Exception) { null }
+                val newDocNumber = parseDocumentNumber(itemData)
                 
                 if (newDocNumber.isNullOrBlank()) {
                     // 无法解析证件号，退回到 title 匹配
                     existingItems.find { it.title == title }
                 } else {
                     existingItems.find { existing ->
-                        try {
-                            val existingDocNumber = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                                .decodeFromString<takagi.ru.monica.data.model.DocumentData>(existing.itemData).documentNumber
-                            existingDocNumber == newDocNumber
-                        } catch (e: Exception) { false }
+                        parseDocumentNumber(existing.itemData) == newDocNumber
                     }
                 }
             }
             ItemType.BANK_CARD -> {
                 // 解析新项目的卡号
-                val newCardNumber = try {
-                    kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                        .decodeFromString<takagi.ru.monica.data.model.BankCardData>(itemData).cardNumber
-                } catch (e: Exception) { null }
+                val newCardNumber = parseBankCardNumber(itemData)
                 
                 if (newCardNumber.isNullOrBlank()) {
                     existingItems.find { it.title == title }
                 } else {
                     existingItems.find { existing ->
-                        try {
-                            val existingCardNumber = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                                .decodeFromString<takagi.ru.monica.data.model.BankCardData>(existing.itemData).cardNumber
-                            existingCardNumber == newCardNumber
-                        } catch (e: Exception) { false }
+                        parseBankCardNumber(existing.itemData) == newCardNumber
                     }
                 }
             }
@@ -470,9 +458,11 @@ class SecureItemRepository(
     }
 
     private fun parseTotpFingerprint(itemData: String): TotpFingerprint? {
-        runCatching {
-            json.decodeFromString<TotpData>(itemData)
-        }.getOrNull()?.let { data ->
+        val resolvedItemData = decryptSensitiveValue
+            ?.let { decrypt -> runCatching { decrypt(itemData) }.getOrDefault(itemData) }
+            ?: itemData
+
+        TotpDataResolver.parseStoredItemData(resolvedItemData)?.let { data ->
             return TotpFingerprint(
                 issuer = normalizeText(data.issuer),
                 accountName = normalizeText(data.accountName),
@@ -481,7 +471,7 @@ class SecureItemRepository(
         }
 
         runCatching {
-            json.parseToJsonElement(itemData).jsonObject
+            json.parseToJsonElement(resolvedItemData).jsonObject
         }.getOrNull()?.let { obj ->
             val issuer = obj["issuer"]?.jsonPrimitive?.contentOrNull.orEmpty()
             val account = obj["accountName"]?.jsonPrimitive?.contentOrNull
@@ -498,9 +488,23 @@ class SecureItemRepository(
             }
         }
 
-        parseOtpUriFingerprint(itemData)?.let { return it }
+        parseOtpUriFingerprint(resolvedItemData)?.let { return it }
 
         return null
+    }
+
+    private fun parseBankCardNumber(itemData: String): String? {
+        return CardWalletDataCodec.parseBankCardData(
+            raw = itemData,
+            decryptIfNeeded = decryptSensitiveValue
+        )?.cardNumber
+    }
+
+    private fun parseDocumentNumber(itemData: String): String? {
+        return CardWalletDataCodec.parseDocumentData(
+            raw = itemData,
+            decryptIfNeeded = decryptSensitiveValue
+        )?.documentNumber
     }
 
     private fun parseOtpUriFingerprint(itemData: String): TotpFingerprint? {

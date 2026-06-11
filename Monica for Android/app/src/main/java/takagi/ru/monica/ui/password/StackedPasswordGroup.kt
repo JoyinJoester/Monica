@@ -53,6 +53,7 @@ fun StackedPasswordGroup(
     hideOtherContentWhenAuthenticator: Boolean = false,
     totpTimeOffsetSeconds: Int = 0,
     smoothAuthenticatorProgress: Boolean = true,
+    decryptAuthenticatorKey: ((String) -> String)? = null,
     enableSharedBounds: Boolean = true,
     displayTitle: String? = null
 ) {
@@ -90,6 +91,7 @@ fun StackedPasswordGroup(
                     hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
                     totpTimeOffsetSeconds = totpTimeOffsetSeconds,
                     smoothAuthenticatorProgress = smoothAuthenticatorProgress,
+                    decryptAuthenticatorKey = decryptAuthenticatorKey,
                     iconCardsEnabled = iconCardsEnabled,
                     enableSharedBounds = enableSharedBounds
                 )
@@ -124,6 +126,7 @@ fun StackedPasswordGroup(
             hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
             totpTimeOffsetSeconds = totpTimeOffsetSeconds,
             smoothAuthenticatorProgress = smoothAuthenticatorProgress,
+            decryptAuthenticatorKey = decryptAuthenticatorKey,
             iconCardsEnabled = iconCardsEnabled,
             enableSharedBounds = enableSharedBounds
         )
@@ -166,7 +169,8 @@ fun StackedPasswordGroup(
                     showAuthenticator = showAuthenticator,
                     hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
                     totpTimeOffsetSeconds = totpTimeOffsetSeconds,
-                    smoothAuthenticatorProgress = smoothAuthenticatorProgress
+                    smoothAuthenticatorProgress = smoothAuthenticatorProgress,
+                    decryptAuthenticatorKey = decryptAuthenticatorKey
                 )
             }
         } else {
@@ -198,6 +202,7 @@ fun StackedPasswordGroup(
                     hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
                     totpTimeOffsetSeconds = totpTimeOffsetSeconds,
                     smoothAuthenticatorProgress = smoothAuthenticatorProgress,
+                    decryptAuthenticatorKey = decryptAuthenticatorKey,
                     enableSharedBounds = enableSharedBounds
                 )
             }
@@ -581,6 +586,7 @@ fun StackedPasswordGroup(
                                                             hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
                                                             totpTimeOffsetSeconds = totpTimeOffsetSeconds,
                                                             smoothAuthenticatorProgress = smoothAuthenticatorProgress,
+                                                            decryptAuthenticatorKey = decryptAuthenticatorKey,
                                                             enableSharedBounds = enableSharedBounds
                                                         )
                                                     } else if (isSelectionMode) {
@@ -613,7 +619,8 @@ fun StackedPasswordGroup(
                                                             showAuthenticator = showAuthenticator,
                                                             hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
                                                             totpTimeOffsetSeconds = totpTimeOffsetSeconds,
-                                                            smoothAuthenticatorProgress = smoothAuthenticatorProgress
+                                                            smoothAuthenticatorProgress = smoothAuthenticatorProgress,
+                                                            decryptAuthenticatorKey = decryptAuthenticatorKey
                                                         )
                                                     } else {
                                                         val displayEntry = groupLeadPassword.copy(
@@ -645,6 +652,7 @@ fun StackedPasswordGroup(
                                                             hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
                                                             totpTimeOffsetSeconds = totpTimeOffsetSeconds,
                                                             smoothAuthenticatorProgress = smoothAuthenticatorProgress,
+                                                            decryptAuthenticatorKey = decryptAuthenticatorKey,
                                                             enableSharedBounds = enableSharedBounds
                                                         )
                                                     }

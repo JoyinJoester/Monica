@@ -146,24 +146,29 @@ class BitwardenSyncService(
                 return@withContext SyncResult.Error("Empty sync response")
             }
 
-            captureRawExchange(
-                vaultId = vault.id,
-                operation = "sync_full",
-                method = "GET",
-                endpoint = "/sync?excludeDomains=true",
-                requestBody = null,
-                responseCode = response.code(),
-                responseBody = buildSyncFullRawSummary(syncResponse),
-                success = true
-            )
-            runCatching {
-                BitwardenSyncForensicsLogger.captureSyncCipherSnapshots(
-                    context = context,
+            val rawForensicsEnabled = runCatching {
+                BitwardenSyncForensicsLogger.isRawCaptureEnabled(context)
+            }.getOrDefault(false)
+            if (rawForensicsEnabled) {
+                captureRawExchange(
                     vaultId = vault.id,
-                    ciphers = syncResponse.ciphers
+                    operation = "sync_full",
+                    method = "GET",
+                    endpoint = "/sync?excludeDomains=true",
+                    requestBody = null,
+                    responseCode = response.code(),
+                    responseBody = buildSyncFullRawSummary(syncResponse),
+                    success = true
                 )
-            }.onFailure { captureError ->
-                android.util.Log.w(TAG, "Capture sync cipher snapshots failed: ${captureError.message}")
+                runCatching {
+                    BitwardenSyncForensicsLogger.captureSyncCipherSnapshots(
+                        context = context,
+                        vaultId = vault.id,
+                        ciphers = syncResponse.ciphers
+                    )
+                }.onFailure { captureError ->
+                    android.util.Log.w(TAG, "Capture sync cipher snapshots failed: ${captureError.message}")
+                }
             }
             
             // ===== 空 Vault 保护检查 =====
@@ -551,7 +556,7 @@ class BitwardenSyncService(
                 username = username,
                 password = encryptedPassword,
                 notes = notes,
-                authenticatorKey = totp,
+                authenticatorKey = encodeBitwardenTotpForLocalStorage(totp),
                 appPackageName = customFields["monica_app_package"]
                     ?: customFields["appPackageName"]
                     ?: parsedUris.appPackageName,
@@ -613,7 +618,8 @@ class BitwardenSyncService(
                 encryptBitwardenPasswordForOfflineDisplay(it, cipher.id)
             } ?: entry.password
             val notes = decryptString(cipher.notes, symmetricKey) ?: entry.notes
-            val totp = decryptString(login.totp, symmetricKey) ?: entry.authenticatorKey
+            val remoteTotp = decryptString(login.totp, symmetricKey)
+            val storedTotp = remoteTotp?.let(::encodeBitwardenTotpForLocalStorage) ?: entry.authenticatorKey
             val parsedUris = parseLoginUris(login.uris, symmetricKey)
             val customFields = parsePasswordCustomFieldMap(cipher.fields, symmetricKey)
             val remoteAppPackage = customFields["monica_app_package"]
@@ -647,7 +653,7 @@ class BitwardenSyncService(
                 username = username,
                 password = encryptedPassword,
                 notes = notes,
-                authenticatorKey = totp,
+                authenticatorKey = storedTotp,
                 appPackageName = remoteAppPackage.ifBlank { entry.appPackageName },
                 appName = remoteAppName.ifBlank { entry.appName },
                 email = remoteEmail.ifBlank { entry.email },
@@ -1731,13 +1737,18 @@ class BitwardenSyncService(
     }
 
     private fun resolveBitwardenTotpPayload(entry: PasswordEntry): String {
+        val plainAuthenticatorKey = resolvePlainStoredSensitiveValueForBitwardenUpload(
+            storedValue = entry.authenticatorKey,
+            entryId = entry.id,
+            fieldName = "authenticatorKey"
+        )
         return TotpDataResolver.fromAuthenticatorKey(
-            rawKey = entry.authenticatorKey,
+            rawKey = plainAuthenticatorKey,
             fallbackIssuer = entry.website,
             fallbackAccountName = entry.username
         )?.let { resolved ->
             TotpDataResolver.toBitwardenPayload(entry.title, resolved)
-        } ?: entry.authenticatorKey
+        } ?: plainAuthenticatorKey
     }
 
     private fun toBitwardenArchivedDate(entry: PasswordEntry): String? {
@@ -1903,12 +1914,17 @@ class BitwardenSyncService(
             .map(::normalizeWebsiteKey)
             .distinct()
         val localPassword = resolvePlainPasswordForBitwardenUpload(entry.password, entry.id)
+        val localAuthenticatorKey = resolvePlainStoredSensitiveValueForBitwardenUpload(
+            storedValue = entry.authenticatorKey,
+            entryId = entry.id,
+            fieldName = "authenticatorKey"
+        )
 
         return entry.title == remoteTitle &&
             entry.username == remoteUsername &&
             localPassword == remotePassword &&
             entry.notes == remoteNotes &&
-            entry.authenticatorKey == remoteTotp &&
+            localAuthenticatorKey == remoteTotp &&
             entry.isFavorite == cipher.favorite &&
             entry.bitwardenFolderId == cipher.folderId &&
             entry.appPackageName.trim() == remoteAppPackage &&
@@ -2214,7 +2230,11 @@ class BitwardenSyncService(
             } catch (e: Exception) {
                 // For prefixed payloads, decrypt failure means auth/key state is invalid.
                 // Failing closed avoids uploading ciphertext as if it were plaintext.
-                if (candidate.startsWith("MDK|") || candidate.startsWith("V2|")) {
+                if (
+                    candidate.startsWith("MDK|") ||
+                    candidate.startsWith("V2|") ||
+                    candidate.startsWith("C2|")
+                ) {
                     throw IllegalStateException(
                         "Cannot decrypt local password for Bitwarden upload, entryId=$entryId",
                         e
@@ -2229,6 +2249,27 @@ class BitwardenSyncService(
             candidate = decrypted
         }
         return candidate
+    }
+
+    private fun resolvePlainStoredSensitiveValueForBitwardenUpload(
+        storedValue: String,
+        entryId: Long,
+        fieldName: String
+    ): String {
+        if (storedValue.isBlank()) return ""
+        if (!securityManager.looksLikeMonicaCiphertext(storedValue)) return storedValue
+
+        return runCatching { securityManager.decryptData(storedValue) }.getOrElse { error ->
+            throw IllegalStateException(
+                "Cannot decrypt local $fieldName for Bitwarden upload, entryId=$entryId",
+                error
+            )
+        }
+    }
+
+    private fun encodeBitwardenTotpForLocalStorage(totpPayload: String): String {
+        if (totpPayload.isBlank()) return ""
+        return securityManager.encryptDataLegacyCompat(totpPayload)
     }
 
     /**

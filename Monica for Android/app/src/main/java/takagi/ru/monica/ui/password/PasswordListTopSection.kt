@@ -34,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
@@ -148,7 +150,10 @@ internal fun PasswordListTopSection(
     onOpenCommonAccountTemplates: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenTrash: () -> Unit,
-    onScanFidoQr: () -> Unit
+    onScanFidoQr: () -> Unit,
+    plusBlurMenuEnabled: Boolean = false,
+    plusBlurMenuHazeState: HazeState? = null,
+    plusBlurMenuHazeStyle: HazeStyle = HazeStyle.Unspecified
 ) {
     val appSettings by settingsViewModel.settings.collectAsState()
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
@@ -238,7 +243,10 @@ internal fun PasswordListTopSection(
                         UnifiedCategoryFilterChipMenuDropdown(
                             expanded = isCategorySheetVisible,
                             onDismissRequest = { onCategorySheetVisibleChange(false) },
-                            offset = UnifiedCategoryFilterChipMenuOffset
+                            offset = UnifiedCategoryFilterChipMenuOffset,
+                            plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
+                            plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+                            plusBlurHazeStyle = plusBlurMenuHazeStyle
                         ) {
                             PasswordListCategoryChipMenu(
                                 currentFilter = currentFilter,
@@ -362,7 +370,10 @@ internal fun PasswordListTopSection(
                     }
                     PasswordTopActionsDropdownMenu(
                         expanded = topActionsMenuExpanded,
-                        onDismissRequest = { onTopActionsMenuExpandedChange(false) }
+                        onDismissRequest = { onTopActionsMenuExpandedChange(false) },
+                        plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
+                        plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+                        plusBlurHazeStyle = plusBlurMenuHazeStyle
                     ) {
                             if (isKeePassDatabaseView) {
                                 KeepassRefreshTopActionsMenuItem(

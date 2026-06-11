@@ -5,7 +5,6 @@ import android.widget.Toast
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
@@ -20,12 +19,12 @@ import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.isKeePassOwned
 import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.model.TimelinePasswordRecreatedEntry
-import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.ui.password.PasswordAggregateListItemUi
 
@@ -260,8 +259,11 @@ internal suspend fun executeMixedPasswordBatchMove(
                 return@forEach
             }
 
-            val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }
-                .getOrNull()
+            val totpData = TotpDataResolver.parseStoredItemData(
+                itemData = item.itemData,
+                fallbackIssuer = item.title,
+                decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+            )
             if (totpData == null) {
                 failedCount++
                 reportProgress()

@@ -55,6 +55,10 @@ class SecurityManager(private val context: Context) {
     init {
         SecurityDiagLogger.initialize(context.applicationContext)
     }
+
+    private fun logRoutineDebug(message: String) {
+        SecurityDiagLogger.append("D/$logTag $message")
+    }
     
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -64,6 +68,7 @@ class SecurityManager(private val context: Context) {
     private val KEY_ALIAS_DATA = "monica_data_key_v2"
     private val KEY_ALIAS_DATA_COMPAT = "monica_data_key_v2_compat"
     private val DATA_PREFIX_V2 = "V2|"
+    private val DATA_PREFIX_COMPAT = "C2|"
     private val WRAPPER_PREFIX_AUTH = "AU|"
     private val WRAPPER_PREFIX_COMPAT = "CP|"
     
@@ -106,6 +111,10 @@ class SecurityManager(private val context: Context) {
 
         @Volatile
         private var processCachedMdk: ByteArray? = null
+        @Volatile
+        private var cachedCompatDataKey: SecretKey? = null
+
+        private val compatDataKeyLock = Any()
 
         fun clearRuntimeUnlockCache() {
             processCachedMdk = null
@@ -262,14 +271,12 @@ class SecurityManager(private val context: Context) {
         }
 
         if (!hasActiveSharedSession(context, autoLockMinutes)) {
-            android.util.Log.d(logTag, "canRestoreMainAppSession: session inactive -> locked")
-            SecurityDiagLogger.append("D/$logTag canRestoreMainAppSession: session inactive -> locked")
+            logRoutineDebug("canRestoreMainAppSession: session inactive -> locked")
             return false
         }
 
         if (isVaultRuntimeUnlocked()) {
-            android.util.Log.d(logTag, "canRestoreMainAppSession: runtime MDK cache present")
-            SecurityDiagLogger.append("D/$logTag canRestoreMainAppSession: runtime MDK cache present")
+            logRoutineDebug("canRestoreMainAppSession: runtime MDK cache present")
             return true
         }
 
@@ -318,14 +325,12 @@ class SecurityManager(private val context: Context) {
             hasActiveSharedSession(context, autoLockMinutes)
         }
         if (!sharedSessionActive && !secondarySessionActive) {
-            android.util.Log.d(logTag, "canAccessVaultNow: session inactive -> locked")
-            SecurityDiagLogger.append("D/$logTag canAccessVaultNow: session inactive -> locked")
+            logRoutineDebug("canAccessVaultNow: session inactive -> locked")
             return false
         }
 
         if (isVaultRuntimeUnlocked()) {
-            android.util.Log.d(logTag, "canAccessVaultNow: runtime MDK cache present -> accessible")
-            SecurityDiagLogger.append("D/$logTag canAccessVaultNow: runtime MDK cache present -> accessible")
+            logRoutineDebug("canAccessVaultNow: runtime MDK cache present -> accessible")
             return true
         }
 
@@ -665,28 +670,34 @@ class SecurityManager(private val context: Context) {
     }
 
     private fun getOrGenerateCompatSecureKey(): SecretKey {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore")
-        keyStore.load(null)
+        cachedCompatDataKey?.let { return it }
 
-        if (keyStore.containsAlias(KEY_ALIAS_DATA_COMPAT)) {
-            val entry = keyStore.getEntry(KEY_ALIAS_DATA_COMPAT, null) as? KeyStore.SecretKeyEntry
-            if (entry != null) {
-                return entry.secretKey
+        return synchronized(compatDataKeyLock) {
+            cachedCompatDataKey?.let { return@synchronized it }
+
+            val keyStore = KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
+
+            if (keyStore.containsAlias(KEY_ALIAS_DATA_COMPAT)) {
+                val entry = keyStore.getEntry(KEY_ALIAS_DATA_COMPAT, null) as? KeyStore.SecretKeyEntry
+                if (entry != null) {
+                    return@synchronized entry.secretKey.also { cachedCompatDataKey = it }
+                }
             }
+
+            val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+            val builder = KeyGenParameterSpec.Builder(
+                KEY_ALIAS_DATA_COMPAT,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setUserAuthenticationRequired(false)
+
+            keyGenerator.init(builder.build())
+            keyGenerator.generateKey().also { cachedCompatDataKey = it }
         }
-
-        val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-        val builder = KeyGenParameterSpec.Builder(
-            KEY_ALIAS_DATA_COMPAT,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-        )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .setUserAuthenticationRequired(false)
-
-        keyGenerator.init(builder.build())
-        return keyGenerator.generateKey()
     }
 
     private fun hasSecureKeyAlias(alias: String = KEY_ALIAS_DATA): Boolean {
@@ -1085,21 +1096,35 @@ class SecurityManager(private val context: Context) {
             return DATA_PREFIX_MDK + android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
         }
         
-        // MDK 不可用，降级到 V1 加密
-        // 注意：V1 使用主密钥派生，安全性较低但不需要生物识别认证
+        // MDK 不可用，降级到不需要生物识别窗口的兼容 Keystore 密钥。
         if (!hasLoggedMdkFallbackEncryption) {
-            android.util.Log.d("SecurityManager", "MDK not available, using V1 encryption")
+            android.util.Log.d("SecurityManager", "MDK not available, using compat Keystore encryption")
             hasLoggedMdkFallbackEncryption = true
         }
-        return encryptDataV1(data)
+        return encryptDataCompat(data)
     }
 
     /**
-     * Compatibility helper: force legacy V1 payload for scenarios where
+     * Compatibility helper: force compat payload for scenarios where
      * immediate readability is required under unstable MDK auth state.
      */
     fun encryptDataLegacyCompat(data: String): String {
-        return encryptDataV1(data)
+        return encryptDataCompat(data)
+    }
+
+    fun looksLikeMonicaCiphertext(value: String): Boolean {
+        val trimmed = value.trim()
+        return trimmed.startsWith(DATA_PREFIX_MDK) ||
+            trimmed.startsWith(DATA_PREFIX_V2) ||
+            trimmed.startsWith(DATA_PREFIX_COMPAT)
+    }
+
+    fun decryptDataIfMonicaCiphertext(value: String): String {
+        return if (looksLikeMonicaCiphertext(value)) {
+            decryptData(value)
+        } else {
+            value
+        }
     }
 
     private fun encryptDataV2(data: String): String {
@@ -1115,28 +1140,14 @@ class SecurityManager(private val context: Context) {
         return DATA_PREFIX_V2 + android.util.Base64.encodeToString(combined, android.util.Base64.DEFAULT)
     }
 
-    private fun encryptDataV1(data: String): String {
-        return try {
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            val keyGenerator = javax.crypto.KeyGenerator.getInstance("AES")
-            keyGenerator.init(256)
-            
-            // Use the master key for encryption (Legacy)
-            val keyBytes = masterKey.toString().toByteArray().copyOf(32)
-            val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
-            
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            val iv = cipher.iv
-            val encryptedBytes = cipher.doFinal(data.toByteArray())
-            
-            // Combine IV and encrypted data
-            val combined = iv + encryptedBytes
-            android.util.Base64.encodeToString(combined, android.util.Base64.DEFAULT)
-        } catch (e: Exception) {
-            android.util.Log.e("SecurityManager", "Encryption failed", e)
-            // Fallback to original data if encryption fails
-            data
-        }
+    private fun encryptDataCompat(data: String): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val secretKey = getOrGenerateCompatSecureKey()
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        val iv = cipher.iv
+        val encryptedBytes = cipher.doFinal(data.toByteArray(Charsets.UTF_8))
+        val combined = iv + encryptedBytes
+        return DATA_PREFIX_COMPAT + android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
     }
     
     fun decryptData(encryptedData: String): String {
@@ -1167,7 +1178,11 @@ class SecurityManager(private val context: Context) {
             }
         }
 
-        return decryptDataV1(encryptedData)
+        if (encryptedData.startsWith(DATA_PREFIX_COMPAT)) {
+            return decryptDataCompat(encryptedData)
+        }
+
+        return decryptLegacyV1OrPlainText(encryptedData)
     }
 
     private fun decryptDataV2(encryptedData: String): String {
@@ -1187,7 +1202,24 @@ class SecurityManager(private val context: Context) {
         return String(decryptedBytes, kotlin.text.Charsets.UTF_8)
     }
 
-    private fun decryptDataV1(encryptedData: String): String {
+    private fun decryptDataCompat(encryptedData: String): String {
+        val combined = android.util.Base64.decode(
+            encryptedData.substring(DATA_PREFIX_COMPAT.length),
+            android.util.Base64.NO_WRAP
+        )
+        val iv = combined.copyOfRange(0, 12)
+        val encrypted = combined.copyOfRange(12, combined.size)
+
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val secretKey = getOrGenerateCompatSecureKey()
+        val gcmSpec = GCMParameterSpec(128, iv)
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
+
+        val decryptedBytes = cipher.doFinal(encrypted)
+        return String(decryptedBytes, kotlin.text.Charsets.UTF_8)
+    }
+
+    private fun decryptLegacyV1OrPlainText(encryptedData: String): String {
         if (encryptedData.isEmpty()) return ""
 
         val combined = try {
@@ -1208,6 +1240,8 @@ class SecurityManager(private val context: Context) {
             val encrypted = combined.copyOfRange(12, combined.size)
 
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            // Historical unprefixed V1 payloads were derived from this predictable
+            // value. Keep it read-only so old local data can be opened and migrated.
             val keyBytes = masterKey.toString().toByteArray().copyOf(32)
             val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
             val gcmSpec = GCMParameterSpec(128, iv)

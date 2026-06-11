@@ -73,7 +73,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -110,6 +112,7 @@ import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.displayFullName
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.ui.components.PasswordVerificationContent
+import takagi.ru.monica.ui.PasswordListInitialLoadingIndicator
 import takagi.ru.monica.ui.base.BaseMonicaActivity
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
@@ -126,6 +129,7 @@ import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import kotlin.math.roundToInt
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Keyguard 风格的全屏自动填充选择器
@@ -138,6 +142,9 @@ import kotlin.math.roundToInt
  * - Dropdown 菜单选择操作
  */
 class AutofillPickerActivityV2 : BaseMonicaActivity() {
+    private val passwordAutofillInFlight = AtomicBoolean(false)
+    private var passwordAutofillPreparationKey: Long? = null
+    private var passwordAutofillPreparation: Deferred<PasswordAutofillPreparation>? = null
     
     companion object {
         private const val EXTRA_ARGS = "extra_args"
@@ -243,6 +250,28 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             result = 31 * result + isSaveMode.hashCode()
             return result
         }
+    }
+
+    private sealed class PasswordAutofillPreparation {
+        data class Manual(
+            val accountValue: String,
+            val passwordValue: String
+        ) : PasswordAutofillPreparation()
+
+        data class Fill(
+            val accountValue: String,
+            val filledValues: Map<AutofillId, String>,
+            val filledCount: Int,
+            val strictFilledCount: Int,
+            val fallbackFilledCount: Int,
+            val hasOtpHint: Boolean,
+            val otpResolved: Boolean,
+            val allowAccountInEmailField: Boolean,
+            val unmatchedHintPreview: List<String>,
+            val usedFallback: Boolean
+        ) : PasswordAutofillPreparation()
+
+        data class Cancel(val logMessage: String) : PasswordAutofillPreparation()
     }
     
     private val args by lazy {
@@ -416,6 +445,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     isManualMode = isManualMode,
                     showTargetContextInManualMode = imeMode,
                     manualModeReason = manualModeReason,
+                    onPrepareAutofill = ::prewarmPasswordAutofill,
                     onAutofill = { password, forceAddUri ->
                         handleAutofill(password, forceAddUri)
                     },
@@ -562,7 +592,144 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         
 
     
+    private fun prewarmPasswordAutofill(password: PasswordEntry) {
+        val currentPreparation = passwordAutofillPreparation
+        if (
+            passwordAutofillPreparationKey == password.id &&
+            currentPreparation != null &&
+            !currentPreparation.isCancelled
+        ) {
+            return
+        }
+        passwordAutofillPreparationKey = password.id
+        passwordAutofillPreparation = lifecycleScope.async {
+            preparePasswordAutofill(password)
+        }
+    }
+
+    private suspend fun awaitPasswordAutofillPreparation(
+        password: PasswordEntry
+    ): PasswordAutofillPreparation {
+        val currentPreparation = passwordAutofillPreparation
+        if (passwordAutofillPreparationKey == password.id && currentPreparation != null) {
+            return runCatching { currentPreparation.await() }
+                .getOrElse { preparePasswordAutofill(password) }
+        }
+        return preparePasswordAutofill(password)
+    }
+
     private fun handleAutofill(password: PasswordEntry, forceAddUri: Boolean) {
+        if (!passwordAutofillInFlight.compareAndSet(false, true)) {
+            AutofillLogger.d("PICKER", "Ignore duplicate password autofill tap while result is in flight")
+            return
+        }
+
+        lifecycleScope.launch {
+            try {
+                when (val preparation = awaitPasswordAutofillPreparation(password)) {
+                    is PasswordAutofillPreparation.Cancel -> {
+                        android.util.Log.w("AutofillPickerV2", preparation.logMessage)
+                        setResult(Activity.RESULT_CANCELED)
+                        finish()
+                    }
+                    is PasswordAutofillPreparation.Manual -> {
+                        if (scheduleManualAccessibilityFill(preparation.accountValue, preparation.passwordValue)) {
+                            finish()
+                            return@launch
+                        }
+                        copyManualCredentialFallback(preparation.accountValue, preparation.passwordValue)
+                    }
+                    is PasswordAutofillPreparation.Fill -> {
+                        val autofillIds = args.autofillIds.orEmpty()
+                        val hints = args.autofillHints
+                        AutofillLogger.i(
+                            "PICKER",
+                            "Auth strict mapping diagnostics",
+                            metadata = mapOf(
+                                "idCount" to autofillIds.size,
+                                "hintCount" to (hints?.size ?: 0),
+                                "strictFilledCount" to preparation.strictFilledCount,
+                                "hasOtpHint" to preparation.hasOtpHint,
+                                "otpResolved" to preparation.otpResolved,
+                                "allowAccountInEmailField" to preparation.allowAccountInEmailField,
+                                "unmatchedHintPreview" to if (preparation.unmatchedHintPreview.isEmpty()) {
+                                    "none"
+                                } else {
+                                    preparation.unmatchedHintPreview.joinToString(",")
+                                },
+                            )
+                        )
+
+                        if (preparation.usedFallback) {
+                            AutofillLogger.i(
+                                "PICKER",
+                                "Auth fallback mapping diagnostics",
+                                metadata = mapOf(
+                                    "idCount" to autofillIds.size,
+                                    "hintCount" to (hints?.size ?: 0),
+                                    "fallbackFilledCount" to preparation.fallbackFilledCount,
+                                    "strictFilledCount" to preparation.strictFilledCount,
+                                )
+                            )
+                        }
+
+                        android.util.Log.i(
+                            "AutofillPickerV2",
+                            "Autofill auth result prepared: filledCount=${preparation.filledCount}, ids=${autofillIds.size}, " +
+                                "hints=${hints?.joinToString(",") ?: "none"}, passwordId=${password.id}"
+                        )
+                        AutofillLogger.i(
+                            "PICKER",
+                            "Auth result prepared: filled=${preparation.filledCount}, ids=${autofillIds.size}, passwordId=${password.id}, hints=${hints?.joinToString(",") ?: "none"}"
+                        )
+
+                        val dataset = buildResultDataset(
+                            title = password.title.ifBlank { getString(R.string.autofill_manual_entry_title) },
+                            subtitle = preparation.accountValue.ifBlank {
+                                args.webDomain
+                                    ?: args.applicationId
+                                    ?: getString(R.string.app_name)
+                            },
+                            filledValues = preparation.filledValues,
+                        )
+                        val authResult: Parcelable = if (args.responseAuthMode) {
+                            FillResponse.Builder().addDataset(dataset).build()
+                        } else {
+                            dataset
+                        }
+                        val resultIntent = Intent().apply {
+                            putExtra(AutofillManager.EXTRA_AUTHENTICATION_RESULT, authResult)
+                        }
+
+                        android.util.Log.i(
+                            "AutofillPickerV2",
+                            "Returning authentication result to framework: mode=${if (args.responseAuthMode) "fill_response" else "dataset"}"
+                        )
+                        AutofillLogger.i(
+                            "PICKER",
+                            "Returning auth result: mode=${if (args.responseAuthMode) "fill_response" else "dataset"}, passwordId=${password.id}"
+                        )
+                        setResult(Activity.RESULT_OK, resultIntent)
+                        launchPasswordAutofillSideEffects(password, forceAddUri)
+                        finish()
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("AutofillPickerV2", "Password autofill failed", e)
+                AutofillLogger.e("PICKER", "Password autofill failed", e)
+                setResult(Activity.RESULT_CANCELED)
+                finish()
+            } finally {
+                if (!isFinishing) {
+                    passwordAutofillInFlight.set(false)
+                }
+            }
+        }
+    }
+
+    private suspend fun preparePasswordAutofill(
+        password: PasswordEntry
+    ): PasswordAutofillPreparation = withContext(Dispatchers.Default) {
         val securityManager = SecurityManager(applicationContext)
         val accountValue = AccountFillPolicy.resolveAccountIdentifier(password, securityManager)
         val fillEmailWithAccount = AccountFillPolicy.shouldFillEmailWithAccount(applicationContext)
@@ -577,32 +744,26 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 it == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name
         } == true
         if ((isManualMode || hasPasswordTarget) && decryptedPassword.isNullOrBlank()) {
-            android.util.Log.w("AutofillPickerV2", "Autofill canceled: password decryption unavailable")
-            setResult(Activity.RESULT_CANCELED)
-            finish()
-            return
+            return@withContext PasswordAutofillPreparation.Cancel(
+                logMessage = "Autofill canceled: password decryption unavailable"
+            )
         }
-        
-        // 手动模式：复制密码到剪贴板
+
         if (isManualMode) {
-            if (scheduleManualAccessibilityFill(accountValue, decryptedPassword.orEmpty())) {
-                finish()
-                return
-            }
-            copyManualCredentialFallback(accountValue, decryptedPassword.orEmpty())
-            return
+            return@withContext PasswordAutofillPreparation.Manual(
+                accountValue = accountValue,
+                passwordValue = decryptedPassword.orEmpty()
+            )
         }
-        
-        // 正常自动填充模式：构建 Dataset
+
         val autofillIds = args.autofillIds
         if (autofillIds.isNullOrEmpty()) {
-            setResult(Activity.RESULT_CANCELED)
-            finish()
-            return
+            return@withContext PasswordAutofillPreparation.Cancel(
+                logMessage = "Autofill canceled: no AutofillId target"
+            )
         }
 
         val filledValues = linkedMapOf<AutofillId, String>()
-
         val normalizedHints = hints.orEmpty().map { it.trim().lowercase() }
         val hasOtpHint = normalizedHints.any { isOtpHint(it) }
         val selectedOtpCode = if (hasOtpHint) {
@@ -656,21 +817,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             }
         }
 
-        AutofillLogger.i(
-            "PICKER",
-            "Auth strict mapping diagnostics",
-            metadata = mapOf(
-                "idCount" to autofillIds.size,
-                "hintCount" to (hints?.size ?: 0),
-                "strictFilledCount" to strictFilledCount,
-                "hasOtpHint" to hasOtpHint,
-                "otpResolved" to !selectedOtpCode.isNullOrBlank(),
-                "allowAccountInEmailField" to allowAccountInEmailField,
-                "unmatchedHintPreview" to if (unmatchedHintPreview.isEmpty()) "none" else unmatchedHintPreview.joinToString(","),
-            )
-        )
-
+        var usedFallback = false
         if (filledCount == 0) {
+            usedFallback = true
             android.util.Log.w("AutofillPickerV2", "No strict hint matched, trying controlled fallback")
             autofillIds.forEachIndexed { index, autofillId ->
                 val normalizedHint = hints?.getOrNull(index)?.lowercase().orEmpty()
@@ -697,75 +846,26 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     fallbackFilledCount++
                 }
             }
-
-            AutofillLogger.i(
-                "PICKER",
-                "Auth fallback mapping diagnostics",
-                metadata = mapOf(
-                    "idCount" to autofillIds.size,
-                    "hintCount" to (hints?.size ?: 0),
-                    "fallbackFilledCount" to fallbackFilledCount,
-                    "strictFilledCount" to strictFilledCount,
-                )
-            )
         }
 
         if (filledCount == 0) {
-            android.util.Log.w("AutofillPickerV2", "No credential value resolved after controlled fallback")
-            setResult(Activity.RESULT_CANCELED)
-            finish()
-            return
+            return@withContext PasswordAutofillPreparation.Cancel(
+                logMessage = "No credential value resolved after controlled fallback"
+            )
         }
 
-        android.util.Log.i(
-            "AutofillPickerV2",
-            "Autofill auth result prepared: filledCount=$filledCount, ids=${autofillIds.size}, " +
-                "hints=${hints?.joinToString(",") ?: "none"}, passwordId=${password.id}"
-        )
-        AutofillLogger.i(
-            "PICKER",
-            "Auth result prepared: filled=$filledCount, ids=${autofillIds.size}, passwordId=${password.id}, hints=${hints?.joinToString(",") ?: "none"}"
-        )
-        
-        val dataset = buildResultDataset(
-            title = password.title.ifBlank { getString(R.string.autofill_manual_entry_title) },
-            subtitle = accountValue.ifBlank {
-                args.webDomain
-                    ?: args.applicationId
-                    ?: getString(R.string.app_name)
-            },
+        PasswordAutofillPreparation.Fill(
+            accountValue = accountValue,
             filledValues = filledValues,
+            filledCount = filledCount,
+            strictFilledCount = strictFilledCount,
+            fallbackFilledCount = fallbackFilledCount,
+            hasOtpHint = hasOtpHint,
+            otpResolved = !selectedOtpCode.isNullOrBlank(),
+            allowAccountInEmailField = allowAccountInEmailField,
+            unmatchedHintPreview = unmatchedHintPreview,
+            usedFallback = usedFallback
         )
-        val authResult: Parcelable = if (args.responseAuthMode) {
-            FillResponse.Builder().addDataset(dataset).build()
-        } else {
-            dataset
-        }
-        val resultIntent = Intent().apply {
-            putExtra(AutofillManager.EXTRA_AUTHENTICATION_RESULT, authResult)
-        }
-        
-        // 处理 URI 绑定
-        if (forceAddUri) {
-            saveUriBinding(password)
-        }
-
-        if (args.rememberLastFilled) {
-            rememberLastFilledCredential(password.id)
-        }
-        rememberLearnedFieldSignature()
-        processSelectedOtpActions(password)
-        
-        android.util.Log.i(
-            "AutofillPickerV2",
-            "Returning authentication result to framework: mode=${if (args.responseAuthMode) "fill_response" else "dataset"}"
-        )
-        AutofillLogger.i(
-            "PICKER",
-            "Returning auth result: mode=${if (args.responseAuthMode) "fill_response" else "dataset"}, passwordId=${password.id}"
-        )
-        setResult(Activity.RESULT_OK, resultIntent)
-        finish()
     }
 
     private fun handleGeneratedPasswordFill(generatedPassword: String) {
@@ -1006,7 +1106,10 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     }
 
     private fun handleBankCardAutofill(item: SecureItem) {
-        val (_, data) = parseBankCardCandidate(item) ?: run {
+        val (_, data) = parseBankCardCandidate(
+            item,
+            decryptIfNeeded = SecurityManager(applicationContext)::decryptDataIfMonicaCiphertext
+        ) ?: run {
             setResult(Activity.RESULT_CANCELED)
             finish()
             return
@@ -1075,7 +1178,10 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     }
 
     private fun handleDocumentAutofill(item: SecureItem) {
-        val (_, data) = parseDocumentCandidate(item) ?: run {
+        val (_, data) = parseDocumentCandidate(
+            item,
+            decryptIfNeeded = SecurityManager(applicationContext)::decryptDataIfMonicaCiphertext
+        ) ?: run {
             setResult(Activity.RESULT_CANCELED)
             finish()
             return
@@ -1166,7 +1272,22 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             normalizedHint.contains("一次性")
     }
 
-    private fun processSelectedOtpActions(password: PasswordEntry) {
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    private fun launchPasswordAutofillSideEffects(password: PasswordEntry, forceAddUri: Boolean) {
+        if (forceAddUri) {
+            saveUriBinding(password)
+        }
+
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.Default) {
+            if (args.rememberLastFilled) {
+                rememberLastFilledCredential(password.id)
+            }
+            rememberLearnedFieldSignature()
+            processSelectedOtpActions(password)
+        }
+    }
+
+    private suspend fun processSelectedOtpActions(password: PasswordEntry) {
         val isOtpTarget = args.autofillHints
             ?.map { it.trim().lowercase() }
             ?.any(::isOtpHint) == true
@@ -1177,10 +1298,10 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
 
         runCatching {
             val preferences = AutofillPreferences(applicationContext)
-            val showNotification = runBlocking(Dispatchers.IO) {
+            val showNotification = withContext(Dispatchers.IO) {
                 preferences.isOtpNotificationEnabled.first()
             }
-            val autoCopy = runBlocking(Dispatchers.IO) {
+            val autoCopy = withContext(Dispatchers.IO) {
                 preferences.isAutoCopyOtpEnabled.first()
             }
             if (!showNotification && !autoCopy) return
@@ -1204,12 +1325,14 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 "Selected OTP generated: passwordId=${password.id}, type=${resolvedTotpData.otpType}, codeLen=${code.length}"
             )
             if (autoCopy) {
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("OTP Code", code))
+                withContext(Dispatchers.Main) {
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("OTP Code", code))
+                }
                 AutofillLogger.d("OTP", "Auto-copied selected credential OTP")
             }
             if (showNotification) {
-                val durationSeconds = runBlocking(Dispatchers.IO) {
+                val durationSeconds = withContext(Dispatchers.IO) {
                     preferences.otpNotificationDuration.first()
                 }
                 takagi.ru.monica.autofill_ng.service.AutofillOtpNotificationService.start(
@@ -1224,7 +1347,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         }
     }
 
-    private fun generateOtpCodeForPassword(password: PasswordEntry): String? {
+    private suspend fun generateOtpCodeForPassword(password: PasswordEntry): String? {
         val totpData = resolveOtpDataForPassword(password)
         if (totpData == null) {
             AutofillLogger.w(
@@ -1247,10 +1370,15 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     }
 
     private fun parsePasswordAuthenticatorTotpData(authenticatorKey: String): TotpData? {
-        return TotpDataResolver.fromAuthenticatorKey(authenticatorKey)
+        val securityManager = SecurityManager(applicationContext)
+        return TotpDataResolver.fromAuthenticatorKey(
+            rawKey = runCatching {
+                securityManager.decryptDataIfMonicaCiphertext(authenticatorKey)
+            }.getOrDefault(authenticatorKey)
+        )
     }
 
-    private fun resolveOtpDataForPassword(password: PasswordEntry): TotpData? {
+    private suspend fun resolveOtpDataForPassword(password: PasswordEntry): TotpData? {
         val passwordTotpData = password.authenticatorKey
             .trim()
             .takeIf { it.isNotBlank() }
@@ -1258,17 +1386,20 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         return resolveOtpFromExistingValidators(password, passwordTotpData) ?: passwordTotpData
     }
 
-    private fun resolveOtpFromExistingValidators(
+    private suspend fun resolveOtpFromExistingValidators(
         password: PasswordEntry,
         passwordTotpData: TotpData?
     ): TotpData? {
-        val validatorTotpList = runBlocking(Dispatchers.IO) {
+        val validatorTotpList = withContext(Dispatchers.IO) {
+            val securityManager = SecurityManager(applicationContext)
             val dao = PasswordDatabase.getDatabase(applicationContext).secureItemDao()
             dao.getActiveItemsByTypeSync(ItemType.TOTP)
                 .mapNotNull { item ->
-                    runCatching {
-                        Json { ignoreUnknownKeys = true }.decodeFromString(TotpData.serializer(), item.itemData)
-                    }.getOrNull()
+                    TotpDataResolver.parseStoredItemData(
+                        itemData = item.itemData,
+                        fallbackIssuer = item.title,
+                        decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+                    )
                 }
         }
 
@@ -1314,7 +1445,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         }
     }
 
-    private fun rememberLastFilledCredential(passwordId: Long) {
+    private suspend fun rememberLastFilledCredential(passwordId: Long) {
         val normalizedIdentifiers = buildList {
             args.interactionIdentifier
                 ?.trim()
@@ -1337,7 +1468,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 "PICKER",
                 "Persisting last-filled credential: passwordId=$passwordId, primaryId=$primaryIdentifier"
             )
-            runBlocking(Dispatchers.IO) {
+            withContext(Dispatchers.IO) {
                 val preferences = AutofillPreferences(applicationContext)
                 normalizedIdentifiers.forEach { identifier ->
                     preferences.completeAutofillInteraction(identifier, passwordId)
@@ -1349,11 +1480,11 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         }
     }
 
-    private fun rememberLearnedFieldSignature() {
+    private suspend fun rememberLearnedFieldSignature() {
         val signatureKey = args.fieldSignatureKey?.trim()?.lowercase().orEmpty()
         if (signatureKey.isBlank()) return
         try {
-            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            withContext(Dispatchers.IO) {
                 AutofillPreferences(applicationContext).markFieldSignatureLearned(signatureKey)
             }
         } catch (e: Exception) {
@@ -1361,6 +1492,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         }
     }
     
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     private fun saveUriBinding(password: PasswordEntry) {
         // TODO: 保存 URI 绑定到数据库
         val applicationId = args.applicationId
@@ -1421,6 +1553,13 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     }
 }
 
+private data class AutofillPickerLoadedData(
+    val suggestedPasswords: List<PasswordEntry>,
+    val allPasswords: List<PasswordEntry>,
+    val allBankCards: List<SecureItem>,
+    val allDocuments: List<SecureItem>
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AutofillPickerContent(
@@ -1435,6 +1574,7 @@ private fun AutofillPickerContent(
     isManualMode: Boolean = false,
     showTargetContextInManualMode: Boolean = false,
     manualModeReason: String = "unknown",
+    onPrepareAutofill: (PasswordEntry) -> Unit,
     onAutofill: (PasswordEntry, Boolean) -> Unit,
     onAutofillBankCard: (SecureItem) -> Unit,
     onAutofillDocument: (SecureItem) -> Unit,
@@ -1520,7 +1660,12 @@ private fun AutofillPickerContent(
     }
     var pendingAddTarget by rememberSaveable { mutableStateOf<AutofillAddTarget?>(null) }
     val appDb = remember(context) { PasswordDatabase.getDatabase(context.applicationContext) }
-    val secureItemRepository = remember(appDb) { SecureItemRepository(appDb.secureItemDao()) }
+    val secureItemRepository = remember(appDb, securityManager) {
+        SecureItemRepository(
+            appDb.secureItemDao(),
+            decryptSensitiveValue = securityManager::decryptDataIfMonicaCiphertext
+        )
+    }
     val customFieldRepository = remember(appDb) { CustomFieldRepository(appDb.customFieldDao()) }
     val hasNotificationPermission = remember {
         NotificationManagerCompat.from(context).areNotificationsEnabled()
@@ -1548,6 +1693,7 @@ private fun AutofillPickerContent(
             is PasswordItemAction.Autofill -> onAutofill(action.password, false)
             is PasswordItemAction.AutofillAndSaveUri -> onAutofill(action.password, true)
             is PasswordItemAction.ViewDetails -> {
+                onPrepareAutofill(action.password)
                 selectedPassword = action.password
                 currentScreen = "detail"
             }
@@ -1713,15 +1859,23 @@ private fun AutofillPickerContent(
     LaunchedEffect(Unit) {
         val start = System.currentTimeMillis()
         try {
-            // 筛选建议密码
             val suggestedIds = args.suggestedPasswordIds?.toList() ?: emptyList()
-            if (suggestedIds.isNotEmpty()) {
-                suggestedPasswords = repository.getPasswordsByIds(suggestedIds)
+            val loadedData = withContext(Dispatchers.IO) {
+                AutofillPickerLoadedData(
+                    suggestedPasswords = if (suggestedIds.isNotEmpty()) {
+                        repository.getPasswordsByIds(suggestedIds)
+                    } else {
+                        emptyList()
+                    },
+                    allPasswords = repository.getAllPasswordEntries().first(),
+                    allBankCards = secureItemRepository.getActiveItemsByType(ItemType.BANK_CARD).first(),
+                    allDocuments = secureItemRepository.getActiveItemsByType(ItemType.DOCUMENT).first()
+                )
             }
-            // 先完成全量数据读取，再切换到列表视图，避免首屏阶段性结构突变。
-            allPasswords = repository.getAllPasswordEntries().first()
-            allBankCards = secureItemRepository.getActiveItemsByType(ItemType.BANK_CARD).first()
-            allDocuments = secureItemRepository.getActiveItemsByType(ItemType.DOCUMENT).first()
+            suggestedPasswords = loadedData.suggestedPasswords
+            allPasswords = loadedData.allPasswords
+            allBankCards = loadedData.allBankCards
+            allDocuments = loadedData.allDocuments
             AutofillLogger.i(
                 "PICKER_UI",
                 "Picker data load complete",
@@ -1815,8 +1969,22 @@ private fun AutofillPickerContent(
         )
     }
 
-    val parsedBankCards = remember(allBankCards) { allBankCards.mapNotNull(::parseBankCardCandidate) }
-    val parsedDocuments = remember(allDocuments) { allDocuments.mapNotNull(::parseDocumentCandidate) }
+    val parsedBankCards = remember(allBankCards, securityManager) {
+        allBankCards.mapNotNull { item ->
+            parseBankCardCandidate(
+                item,
+                decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+            )
+        }
+    }
+    val parsedDocuments = remember(allDocuments, securityManager) {
+        allDocuments.mapNotNull { item ->
+            parseDocumentCandidate(
+                item,
+                decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+            )
+        }
+    }
 
     val basePasswords = if (searchQuery.isBlank()) allPasswords else searchedPasswords
 
@@ -2407,10 +2575,12 @@ private fun AutofillPickerContent(
 
                         if (isLoading) {
                             Box(
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CircularProgressIndicator()
+                                PasswordListInitialLoadingIndicator()
                             }
                         } else {
                             when (selectedContentType) {
@@ -2470,6 +2640,7 @@ private fun AutofillPickerContent(
                                                     password = password,
                                                     iconCardsEnabled = iconCardsEnabled,
                                                     showSmartCopyOptions = hasNotificationPermission,
+                                                    onPrepareAutofill = onPrepareAutofill,
                                                     onAction = handlePasswordAction
                                                 )
                                             }
@@ -2525,6 +2696,7 @@ private fun AutofillPickerContent(
                                                 showDropdownMenu = true,
                                                 iconCardsEnabled = iconCardsEnabled,
                                                 showSmartCopyOptions = hasNotificationPermission,
+                                                onPrepareAutofill = onPrepareAutofill,
                                                 onAction = handlePasswordAction
                                             )
                                         }

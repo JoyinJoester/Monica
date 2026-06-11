@@ -34,6 +34,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.utils.AppLauncherIconManager
 
@@ -94,11 +95,11 @@ class AutofillOtpNotificationService : Service() {
         val duration = intent.getIntExtra(EXTRA_DURATION_SECONDS, DEFAULT_DURATION_SECONDS)
             .coerceAtLeast(1)
 
-        val data = runCatching {
-            json?.let { Json.decodeFromString<TotpData>(it) }
-        }.onFailure { Log.w(TAG, "Failed to parse TotpData payload", it) }
-            .getOrNull()
+        val data = json?.let { payload ->
+            TotpDataResolver.parseStoredItemData(itemData = payload)
+        }
         if (data == null) {
+            Log.w(TAG, "Failed to parse TotpData payload")
             stopSelfCompletely()
             return
         }

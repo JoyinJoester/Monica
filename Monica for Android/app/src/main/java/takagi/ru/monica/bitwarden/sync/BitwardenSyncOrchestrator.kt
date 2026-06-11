@@ -2,6 +2,7 @@ package takagi.ru.monica.bitwarden.sync
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.sync.SyncDiagnostics
 import kotlin.math.min
 
@@ -239,7 +241,9 @@ class BitwardenSyncOrchestrator(
         if (!runNow) return
 
         val outcome = try {
-            executeSync(vaultId, silent)
+            withContext(Dispatchers.IO) {
+                executeSync(vaultId, silent)
+            }
         } catch (error: CancellationException) {
             SyncExecutionOutcome.RetryableError(error.message ?: "同步被取消")
         } catch (error: Exception) {

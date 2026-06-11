@@ -217,6 +217,7 @@ fun PasswordDetailScreen(
     var passwordEntry by remember { mutableStateOf<PasswordEntry?>(null) }
     var groupPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
     var displayPasswords by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
+    var initialDetailDataLoaded by remember { mutableStateOf(false) }
     var bitwardenFoldersByVault by remember {
         mutableStateOf<Map<Long, List<BitwardenFolder>>>(emptyMap())
     }
@@ -396,14 +397,19 @@ fun PasswordDetailScreen(
     var totpProgress by remember { mutableStateOf(1f) }
     
     // 定时更新TOTP验证码
-    LaunchedEffect(linkedTotp) {
+    LaunchedEffect(linkedTotp, settings.validatorSmoothProgress) {
         if (linkedTotp != null) {
+            var lastCodeSecond = Long.MIN_VALUE
             while (isActive) {
                 linkedTotp?.let { totp ->
-                    totpCode = TotpGenerator.generateOtp(totp)
+                    val nowSecond = System.currentTimeMillis() / 1000L
+                    if (nowSecond != lastCodeSecond) {
+                        totpCode = TotpGenerator.generateOtp(totp)
+                        lastCodeSecond = nowSecond
+                    }
                     totpProgress = TotpGenerator.getProgress(totp.period)
                 }
-                delay(100)
+                delay(if (settings.validatorSmoothProgress) 100 else 1_000)
             }
         }
     }
@@ -428,22 +434,37 @@ fun PasswordDetailScreen(
     // Initial load: fetch entry directly from DB without waiting for allPasswords Flow
     LaunchedEffect(passwordId) {
         if (isLeavingDetail) return@LaunchedEffect
+        initialDetailDataLoaded = false
+        passwordEntry = null
+        groupPasswords = emptyList()
+        displayPasswords = emptyMap()
+        unavailablePasswordSources = emptyMap()
+        customFields = emptyList()
         val entry = withContext(Dispatchers.IO) {
             viewModel.getRawPasswordEntryById(passwordId)
         } ?: return@LaunchedEffect
 
+        if (isLeavingDetail) return@LaunchedEffect
+        groupPasswords = listOf(entry)
+        passwordEntry = entry
+        personalInfoExpanded = hasPersonalInfo(entry)
+        addressInfoExpanded = hasAddressInfo(entry)
+        paymentInfoExpanded = hasPaymentInfo(entry)
+
         if (entry.keepassDatabaseId != null && !entry.keepassEntryUuid.isNullOrBlank()) {
-            runCatching {
-                AttachmentContainer.keepassReconciler(context).reconcile(
-                    passwordId = entry.id,
-                    databaseId = entry.keepassDatabaseId,
-                    entryUuid = entry.keepassEntryUuid
-                )
-            }.onFailure { error ->
-                android.util.Log.w(
-                    "PasswordDetailScreen",
-                    "KeePass attachment metadata reconcile failed: ${error::class.simpleName}"
-                )
+            launch(Dispatchers.IO) {
+                runCatching {
+                    AttachmentContainer.keepassReconciler(context).reconcile(
+                        passwordId = entry.id,
+                        databaseId = entry.keepassDatabaseId,
+                        entryUuid = entry.keepassEntryUuid
+                    )
+                }.onFailure { error ->
+                    android.util.Log.w(
+                        "PasswordDetailScreen",
+                        "KeePass attachment metadata reconcile failed: ${error::class.simpleName}"
+                    )
+                }
             }
         }
 
@@ -492,17 +513,14 @@ fun PasswordDetailScreen(
         displayPasswords = resolvedDisplayPasswords
         unavailablePasswordSources = resolvedUnavailableSources
         customFields = resolvedCustomFields
-        // 根据数据内容设置折叠状态
-        personalInfoExpanded = hasPersonalInfo(entry)
-        addressInfoExpanded = hasAddressInfo(entry)
-        paymentInfoExpanded = hasPaymentInfo(entry)
-        passwordEntry = entry
+        initialDetailDataLoaded = true
     }
 
     // Lightweight observer: update passwordEntry metadata when allPasswords changes (e.g. after edit)
     LaunchedEffect(allPasswords, passwordEntry?.id) {
         if (allPasswords.isEmpty()) return@LaunchedEffect
         if (passwordEntry == null) return@LaunchedEffect
+        if (!initialDetailDataLoaded) return@LaunchedEffect
         val currentEntry = passwordEntry ?: return@LaunchedEffect
         val updatedEntryFromList = allPasswords.find { it.id == passwordId } ?: return@LaunchedEffect
         val updatedEntry = if (

@@ -116,10 +116,14 @@ import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.notes.ui.model.NoteListItemUiModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import dev.chrisbanes.haze.HazeState
 import takagi.ru.monica.util.VibrationPatterns
 import takagi.ru.monica.utils.SavedCategoryFilterState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.util.Locale
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
+import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -140,6 +144,12 @@ fun NoteListScreen(
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
     val settings by settingsViewModel.settings.collectAsState()
     val isGridLayout = settings.noteGridLayout
+    val plusBlurMenuHazeState = remember { HazeState() }
+    val plusBlurMenuHazeStyle = rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
+    val plusBlurMenuEnabled = rememberMonicaPlusBlurEnabledForSurface(
+        settings = settings,
+        enabledForThisSurface = true
+    )
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedNoteIds by remember { mutableStateOf(setOf<Long>()) }
     var isCategorySheetVisible by remember { mutableStateOf(false) }
@@ -576,7 +586,10 @@ fun NoteListScreen(
                             UnifiedCategoryFilterChipMenuDropdown(
                                 expanded = isCategorySheetVisible,
                                 onDismissRequest = { isCategorySheetVisible = false },
-                                offset = UnifiedCategoryFilterChipMenuOffset
+                                offset = UnifiedCategoryFilterChipMenuOffset,
+                                plusBlurSettings = settings.takeIf { plusBlurMenuEnabled },
+                                plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+                                plusBlurHazeStyle = plusBlurMenuHazeStyle
                             ) {
                                 UnifiedCategoryFilterChipMenu(
                                     visible = true,
@@ -635,100 +648,85 @@ fun NoteListScreen(
                                 )
                             }
                         }
-                        MaterialTheme(
-                            shapes = MaterialTheme.shapes.copy(
-                                extraSmall = RoundedCornerShape(20.dp),
-                                small = RoundedCornerShape(20.dp)
-                            )
+                        PasswordTopActionsDropdownMenu(
+                            expanded = showTopActionsMenu,
+                            onDismissRequest = { showTopActionsMenu = false },
+                            plusBlurSettings = settings.takeIf { plusBlurMenuEnabled },
+                            plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+                            plusBlurHazeStyle = plusBlurMenuHazeStyle
                         ) {
-                            DropdownMenu(
-                                expanded = showTopActionsMenu,
-                                onDismissRequest = { showTopActionsMenu = false },
-                                offset = androidx.compose.ui.unit.DpOffset(x = 48.dp, y = 6.dp),
-                                modifier = Modifier
-                                    .widthIn(min = 220.dp, max = 260.dp)
-                                    .shadow(10.dp, RoundedCornerShape(20.dp))
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                    .border(
-                                        width = 1.dp,
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
-                                        shape = RoundedCornerShape(20.dp)
-                                    )
-                            ) {
-                                if (showStandaloneSettingsEntry) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.nav_settings)) },
-                                        leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                                        onClick = {
-                                            showTopActionsMenu = false
-                                            onOpenStandaloneSettings()
+                            if (showStandaloneSettingsEntry) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.nav_settings)) },
+                                    leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                    onClick = {
+                                        showTopActionsMenu = false
+                                        onOpenStandaloneSettings()
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (isGridLayout) {
+                                            stringResource(R.string.switch_to_list)
+                                        } else {
+                                            stringResource(R.string.switch_to_grid)
                                         }
                                     )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = if (isGridLayout) Icons.Default.ViewList else Icons.Default.GridView,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    showTopActionsMenu = false
+                                    settingsViewModel.updateNoteGridLayout(!isGridLayout)
                                 }
+                            )
+                            if (selectedBitwardenVaultId != null) {
                                 DropdownMenuItem(
                                     text = {
                                         Text(
-                                            if (isGridLayout) {
-                                                stringResource(R.string.switch_to_list)
+                                            if (isTopBarSyncing) {
+                                                "${stringResource(R.string.sync_status_syncing_short)}..."
                                             } else {
-                                                stringResource(R.string.switch_to_grid)
+                                                stringResource(R.string.sync_bitwarden_database_menu)
                                             }
                                         )
                                     },
                                     leadingIcon = {
-                                        Icon(
-                                            imageVector = if (isGridLayout) Icons.Default.ViewList else Icons.Default.GridView,
-                                            contentDescription = null
-                                        )
+                                        if (isTopBarSyncing) {
+                                            androidx.compose.material3.CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                        } else {
+                                            Icon(Icons.Default.Sync, contentDescription = null)
+                                        }
                                     },
+                                    enabled = !isTopBarSyncing,
                                     onClick = {
+                                        if (isTopBarSyncing) return@DropdownMenuItem
+                                        val vaultId = selectedBitwardenVaultId
                                         showTopActionsMenu = false
-                                        settingsViewModel.updateNoteGridLayout(!isGridLayout)
+                                        bitwardenViewModel.requestManualSync(vaultId)
                                     }
                                 )
-                                if (selectedBitwardenVaultId != null) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                if (isTopBarSyncing) {
-                                                    "${stringResource(R.string.sync_status_syncing_short)}..."
-                                                } else {
-                                                    stringResource(R.string.sync_bitwarden_database_menu)
-                                                }
-                                            )
-                                        },
-                                        leadingIcon = {
-                                            if (isTopBarSyncing) {
-                                                androidx.compose.material3.CircularProgressIndicator(
-                                                    modifier = Modifier.size(18.dp),
-                                                    strokeWidth = 2.dp
-                                                )
-                                            } else {
-                                                Icon(Icons.Default.Sync, contentDescription = null)
-                                            }
-                                        },
-                                        enabled = !isTopBarSyncing,
-                                        onClick = {
-                                            if (isTopBarSyncing) return@DropdownMenuItem
-                                            val vaultId = selectedBitwardenVaultId
-                                            showTopActionsMenu = false
-                                            bitwardenViewModel.requestManualSync(vaultId)
-                                        }
-                                    )
-                                }
-                                if (selectedKeePassDatabaseId != null) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text("${stringResource(R.string.refresh)} ${stringResource(R.string.filter_keepass)}")
-                                        },
-                                        leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
-                                        onClick = {
-                                            showTopActionsMenu = false
-                                            viewModel.syncKeePassNotes(selectedKeePassDatabaseId)
-                                        }
-                                    )
-                                }
+                            }
+                            if (selectedKeePassDatabaseId != null) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text("${stringResource(R.string.refresh)} ${stringResource(R.string.filter_keepass)}")
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                    onClick = {
+                                        showTopActionsMenu = false
+                                        viewModel.syncKeePassNotes(selectedKeePassDatabaseId)
+                                    }
+                                )
                             }
                         }
                     }
@@ -972,6 +970,8 @@ fun NoteListScreen(
                     selectedNoteIds = setOf(noteId)
                 }
             },
+            plusBlurMenuHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+            plusBlurMenuHazeStyle = plusBlurMenuHazeStyle,
             modifier = Modifier.padding(paddingValues)
         )
     }

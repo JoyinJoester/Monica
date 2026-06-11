@@ -2,6 +2,7 @@ package takagi.ru.monica.ui
 
 import androidx.compose.runtime.Composable
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.ui.components.DocumentCard
 
 @Composable
@@ -13,7 +14,8 @@ internal fun DocumentItemCard(
     onMoveUp: (() -> Unit)? = null,
     onMoveDown: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
-    isSelected: Boolean = false
+    isSelected: Boolean = false,
+    documentData: DocumentData? = null
 ) {
     DocumentCard(
         item = item,
@@ -23,6 +25,7 @@ internal fun DocumentItemCard(
         onMoveUp = onMoveUp,
         onMoveDown = onMoveDown,
         isSelectionMode = isSelectionMode,
-        isSelected = isSelected
+        isSelected = isSelected,
+        documentData = documentData
     )
 }

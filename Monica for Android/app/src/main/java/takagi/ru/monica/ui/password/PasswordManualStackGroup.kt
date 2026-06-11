@@ -36,7 +36,8 @@ internal fun PasswordManualStackGroup(
     showAuthenticator: Boolean,
     hideOtherContentWhenAuthenticator: Boolean,
     totpTimeOffsetSeconds: Int,
-    smoothAuthenticatorProgress: Boolean
+    smoothAuthenticatorProgress: Boolean,
+    decryptAuthenticatorKey: ((String) -> String)? = null
 ) {
     if (cards.isEmpty()) return
 
@@ -87,6 +88,7 @@ internal fun PasswordManualStackGroup(
                 hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
                 totpTimeOffsetSeconds = totpTimeOffsetSeconds,
                 smoothAuthenticatorProgress = smoothAuthenticatorProgress,
+                decryptAuthenticatorKey = decryptAuthenticatorKey,
                 iconCardsEnabled = iconCardsEnabled,
                 enableSharedBounds = false,
                 badge = leadCard.badgeText?.let { text ->
@@ -132,6 +134,7 @@ internal fun PasswordManualStackGroup(
                 hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
                 totpTimeOffsetSeconds = totpTimeOffsetSeconds,
                 smoothAuthenticatorProgress = smoothAuthenticatorProgress,
+                decryptAuthenticatorKey = decryptAuthenticatorKey,
                 iconCardsEnabled = iconCardsEnabled,
                 enableSharedBounds = false,
                 badge = card.badgeText?.let { text ->

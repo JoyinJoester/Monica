@@ -78,7 +78,11 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         passwordHistoryDao = database.passwordHistoryDao(),
         mdbxRepository = mdbxRepository,
     )
-    private val secureItemRepository = SecureItemRepository(database.secureItemDao(), mdbxRepository)
+    private val secureItemRepository = SecureItemRepository(
+        database.secureItemDao(),
+        mdbxRepository,
+        securityManager::decryptDataIfMonicaCiphertext
+    )
     private val bitwardenRepository = BitwardenRepository.getInstance(application)
     private val keepassBridge = KeePassCompatibilityBridge(
         KeePassWorkspaceRepository(application, database.localKeePassDatabaseDao(), securityManager)

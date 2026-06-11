@@ -68,7 +68,7 @@ fun DocumentDetailScreen(
         viewModel.getDocumentById(documentId)?.let { item ->
             documentItem = item
             
-            documentData = CardWalletDataCodec.parseDocumentData(item.itemData)
+            documentData = viewModel.parseDocumentData(item.itemData)
             
             try {
                 if (item.imagePaths.isNotBlank()) {

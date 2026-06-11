@@ -56,6 +56,7 @@ fun PasswordEntryCard(
     hideOtherContentWhenAuthenticator: Boolean = false,
     totpTimeOffsetSeconds: Int = 0,
     smoothAuthenticatorProgress: Boolean = true,
+    decryptAuthenticatorKey: ((String) -> String)? = null,
     enableSharedBounds: Boolean = true
 ) {
     val displayTitle = entry.title.ifBlank { stringResource(R.string.untitled) }
@@ -290,7 +291,8 @@ fun PasswordEntryCard(
                             fallbackIssuer = entry.website.ifBlank { entry.title },
                             fallbackAccountName = entry.username.ifBlank { entry.title },
                             timeOffsetSeconds = totpTimeOffsetSeconds,
-                            smoothProgress = smoothAuthenticatorProgress
+                            smoothProgress = smoothAuthenticatorProgress,
+                            decryptAuthenticatorKey = decryptAuthenticatorKey
                         )
                     } else {
                         null

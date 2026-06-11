@@ -8,10 +8,10 @@ import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordHistoryEntry
-import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
+import takagi.ru.monica.util.TotpDataResolver
 
 data class RestoreApplyStats(
     val passwordImported: Int,
@@ -336,12 +336,21 @@ object BackupRestoreApplier {
                     var finalItemData = exportItem.itemData
                     if (itemType == ItemType.TOTP) {
                         try {
-                            val totpData = json.decodeFromString<TotpData>(exportItem.itemData)
+                            val totpData = TotpDataResolver.parseStoredItemData(
+                                itemData = exportItem.itemData,
+                                fallbackIssuer = exportItem.title,
+                                decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+                            ) ?: throw IllegalArgumentException("Unable to parse TOTP data")
                             if (totpData.boundPasswordId != null && totpData.boundPasswordId > 0) {
                                 val newBoundId = passwordIdMap[totpData.boundPasswordId]
                                 if (newBoundId != null) {
                                     val updatedTotpData = totpData.copy(boundPasswordId = newBoundId)
-                                    finalItemData = json.encodeToString(updatedTotpData)
+                                    val updatedJson = json.encodeToString(updatedTotpData)
+                                    finalItemData = if (securityManager.looksLikeMonicaCiphertext(exportItem.itemData)) {
+                                        securityManager.encryptDataLegacyCompat(updatedJson)
+                                    } else {
+                                        updatedJson
+                                    }
                                     android.util.Log.d(logTag, "Updated TOTP binding: ${exportItem.title} -> Password ID $newBoundId")
                                 } else {
                                     android.util.Log.w(logTag, "Could not find new password ID for TOTP binding: ${exportItem.title} (Old ID: ${totpData.boundPasswordId})")
@@ -356,7 +365,11 @@ object BackupRestoreApplier {
                         id = 0,
                         itemType = itemType,
                         title = exportItem.title,
-                        itemData = finalItemData,
+                        itemData = encodeSecureItemDataForLocalStorage(
+                            itemType = itemType,
+                            itemData = finalItemData,
+                            securityManager = securityManager
+                        ),
                         notes = exportItem.notes,
                         isFavorite = exportItem.isFavorite,
                         imagePaths = exportItem.imagePaths,
@@ -434,6 +447,25 @@ object BackupRestoreApplier {
             failedSecureItemDetails = failedSecureItemDetails
         )
     }
+}
+
+private fun encodeSecureItemDataForLocalStorage(
+    itemType: ItemType,
+    itemData: String,
+    securityManager: SecurityManager
+): String {
+    if (itemData.isBlank()) return itemData
+    if (
+        itemType != ItemType.TOTP &&
+        itemType != ItemType.BANK_CARD &&
+        itemType != ItemType.DOCUMENT
+    ) {
+        return itemData
+    }
+    if (securityManager.looksLikeMonicaCiphertext(itemData)) {
+        return itemData
+    }
+    return securityManager.encryptDataLegacyCompat(itemData)
 }
 
 private fun encryptImportedPasswordForDisplay(

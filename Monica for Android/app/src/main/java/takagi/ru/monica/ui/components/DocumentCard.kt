@@ -3,17 +3,14 @@ package takagi.ru.monica.ui.components
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,20 +38,15 @@ fun DocumentCard(
     onMoveDown: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
-    onLongClick: (() -> Unit)? = null
+    onLongClick: (() -> Unit)? = null,
+    documentData: DocumentData? = null
 ) {
-    // 解析证件数据
-    val documentData = CardWalletDataCodec.parseDocumentData(item.itemData)
-        ?: DocumentData(
-            documentNumber = "",
-            documentType = DocumentType.ID_CARD,
-            fullName = "",
-            issuedDate = "",
-            expiryDate = ""
-        )
+    val resolvedDocumentData = documentData ?: remember(item.itemData) {
+        CardWalletDataCodec.parseDocumentData(item.itemData) ?: emptyDocumentData()
+    }
     
     // 获取对应容器的文字颜色
-    val contentColor = getDocumentCardContentColor(documentData.documentType, isSelected)
+    val contentColor = getDocumentCardContentColor(resolvedDocumentData.documentType, isSelected)
     
     val cardInteractionModifier = if (isSelectionMode) {
         modifier
@@ -81,7 +73,7 @@ fun DocumentCard(
             )
         } else {
             CardDefaults.cardColors(
-                containerColor = when (documentData.documentType) {
+                containerColor = when (resolvedDocumentData.documentType) {
                     DocumentType.ID_CARD -> MaterialTheme.colorScheme.primaryContainer
                     DocumentType.PASSPORT -> MaterialTheme.colorScheme.secondaryContainer
                     DocumentType.DRIVER_LICENSE -> MaterialTheme.colorScheme.tertiaryContainer
@@ -109,7 +101,7 @@ fun DocumentCard(
                         color = contentColor
                     )
                     Text(
-                        text = documentData.displayFullName().ifBlank { getDocumentTypeName(documentData.documentType) },
+                        text = resolvedDocumentData.displayFullName().ifBlank { getDocumentTypeName(resolvedDocumentData.documentType) },
                         style = MaterialTheme.typography.bodySmall,
                         color = contentColor.copy(alpha = 0.7f)
                     )
@@ -135,14 +127,14 @@ fun DocumentCard(
                     
                     // 证件类型图标
                     Icon(
-                        when (documentData.documentType) {
+                        when (resolvedDocumentData.documentType) {
                             DocumentType.ID_CARD -> Icons.Default.Badge
                             DocumentType.PASSPORT -> Icons.Default.FlightTakeoff
                             DocumentType.DRIVER_LICENSE -> Icons.Default.DirectionsCar
                             DocumentType.SOCIAL_SECURITY -> Icons.Default.HealthAndSafety
                             DocumentType.OTHER -> Icons.Default.Description
                         },
-                        contentDescription = documentData.documentType.name,
+                        contentDescription = resolvedDocumentData.documentType.name,
                         modifier = Modifier.size(24.dp),
                         tint = contentColor.copy(alpha = 0.6f)
                     )
@@ -265,7 +257,7 @@ fun DocumentCard(
                 fontWeight = FontWeight.Medium
             )
             Text(
-                text = maskDocumentNumber(documentData.documentNumber, documentData.documentType),
+                text = maskDocumentNumber(resolvedDocumentData.documentNumber, resolvedDocumentData.documentType),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = contentColor
@@ -278,7 +270,7 @@ fun DocumentCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                if (documentData.fullName.isNotBlank()) {
+                if (resolvedDocumentData.fullName.isNotBlank()) {
                     Column {
                         Text(
                             text = stringResource(R.string.holder_label),
@@ -287,7 +279,7 @@ fun DocumentCard(
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = documentData.fullName,
+                            text = resolvedDocumentData.fullName,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = contentColor
@@ -295,7 +287,7 @@ fun DocumentCard(
                     }
                 }
                 
-                if (documentData.expiryDate.isNotBlank()) {
+                if (resolvedDocumentData.expiryDate.isNotBlank()) {
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             text = stringResource(R.string.valid_until),
@@ -304,7 +296,7 @@ fun DocumentCard(
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = documentData.expiryDate,
+                            text = resolvedDocumentData.expiryDate,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = contentColor
@@ -315,6 +307,14 @@ fun DocumentCard(
         }
     }
 }
+
+private fun emptyDocumentData() = DocumentData(
+    documentNumber = "",
+    documentType = DocumentType.ID_CARD,
+    fullName = "",
+    issuedDate = "",
+    expiryDate = ""
+)
 
 /**
  * 证件号码脱敏处理

@@ -24,6 +24,7 @@ import takagi.ru.monica.utils.ImportedPasswordSnapshot
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.PasswordImportDuplicateResolver
 import takagi.ru.monica.util.DataExportImportManager
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.TotpUriParser
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.utils.BackupContentScope
@@ -52,6 +53,42 @@ class DataExportImportViewModel(
     private val securityManager by lazy { SecurityManager(context) }
     private val customFieldRepository by lazy {
         CustomFieldRepository(PasswordDatabase.getDatabase(context).customFieldDao())
+    }
+
+    private fun parseStoredTotpData(itemData: String, fallbackIssuer: String = ""): TotpData? {
+        return TotpDataResolver.parseStoredItemData(
+            itemData = itemData,
+            fallbackIssuer = fallbackIssuer,
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+        )
+    }
+
+    private fun parseStoredTotpData(item: SecureItem): TotpData? {
+        return parseStoredTotpData(item.itemData, item.title)
+    }
+
+    private fun encodeTotpDataPreservingStorageShape(originalItemData: String, data: TotpData): String {
+        val plainJson = Json.encodeToString(data)
+        return if (securityManager.looksLikeMonicaCiphertext(originalItemData)) {
+            securityManager.encryptDataLegacyCompat(plainJson)
+        } else {
+            plainJson
+        }
+    }
+
+    private fun encodeSecureItemDataForLocalStorage(itemType: ItemType, itemData: String): String {
+        if (itemData.isBlank()) return itemData
+        if (
+            itemType != ItemType.TOTP &&
+            itemType != ItemType.BANK_CARD &&
+            itemType != ItemType.DOCUMENT
+        ) {
+            return itemData
+        }
+        if (securityManager.looksLikeMonicaCiphertext(itemData)) {
+            return itemData
+        }
+        return securityManager.encryptDataLegacyCompat(itemData)
     }
 
     sealed class SteamLoginImportState {
@@ -205,13 +242,14 @@ class DataExportImportViewModel(
                                 // Update TOTP binding if applicable
                                 if (itemType == ItemType.TOTP) {
                                     try {
-                                        val totpData = Json.decodeFromString<TotpData>(itemData)
+                                        val totpData = parseStoredTotpData(itemData, exportItem.title)
+                                            ?: throw IllegalArgumentException("Unable to parse TOTP data")
                                         val originalBoundId = totpData.boundPasswordId
                                         if (originalBoundId != null && originalBoundId > 0) {
                                             val newBoundId = passwordIdMap[originalBoundId]
                                             if (newBoundId != null) {
                                                 val updatedTotpData = totpData.copy(boundPasswordId = newBoundId)
-                                                itemData = Json.encodeToString(updatedTotpData)
+                                                itemData = encodeTotpDataPreservingStorageShape(itemData, updatedTotpData)
                                                 android.util.Log.d("DataImport", "Updated TOTP boundPasswordId from $originalBoundId to $newBoundId")
                                             } else {
                                                 android.util.Log.w("DataImport", "Could not map password ID for TOTP: ${exportItem.title} (Old: $originalBoundId)")
@@ -226,7 +264,7 @@ class DataExportImportViewModel(
                                     id = 0, // 让数据库自动生成新ID
                                     itemType = itemType,
                                     title = exportItem.title,
-                                    itemData = itemData,
+                                    itemData = encodeSecureItemDataForLocalStorage(itemType, itemData),
                                     notes = exportItem.notes,
                                     isFavorite = exportItem.isFavorite,
                                     imagePaths = exportItem.imagePaths,
@@ -438,7 +476,7 @@ class DataExportImportViewModel(
                 id = 0,
                 itemType = ItemType.TOTP,
                 title = title,
-                itemData = itemData,
+                itemData = encodeSecureItemDataForLocalStorage(ItemType.TOTP, itemData),
                 notes = "",
                 isFavorite = exportItem.isFavorite,
                 imagePaths = "",
@@ -544,7 +582,9 @@ class DataExportImportViewModel(
 
     private fun isMonicaEncryptedValue(value: String): Boolean {
         val trimmed = value.trim()
-        return trimmed.startsWith("MDK|") || trimmed.startsWith("V2|")
+        return trimmed.startsWith("MDK|") ||
+            trimmed.startsWith("V2|") ||
+            trimmed.startsWith("C2|")
     }
 
     /**
@@ -574,7 +614,7 @@ class DataExportImportViewModel(
                                 val existingItems = secureItemRepository.getItemsByType(ItemType.TOTP).first()
                                 val isDuplicate = existingItems.any { item ->
                                     try {
-                                        val totpData = Json.decodeFromString<TotpData>(item.itemData)
+                                        val totpData = parseStoredTotpData(item) ?: return@any false
                                         totpData.issuer == aegisEntry.issuer && totpData.accountName == aegisEntry.name
                                     } catch (e: Exception) {
                                         false
@@ -606,7 +646,7 @@ class DataExportImportViewModel(
                                         id = 0,
                                         itemType = ItemType.TOTP,
                                         title = title,
-                                        itemData = itemData,
+                                        itemData = encodeSecureItemDataForLocalStorage(ItemType.TOTP, itemData),
                                         notes = aegisEntry.note,
                                         isFavorite = false,
                                         imagePaths = "",
@@ -665,7 +705,7 @@ class DataExportImportViewModel(
                             val existingItems = secureItemRepository.getItemsByType(ItemType.TOTP).first()
                             val isDuplicate = existingItems.any { item ->
                                 try {
-                                    val totpData = Json.decodeFromString<TotpData>(item.itemData)
+                                    val totpData = parseStoredTotpData(item) ?: return@any false
                                     totpData.issuer == aegisEntry.issuer && totpData.accountName == aegisEntry.name
                                 } catch (e: Exception) {
                                     false
@@ -697,7 +737,7 @@ class DataExportImportViewModel(
                                     id = 0,
                                     itemType = ItemType.TOTP,
                                     title = title,
-                                    itemData = itemData,
+                                    itemData = encodeSecureItemDataForLocalStorage(ItemType.TOTP, itemData),
                                     notes = aegisEntry.note,
                                     isFavorite = false,
                                     imagePaths = "",
@@ -855,7 +895,7 @@ class DataExportImportViewModel(
         val normalizedName = steamEntry.name.trim()
         val isDuplicate = existingItems.any { item ->
             try {
-                val totpData = Json.decodeFromString<TotpData>(item.itemData)
+                val totpData = parseStoredTotpData(item) ?: return@any false
                 if (totpData.otpType != takagi.ru.monica.data.model.OtpType.STEAM) {
                     return@any false
                 }
@@ -908,7 +948,7 @@ class DataExportImportViewModel(
             id = 0,
             itemType = ItemType.TOTP,
             title = title,
-            itemData = itemData,
+            itemData = encodeSecureItemDataForLocalStorage(ItemType.TOTP, itemData),
             notes = "",
             isFavorite = false,
             imagePaths = "",
@@ -1094,7 +1134,7 @@ class DataExportImportViewModel(
         var skippedCount = 0
         var failedCount = 0
         val existingItems = secureItemRepository.getAllItems().first().filter { it.itemType == ItemType.TOTP }
-        val existingSecrets = existingItems.mapNotNull { try { Json.decodeFromString<TotpData>(it.itemData).secret } catch (e: Exception) { null } }.toSet()
+        val existingSecrets = existingItems.mapNotNull { parseStoredTotpData(it)?.secret }.toSet()
         for (entry in entries) {
             try {
                 if (entry.secret in existingSecrets) {
@@ -1102,7 +1142,8 @@ class DataExportImportViewModel(
                     continue
                 }
                 val totpData = TotpData(secret = entry.secret, issuer = entry.issuer, accountName = entry.name, digits = entry.digits, period = entry.period, algorithm = entry.algorithm)
-                val item = SecureItem(id = 0, itemType = ItemType.TOTP, title = entry.issuer.ifBlank { entry.name }, itemData = Json.encodeToString(totpData), notes = entry.note, isFavorite = false, imagePaths = "", createdAt = Date(), updatedAt = Date(), categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+                val itemData = Json.encodeToString(totpData)
+                val item = SecureItem(id = 0, itemType = ItemType.TOTP, title = entry.issuer.ifBlank { entry.name }, itemData = encodeSecureItemDataForLocalStorage(ItemType.TOTP, itemData), notes = entry.note, isFavorite = false, imagePaths = "", createdAt = Date(), updatedAt = Date(), categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
                 secureItemRepository.insertItem(item)
                 count++
             } catch (e: Exception) {

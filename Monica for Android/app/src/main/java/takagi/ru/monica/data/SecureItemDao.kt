@@ -39,6 +39,25 @@ interface SecureItemDao {
     @Query(
         """
         SELECT * FROM secure_items
+        WHERE id > :afterId
+          AND itemType = :itemType
+          AND itemData != ''
+        ORDER BY id ASC
+        LIMIT :limit
+        """
+    )
+    suspend fun getItemDataMigrationBatch(
+        itemType: ItemType,
+        afterId: Long,
+        limit: Int
+    ): List<SecureItem>
+
+    @Query("UPDATE secure_items SET itemData = :itemData WHERE id = :id")
+    suspend fun updateItemData(id: Long, itemData: String)
+
+    @Query(
+        """
+        SELECT * FROM secure_items
         WHERE keepass_database_id = :databaseId
           AND keepass_entry_uuid = :entryUuid
         LIMIT 1

@@ -42,6 +42,7 @@ internal fun PasswordListSingleCardItem(
     smoothAuthenticatorProgress: Boolean,
     iconCardsEnabled: Boolean,
     enableSharedBounds: Boolean,
+    decryptAuthenticatorKey: ((String) -> String)? = null,
     badge: PasswordListCardBadge? = null
 ) {
     SwipeActions(
@@ -86,6 +87,7 @@ internal fun PasswordListSingleCardItem(
             hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
             totpTimeOffsetSeconds = totpTimeOffsetSeconds,
             smoothAuthenticatorProgress = smoothAuthenticatorProgress,
+            decryptAuthenticatorKey = decryptAuthenticatorKey,
             enableSharedBounds = enableSharedBounds
         )
     }

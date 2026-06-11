@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.LocalContext
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.TotpCodeCard
 
 @Composable
@@ -28,7 +29,9 @@ internal fun TotpItemCard(
     isSelected: Boolean = false,
     sharedTickSeconds: Long? = null,
     sharedProgressTimeMillis: Long? = null,
-    appSettings: AppSettings? = null
+    appSettings: AppSettings? = null,
+    parsedTotpData: TotpData? = null,
+    decryptStoredValue: ((String) -> String)? = null
 ) {
     val context = LocalContext.current
 
@@ -55,6 +58,8 @@ internal fun TotpItemCard(
         allowVibration = true,
         sharedTickSeconds = sharedTickSeconds,
         sharedProgressTimeMillis = sharedProgressTimeMillis,
-        appSettings = appSettings
+        appSettings = appSettings,
+        parsedTotpData = parsedTotpData,
+        decryptStoredValue = decryptStoredValue
     )
 }

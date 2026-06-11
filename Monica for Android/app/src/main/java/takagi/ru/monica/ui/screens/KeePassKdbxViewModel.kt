@@ -32,6 +32,7 @@ import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.utils.KeePassCodecSupport
 import takagi.ru.monica.utils.KeePassCredentialSupport
 import takagi.ru.monica.utils.KeePassEntryResolutionContext
@@ -284,11 +285,15 @@ class KeePassKdbxViewModel {
         // 4. 创建 TOTP KeePass 条目列表
         val totpEntries = totpItems.mapNotNull { item ->
             try {
-                val totpData = Json.decodeFromString<TotpData>(item.itemData)
+                val totpData = TotpDataResolver.parseStoredItemData(
+                    itemData = item.itemData,
+                    fallbackIssuer = item.title,
+                    decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+                ) ?: return@mapNotNull null
                 
                 // 解密 secret
                 val decryptedSecret = try {
-                    securityManager.decryptData(totpData.secret)
+                    securityManager.decryptDataIfMonicaCiphertext(totpData.secret)
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to decrypt TOTP secret for ${item.title}: ${e.message}")
                     totpData.secret

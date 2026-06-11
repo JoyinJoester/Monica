@@ -1,15 +1,20 @@
 package takagi.ru.monica.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,9 +62,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -77,8 +85,12 @@ import takagi.ru.monica.ui.components.EntryTypeChipOption
 import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
 import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.OutlinedTextField
+import takagi.ru.monica.ui.components.PlusBlurEntryTypeTopBar
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.icons.MonicaIcons
+import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.WifiQrParser
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
@@ -247,6 +259,17 @@ fun AddEditWifiScreen(
 
     val isEditing = passwordId != null && passwordId > 0L
     val canSave = initialLoadDone && (title.isNotBlank() || ssid.isNotBlank())
+    val settingsManager = remember { SettingsManager(context) }
+    val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
+    val wifiTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
+        settings = settings,
+        enabledForThisSurface = !isEditing
+    )
+    val wifiTopBarHazeState = remember { HazeState() }
+    val wifiTopBarHazeStyle = rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
+    val wifiBlurTopBarHeight =
+        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
+    val topBarTitle = stringResource(if (isEditing) R.string.edit_wifi_title else R.string.add_wifi_title)
 
     // 自定义字段状态
     val customFields = remember { mutableStateListOf<takagi.ru.monica.data.CustomFieldDraft>() }
@@ -305,47 +328,49 @@ fun AddEditWifiScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        stringResource(if (isEditing) R.string.edit_wifi_title else R.string.add_wifi_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        maxLines = 1
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(MonicaIcons.Navigation.back, contentDescription = stringResource(R.string.back))
-                    }
-                },
-                actions = {
-                    EntryTypeChip(
-                        current = EntryTypeChipOption.WIFI,
-                        onSelect = { option ->
-                            when (option) {
-                                EntryTypeChipOption.PASSWORD -> onNavigateToPassword()
-                                EntryTypeChipOption.SSH_KEY -> onNavigateToSshKey?.invoke()
-                                EntryTypeChipOption.WIFI -> Unit
-                                EntryTypeChipOption.BARCODE -> onNavigateToBarcode()
-                            }
-                        },
-                        enabled = !isEditing
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    IconButton(onClick = { isFavorite = !isFavorite }) {
-                        Icon(
-                            if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = stringResource(R.string.favorite),
-                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+            if (!wifiTopBarBlurEnabled) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            topBarTitle,
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1
                         )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(MonicaIcons.Navigation.back, contentDescription = stringResource(R.string.back))
+                        }
+                    },
+                    actions = {
+                        EntryTypeChip(
+                            current = EntryTypeChipOption.WIFI,
+                            onSelect = { option ->
+                                when (option) {
+                                    EntryTypeChipOption.PASSWORD -> onNavigateToPassword()
+                                    EntryTypeChipOption.SSH_KEY -> onNavigateToSshKey?.invoke()
+                                    EntryTypeChipOption.WIFI -> Unit
+                                    EntryTypeChipOption.BARCODE -> onNavigateToBarcode()
+                                }
+                            },
+                            enabled = !isEditing
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        IconButton(onClick = { isFavorite = !isFavorite }) {
+                            Icon(
+                                if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = stringResource(R.string.favorite),
+                                tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 )
-            )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -357,33 +382,85 @@ fun AddEditWifiScreen(
             }
         }
     ) { innerPadding ->
-        WifiFormBody(
-            innerPadding = innerPadding,
-            selectedStorageTargets = selectedStorageTargets,
-            existingReplicaTargetKeys = existingReplicaTargetKeys,
-            categories = categories,
-            keepassDatabases = keepassDatabases,
-            bitwardenVaults = bitwardenVaults,
-            bitwardenFolderDao = bitwardenFolderDao,
-            isEditing = isEditing,
-            onAddTarget = { showStorageSheet = true },
-            onRemoveTarget = { t ->
-                val updatedTargets = selectedStorageTargets.withoutStorageTarget(t)
-                selectedStorageTargets.clear()
-                selectedStorageTargets.addAll(updatedTargets)
-            },
-            onScanQrCode = onScanQrCode,
-            title = title, onTitleChange = { title = it },
-            ssid = ssid, onSsidChange = { ssid = it },
-            password = password, onPasswordChange = { password = it },
-            hiddenNetwork = hiddenNetwork, onHiddenNetworkChange = { hiddenNetwork = it },
-            security = security, onSecurityChange = { security = it },
-            customFields = customFields,
-            onCustomFieldsChange = { updated ->
-                customFields.clear()
-                customFields.addAll(updated)
+        val contentPadding = if (wifiTopBarBlurEnabled) {
+            PaddingValues(
+                top = wifiBlurTopBarHeight + 10.dp,
+                bottom = innerPadding.calculateBottomPadding()
+            )
+        } else {
+            innerPadding
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (wifiTopBarBlurEnabled) {
+                            Modifier.haze(
+                                state = wifiTopBarHazeState,
+                                style = wifiTopBarHazeStyle
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
+            ) {
+                WifiFormBody(
+                    innerPadding = contentPadding,
+                    selectedStorageTargets = selectedStorageTargets,
+                    existingReplicaTargetKeys = existingReplicaTargetKeys,
+                    categories = categories,
+                    keepassDatabases = keepassDatabases,
+                    bitwardenVaults = bitwardenVaults,
+                    bitwardenFolderDao = bitwardenFolderDao,
+                    isEditing = isEditing,
+                    onAddTarget = { showStorageSheet = true },
+                    onRemoveTarget = { t ->
+                        val updatedTargets = selectedStorageTargets.withoutStorageTarget(t)
+                        selectedStorageTargets.clear()
+                        selectedStorageTargets.addAll(updatedTargets)
+                    },
+                    onScanQrCode = onScanQrCode,
+                    title = title, onTitleChange = { title = it },
+                    ssid = ssid, onSsidChange = { ssid = it },
+                    password = password, onPasswordChange = { password = it },
+                    hiddenNetwork = hiddenNetwork, onHiddenNetworkChange = { hiddenNetwork = it },
+                    security = security, onSecurityChange = { security = it },
+                    customFields = customFields,
+                    onCustomFieldsChange = { updated ->
+                        customFields.clear()
+                        customFields.addAll(updated)
+                    }
+                )
             }
-        )
+
+            if (wifiTopBarBlurEnabled) {
+                PlusBlurEntryTypeTopBar(
+                    settings = settings,
+                    hazeState = wifiTopBarHazeState,
+                    hazeStyle = wifiTopBarHazeStyle,
+                    currentEntryType = EntryTypeChipOption.WIFI,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    entryTypeEnabled = !isEditing,
+                    isFavorite = isFavorite,
+                    onNavigateBack = onNavigateBack,
+                    onFavoriteChange = { isFavorite = it },
+                    onEntryTypeSelect = { option ->
+                        when (option) {
+                            EntryTypeChipOption.PASSWORD -> onNavigateToPassword()
+                            EntryTypeChipOption.SSH_KEY -> onNavigateToSshKey?.invoke()
+                            EntryTypeChipOption.WIFI -> Unit
+                            EntryTypeChipOption.BARCODE -> onNavigateToBarcode()
+                        }
+                    }
+                )
+            }
+        }
     }
 
     MultiStorageTargetPickerBottomSheet(

@@ -30,11 +30,12 @@ import com.journeyapps.barcodescanner.BarcodeEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.util.TotpDataResolver
 import java.io.OutputStream
 import java.net.URLEncoder
 
@@ -45,13 +46,18 @@ fun QrCodeDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val securityManager = remember(context) { SecurityManager(context.applicationContext) }
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
     
     // Generate QR Code
     LaunchedEffect(item) {
         withContext(Dispatchers.IO) {
             try {
-                val totpData = Json.decodeFromString<TotpData>(item.itemData)
+                val totpData = TotpDataResolver.parseStoredItemData(
+                    itemData = item.itemData,
+                    fallbackIssuer = item.title,
+                    decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+                ) ?: return@withContext
                 val uri = generateOtpUri(totpData, item.title)
                 val hints = mapOf(
                     com.google.zxing.EncodeHintType.CHARACTER_SET to "UTF-8",

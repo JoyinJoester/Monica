@@ -3,15 +3,20 @@ package takagi.ru.monica.ui.screens
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -60,11 +65,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
+import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasswordDatabase
@@ -84,10 +92,14 @@ import takagi.ru.monica.ui.components.EntryTypeChipOption
 import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
 import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.OutlinedTextField
+import takagi.ru.monica.ui.components.PlusBlurEntryTypeTopBar
 import takagi.ru.monica.ui.components.SshKeyGenerationProgressIndicator
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.utils.ClipboardUtils
+import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.SshKeyGenerator
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
@@ -243,6 +255,19 @@ fun AddEditSshKeyScreen(
         title.isNotBlank() &&
         publicKey.isNotBlank() &&
         !isGenerating
+    val settingsManager = remember { SettingsManager(context) }
+    val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
+    val sshTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
+        settings = settings,
+        enabledForThisSurface = !isEditing
+    )
+    val sshTopBarHazeState = remember { HazeState() }
+    val sshTopBarHazeStyle = rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
+    val sshBlurTopBarHeight =
+        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
+    val topBarTitle = stringResource(
+        if (isEditing) R.string.edit_ssh_key_title else R.string.add_ssh_key_title
+    )
 
     fun generateNewKey() {
         if (isGenerating) return
@@ -324,53 +349,52 @@ fun AddEditSshKeyScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        stringResource(
-                            if (isEditing) R.string.edit_ssh_key_title
-                            else R.string.add_ssh_key_title
-                        ),
-                        style = MaterialTheme.typography.titleLarge,
-                        maxLines = 1
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            MonicaIcons.Navigation.back,
-                            contentDescription = stringResource(R.string.back)
+            if (!sshTopBarBlurEnabled) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            topBarTitle,
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1
                         )
-                    }
-                },
-                actions = {
-                    EntryTypeChip(
-                        current = EntryTypeChipOption.SSH_KEY,
-                        onSelect = { option ->
-                            when (option) {
-                                EntryTypeChipOption.PASSWORD -> onNavigateToPassword()
-                                EntryTypeChipOption.WIFI -> onNavigateToWifi()
-                                EntryTypeChipOption.SSH_KEY -> Unit
-                                EntryTypeChipOption.BARCODE -> onNavigateToBarcode()
-                            }
-                        },
-                        enabled = !isEditing
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    IconButton(onClick = { isFavorite = !isFavorite }) {
-                        Icon(
-                            if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = stringResource(R.string.favorite),
-                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                MonicaIcons.Navigation.back,
+                                contentDescription = stringResource(R.string.back)
+                            )
+                        }
+                    },
+                    actions = {
+                        EntryTypeChip(
+                            current = EntryTypeChipOption.SSH_KEY,
+                            onSelect = { option ->
+                                when (option) {
+                                    EntryTypeChipOption.PASSWORD -> onNavigateToPassword()
+                                    EntryTypeChipOption.WIFI -> onNavigateToWifi()
+                                    EntryTypeChipOption.SSH_KEY -> Unit
+                                    EntryTypeChipOption.BARCODE -> onNavigateToBarcode()
+                                }
+                            },
+                            enabled = !isEditing
                         )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                        Spacer(Modifier.width(4.dp))
+                        IconButton(onClick = { isFavorite = !isFavorite }) {
+                            Icon(
+                                if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = stringResource(R.string.favorite),
+                                tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 )
-            )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -382,44 +406,96 @@ fun AddEditSshKeyScreen(
             }
         }
     ) { innerPadding ->
-        SshKeyFormBody(
-            innerPadding = innerPadding,
-            selectedStorageTargets = selectedStorageTargets,
-            existingReplicaTargetKeys = existingReplicaTargetKeys,
-            categories = categories,
-            keepassDatabases = keepassDatabases,
-            bitwardenVaults = bitwardenVaults,
-            bitwardenFolderDao = bitwardenFolderDao,
-            isEditing = isEditing,
-            onAddTarget = { showStorageSheet = true },
-            onRemoveTarget = { t ->
-                val updatedTargets = selectedStorageTargets.withoutStorageTarget(t)
-                selectedStorageTargets.clear()
-                selectedStorageTargets.addAll(updatedTargets)
-            },
-            title = title, onTitleChange = { title = it },
-            algorithm = algorithm,
-            onAlgorithmChange = { algorithm = it },
-            rsaKeySize = rsaKeySize,
-            onRsaKeySizeChange = { rsaKeySize = it },
-            publicKey = publicKey,
-            onPublicKeyChange = { publicKey = it },
-            privateKey = privateKey,
-            onPrivateKeyChange = { privateKey = it },
-            privateKeyVisible = privateKeyVisible,
-            onPrivateKeyVisibleChange = { privateKeyVisible = it },
-            fingerprint = fingerprint,
-            comment = comment,
-            onCommentChange = { comment = it },
-            isGenerating = isGenerating,
-            onGenerate = { generateNewKey() },
-            onCopy = { label, text -> copyTextToClipboard(context, label, text) },
-            customFields = customFields,
-            onCustomFieldsChange = { updated ->
-                customFields.clear()
-                customFields.addAll(updated)
+        val contentPadding = if (sshTopBarBlurEnabled) {
+            PaddingValues(
+                top = sshBlurTopBarHeight + 10.dp,
+                bottom = innerPadding.calculateBottomPadding()
+            )
+        } else {
+            innerPadding
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (sshTopBarBlurEnabled) {
+                            Modifier.haze(
+                                state = sshTopBarHazeState,
+                                style = sshTopBarHazeStyle
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
+            ) {
+                SshKeyFormBody(
+                    innerPadding = contentPadding,
+                    selectedStorageTargets = selectedStorageTargets,
+                    existingReplicaTargetKeys = existingReplicaTargetKeys,
+                    categories = categories,
+                    keepassDatabases = keepassDatabases,
+                    bitwardenVaults = bitwardenVaults,
+                    bitwardenFolderDao = bitwardenFolderDao,
+                    isEditing = isEditing,
+                    onAddTarget = { showStorageSheet = true },
+                    onRemoveTarget = { t ->
+                        val updatedTargets = selectedStorageTargets.withoutStorageTarget(t)
+                        selectedStorageTargets.clear()
+                        selectedStorageTargets.addAll(updatedTargets)
+                    },
+                    title = title, onTitleChange = { title = it },
+                    algorithm = algorithm,
+                    onAlgorithmChange = { algorithm = it },
+                    rsaKeySize = rsaKeySize,
+                    onRsaKeySizeChange = { rsaKeySize = it },
+                    publicKey = publicKey,
+                    onPublicKeyChange = { publicKey = it },
+                    privateKey = privateKey,
+                    onPrivateKeyChange = { privateKey = it },
+                    privateKeyVisible = privateKeyVisible,
+                    onPrivateKeyVisibleChange = { privateKeyVisible = it },
+                    fingerprint = fingerprint,
+                    comment = comment,
+                    onCommentChange = { comment = it },
+                    isGenerating = isGenerating,
+                    onGenerate = { generateNewKey() },
+                    onCopy = { label, text -> copyTextToClipboard(context, label, text) },
+                    customFields = customFields,
+                    onCustomFieldsChange = { updated ->
+                        customFields.clear()
+                        customFields.addAll(updated)
+                            }
+                )
             }
-        )
+
+            if (sshTopBarBlurEnabled) {
+                PlusBlurEntryTypeTopBar(
+                    settings = settings,
+                    hazeState = sshTopBarHazeState,
+                    hazeStyle = sshTopBarHazeStyle,
+                    currentEntryType = EntryTypeChipOption.SSH_KEY,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    entryTypeEnabled = !isEditing,
+                    isFavorite = isFavorite,
+                    onNavigateBack = onNavigateBack,
+                    onFavoriteChange = { isFavorite = it },
+                    onEntryTypeSelect = { option ->
+                        when (option) {
+                            EntryTypeChipOption.PASSWORD -> onNavigateToPassword()
+                            EntryTypeChipOption.WIFI -> onNavigateToWifi()
+                            EntryTypeChipOption.SSH_KEY -> Unit
+                            EntryTypeChipOption.BARCODE -> onNavigateToBarcode()
+                        }
+                    }
+                )
+            }
+        }
     }
 
     MultiStorageTargetPickerBottomSheet(

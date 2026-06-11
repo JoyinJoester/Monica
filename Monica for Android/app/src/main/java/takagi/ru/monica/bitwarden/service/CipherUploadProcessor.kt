@@ -24,6 +24,7 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.util.TotpDataResolver
@@ -52,6 +53,7 @@ class CipherUploadProcessor(
     private val passwordEntryDao = database.passwordEntryDao()
     private val secureItemDao = database.secureItemDao()
     private val passkeyDao = database.passkeyDao()
+    private val securityManager = SecurityManager(context.applicationContext)
     
     private val json = Json { 
         ignoreUnknownKeys = true 
@@ -1164,7 +1166,11 @@ class CipherUploadProcessor(
 
     private fun parseTotpData(item: SecureItem): TotpItemData {
         return try {
-            val appData = json.decodeFromString<TotpData>(item.itemData)
+            val appData = TotpDataResolver.parseStoredItemData(
+                itemData = item.itemData,
+                fallbackIssuer = item.title,
+                decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+            ) ?: throw IllegalArgumentException("Unable to parse Monica TOTP payload")
             TotpItemData(
                 secret = appData.secret,
                 issuer = appData.issuer,
@@ -1185,7 +1191,10 @@ class CipherUploadProcessor(
     }
 
     private fun parseBankCardData(item: SecureItem): BankCardData {
-        return CardWalletDataCodec.parseBankCardData(item.itemData)
+        return CardWalletDataCodec.parseBankCardData(
+            raw = item.itemData,
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+        )
             ?: throw IllegalArgumentException(
                 "Unsupported BANK_CARD payload for SecureItem#${item.id}; update skipped to prevent data loss"
             )
@@ -1215,7 +1224,10 @@ class CipherUploadProcessor(
     }
 
     private fun parseDocumentData(item: SecureItem): DocumentData {
-        return CardWalletDataCodec.parseDocumentData(item.itemData)
+        return CardWalletDataCodec.parseDocumentData(
+            raw = item.itemData,
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+        )
             ?: throw IllegalArgumentException(
                 "Unsupported DOCUMENT payload for SecureItem#${item.id}; update skipped to prevent data loss"
             )

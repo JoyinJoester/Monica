@@ -23,7 +23,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.serialization.json.Json
 import takagi.ru.monica.MainActivity
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
@@ -32,6 +31,7 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.utils.AppLauncherIconManager
 import takagi.ru.monica.utils.SettingsManager
@@ -102,15 +102,17 @@ class NotificationValidatorService : Service() {
         val totpIndexFlow = secureItemRepository.getItemsByType(ItemType.TOTP)
             .map { items ->
                 val entries = items.mapNotNull { item ->
-                    runCatching { Json.decodeFromString<TotpData>(item.itemData) }
-                        .getOrNull()
-                        ?.let { data ->
-                            TotpEntry(
-                                id = item.id,
-                                title = item.title,
-                                data = data
-                            )
-                        }
+                    TotpDataResolver.parseStoredItemData(
+                        itemData = item.itemData,
+                        fallbackIssuer = item.title,
+                        decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+                    )?.let { data ->
+                        TotpEntry(
+                            id = item.id,
+                            title = item.title,
+                            data = data
+                        )
+                    }
                 }
 
                 TotpIndex(entries = entries)

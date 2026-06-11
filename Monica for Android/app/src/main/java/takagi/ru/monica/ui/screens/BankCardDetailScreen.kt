@@ -167,7 +167,8 @@ fun BankCardDetailScreen(
                 // Visual Card Representation
                 BankCardCard(
                     item = item,
-                    onClick = { /* No-op in detail view */ }
+                    onClick = { /* No-op in detail view */ },
+                    cardData = cardData
                 )
                 
                 cardData?.let { data ->

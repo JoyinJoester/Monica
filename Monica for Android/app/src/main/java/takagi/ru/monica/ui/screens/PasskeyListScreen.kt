@@ -54,6 +54,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -108,9 +111,12 @@ import takagi.ru.monica.autofill_ng.ui.rememberAppIcon
 import takagi.ru.monica.autofill_ng.ui.rememberFavicon
 import takagi.ru.monica.ui.common.state.rememberSaveableLazyListState
 import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
+import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
 import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
@@ -183,6 +189,7 @@ fun PasskeyListScreen(
     }
     val categoryMap = remember(categories) { categories.associateBy { it.id } }
     LaunchedEffect(keepassDatabases.map { it.id }) {
+        delay(1_200L)
         viewModel.refreshKeePassPasskeys(trigger = "PASSKEY_PAGE_ENTER")
     }
 
@@ -281,6 +288,12 @@ fun PasskeyListScreen(
     var hasRestoredCategoryFilter by remember { mutableStateOf(false) }
     val appSettings by settingsManager.settingsFlow.collectAsState(
         initial = AppSettings(biometricEnabled = false)
+    )
+    val plusBlurMenuHazeState = remember { HazeState() }
+    val plusBlurMenuHazeStyle = rememberMonicaFrostedGlassHazeStyle(appSettings.plusBlurIntensity)
+    val plusBlurMenuEnabled = rememberMonicaPlusBlurEnabledForSurface(
+        settings = appSettings,
+        enabledForThisSurface = true
     )
     val biometricHelper = remember { BiometricHelper(context) }
     val canUseBiometric = remember(appSettings.biometricEnabled) {
@@ -998,7 +1011,20 @@ fun PasskeyListScreen(
         is UnifiedCategoryFilterSelection.MdbxFolderFilter -> "MDBX"
     }
     
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .then(
+                if (plusBlurMenuEnabled) {
+                    Modifier.haze(
+                        state = plusBlurMenuHazeState,
+                        style = plusBlurMenuHazeStyle
+                    )
+                } else {
+                    Modifier
+                }
+            )
+    ) {
         // ExpressiveTopBar（与密码列表完全一致）
         if (!hideTopBar) {
             ExpressiveTopBar(
@@ -1072,7 +1098,10 @@ fun PasskeyListScreen(
                             UnifiedCategoryFilterChipMenuDropdown(
                                 expanded = showCategoryFilterDialog,
                                 onDismissRequest = { showCategoryFilterDialog = false },
-                                offset = UnifiedCategoryFilterChipMenuOffset
+                                offset = UnifiedCategoryFilterChipMenuOffset,
+                                plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
+                                plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+                                plusBlurHazeStyle = plusBlurMenuHazeStyle
                             ) {
                                 UnifiedCategoryFilterChipMenu(
                                     visible = true,
@@ -1106,9 +1135,12 @@ fun PasskeyListScreen(
                                 )
                             }
                         }
-                        DropdownMenu(
+                        PasswordTopActionsDropdownMenu(
                             expanded = showTopActionsMenu,
-                            onDismissRequest = { showTopActionsMenu = false }
+                            onDismissRequest = { showTopActionsMenu = false },
+                            plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
+                            plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+                            plusBlurHazeStyle = plusBlurMenuHazeStyle
                         ) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.nav_settings)) },

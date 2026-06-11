@@ -13,6 +13,7 @@ object AutofillSecretResolver {
     private const val TAG = "AutofillSecret"
     private const val DATA_PREFIX_V2 = "V2|"
     private const val DATA_PREFIX_MDK = "MDK|"
+    private const val DATA_PREFIX_COMPAT = "C2|"
 
     fun decryptPasswordOrNull(
         securityManager: SecurityManager,
@@ -40,7 +41,11 @@ object AutofillSecretResolver {
     }
 
     private fun looksEncryptedPayload(value: String): Boolean {
-        if (value.startsWith(DATA_PREFIX_V2) || value.startsWith(DATA_PREFIX_MDK)) {
+        if (
+            value.startsWith(DATA_PREFIX_V2) ||
+            value.startsWith(DATA_PREFIX_MDK) ||
+            value.startsWith(DATA_PREFIX_COMPAT)
+        ) {
             return true
         }
 

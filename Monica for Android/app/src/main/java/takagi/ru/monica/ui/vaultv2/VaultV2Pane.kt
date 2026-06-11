@@ -89,6 +89,8 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
@@ -122,6 +124,7 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.OtpType
@@ -129,6 +132,7 @@ import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.repository.MdbxStoredFolderEntry
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.PasswordListCategoryChipMenu
 import takagi.ru.monica.ui.buildCategoryMenuQuickFilterBindings
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
@@ -169,6 +173,8 @@ import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.gestures.SwipeActions
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.password.PasswordAuthenticatorDisplayState
 import takagi.ru.monica.ui.password.BitwardenClearCacheTopActionsMenuItem
 import takagi.ru.monica.ui.password.BitwardenLockTopActionsMenuItem
@@ -195,6 +201,7 @@ import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.decodeKeePassPathSegments
@@ -230,6 +237,52 @@ private data class VaultV2Item(
 	val passkeyEntry: PasskeyEntry? = null,
 	val boundPasswordId: Long? = null,
 )
+
+private fun parseVaultV2TotpItemData(
+	item: SecureItem,
+	securityManager: SecurityManager?
+): TotpData? {
+	val decryptIfNeeded = securityManager?.let { manager ->
+		{ value: String ->
+			runCatching { manager.decryptDataIfMonicaCiphertext(value) }.getOrDefault(value)
+		}
+	}
+	return TotpDataResolver.parseStoredItemData(
+		itemData = item.itemData,
+		fallbackIssuer = item.title,
+		decryptIfNeeded = decryptIfNeeded
+	)
+}
+
+private fun parseVaultV2BankCardData(
+	item: SecureItem,
+	securityManager: SecurityManager?
+): BankCardData? {
+	val decryptIfNeeded = securityManager?.let { manager ->
+		{ value: String ->
+			runCatching { manager.decryptDataIfMonicaCiphertext(value) }.getOrDefault(value)
+		}
+	}
+	return CardWalletDataCodec.parseBankCardData(
+		raw = item.itemData,
+		decryptIfNeeded = decryptIfNeeded
+	)
+}
+
+private fun parseVaultV2DocumentData(
+	item: SecureItem,
+	securityManager: SecurityManager?
+): DocumentData? {
+	val decryptIfNeeded = securityManager?.let { manager ->
+		{ value: String ->
+			runCatching { manager.decryptDataIfMonicaCiphertext(value) }.getOrDefault(value)
+		}
+	}
+	return CardWalletDataCodec.parseDocumentData(
+		raw = item.itemData,
+		decryptIfNeeded = decryptIfNeeded
+	)
+}
 
 private data class VaultV2SectionLayout(
 	val title: String,
@@ -1145,7 +1198,7 @@ fun VaultV2Pane(
 	showStandaloneSettingsEntry: Boolean = false,
 	showOnlyLocalData: Boolean = false,
 	appSettings: AppSettings = AppSettings(),
-	securityManager: takagi.ru.monica.security.SecurityManager? = null,
+	securityManager: SecurityManager? = null,
 	biometricEnabled: Boolean = false,
 	modifier: Modifier = Modifier,
 ) {
@@ -1232,6 +1285,12 @@ fun VaultV2Pane(
 	val stackCardMode = remember(appSettings.stackCardMode) {
 		runCatching { StackCardMode.valueOf(appSettings.stackCardMode) }.getOrDefault(StackCardMode.AUTO)
 	}
+	val plusBlurMenuHazeState = remember { HazeState() }
+	val plusBlurMenuHazeStyle = rememberMonicaFrostedGlassHazeStyle(appSettings.plusBlurIntensity)
+	val plusBlurMenuEnabled = rememberMonicaPlusBlurEnabledForSurface(
+		settings = appSettings,
+		enabledForThisSurface = true,
+	)
 
 	val passwordEntries by passwordViewModel.allPasswordsForUi.collectAsState()
 	val categories by passwordViewModel.categories.collectAsState()
@@ -1704,7 +1763,7 @@ fun VaultV2Pane(
 		val visiblePasswordIds = visiblePasswordEntries.mapTo(hashSetOf()) { it.id }
 
 		val totpList = visibleTotpItems.mapNotNull { item ->
-			val data = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull()
+			val data = parseVaultV2TotpItemData(item, securityManager)
 			val boundPasswordId = data?.boundPasswordId
 			if (boundPasswordId != null && boundPasswordId in visiblePasswordIds) return@mapNotNull null
 			val subtitle = listOf(data?.issuer, data?.accountName)
@@ -1783,7 +1842,7 @@ fun VaultV2Pane(
 		}
 
 		val bankCardList = visibleBankCardItems.map { item ->
-			val data = runCatching { Json.decodeFromString<BankCardData>(item.itemData) }.getOrNull()
+			val data = parseVaultV2BankCardData(item, securityManager)
 			val displayTitle = item.title.ifBlank { data?.bankName ?: "(Untitled)" }
 			val subtitle = vaultV2BankCardSubtitle(data = data, fallbackNotes = item.notes)
 			VaultV2Item(
@@ -1805,7 +1864,7 @@ fun VaultV2Pane(
 		}
 
 		val documentList = visibleDocumentItems.map { item ->
-			val data = runCatching { Json.decodeFromString<DocumentData>(item.itemData) }.getOrNull()
+			val data = parseVaultV2DocumentData(item, securityManager)
 			val displayTitle = item.title.ifBlank { data?.fullName ?: "(Untitled)" }
 			val subtitle = vaultV2DocumentSubtitle(data = data, fallbackNotes = item.notes)
 			VaultV2Item(
@@ -2108,7 +2167,20 @@ fun VaultV2Pane(
 			}
 	}
 
-	Box(modifier = modifier.fillMaxSize()) {
+	Box(
+		modifier = modifier
+			.fillMaxSize()
+			.then(
+				if (plusBlurMenuEnabled) {
+					Modifier.haze(
+						state = plusBlurMenuHazeState,
+						style = plusBlurMenuHazeStyle,
+					)
+				} else {
+					Modifier
+				}
+			)
+	) {
 		Column(modifier = Modifier.fillMaxSize()) {
 			ExpressiveTopBar(
 				title = storageFilterLabel,
@@ -2129,7 +2201,10 @@ fun VaultV2Pane(
 							UnifiedCategoryFilterChipMenuDropdown(
 								expanded = isStorageFilterSheetVisible,
 								onDismissRequest = { isStorageFilterSheetVisible = false },
-								offset = UnifiedCategoryFilterChipMenuOffset
+								offset = UnifiedCategoryFilterChipMenuOffset,
+								plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
+								plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+								plusBlurHazeStyle = plusBlurMenuHazeStyle
 							) {
 								PasswordListCategoryChipMenu(
 									currentFilter = categoryMenuFilter,
@@ -2276,7 +2351,10 @@ fun VaultV2Pane(
 						}
 						PasswordTopActionsDropdownMenu(
 							expanded = isAuthenticated && isTopActionsMenuExpanded,
-							onDismissRequest = { isTopActionsMenuExpanded = false }
+							onDismissRequest = { isTopActionsMenuExpanded = false },
+							plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
+							plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+							plusBlurHazeStyle = plusBlurMenuHazeStyle
 						) {
 							if (selectedKeePassDatabaseId != null) {
 								KeepassRefreshTopActionsMenuItem(
@@ -2429,6 +2507,7 @@ fun VaultV2Pane(
 				listState = listState,
 				passwordById = passwordById,
 				appSettings = appSettings,
+				securityManager = securityManager,
 				selectedKeys = selectedKeys,
 				onRequestDeleteItem = { item ->
 					selectedKeys.clear()
@@ -3090,6 +3169,7 @@ private fun VaultV2List(
 	listState: LazyListState,
 	passwordById: Map<Long, PasswordEntry>,
 	appSettings: AppSettings,
+	securityManager: SecurityManager?,
 	selectedKeys: MutableList<String>,
 	onRequestDeleteItem: (VaultV2Item) -> Unit,
 	modifier: Modifier = Modifier,
@@ -3196,6 +3276,7 @@ private fun VaultV2List(
 							else -> null
 						},
 						appSettings = appSettings,
+						securityManager = securityManager,
 						selected = selected,
 						onClick = {
 							if (selectedKeys.isNotEmpty()) {
@@ -3360,6 +3441,7 @@ private fun VaultV2ItemCard(
 	item: VaultV2Item,
 	boundPassword: PasswordEntry?,
 	appSettings: AppSettings,
+	securityManager: SecurityManager?,
 	selected: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
@@ -3375,9 +3457,9 @@ private fun VaultV2ItemCard(
 	val unmatchedIconStrategy = UnmatchedIconHandlingStrategy.DEFAULT_ICON
 
 	val passwordIconSource = item.passwordEntry ?: boundPassword
-	val totpData = remember(item.totpItem?.itemData) {
-		item.totpItem?.itemData?.let { raw ->
-			runCatching { Json.decodeFromString<TotpData>(raw) }.getOrNull()
+	val totpData = remember(item.totpItem?.itemData, item.totpItem?.title, securityManager) {
+		item.totpItem?.let { totpItem ->
+			parseVaultV2TotpItemData(totpItem, securityManager)
 		}
 	}
 	val iconWebsite = when {
@@ -3462,7 +3544,12 @@ private fun VaultV2ItemCard(
 					fallbackIssuer = fallbackIssuer,
 					fallbackAccountName = fallbackAccountName,
 					timeOffsetSeconds = appSettings.totpTimeOffset,
-					smoothProgress = appSettings.validatorSmoothProgress
+					smoothProgress = appSettings.validatorSmoothProgress,
+					decryptAuthenticatorKey = securityManager?.let { manager ->
+						{ value: String ->
+							runCatching { manager.decryptDataIfMonicaCiphertext(value) }.getOrDefault(value)
+						}
+					}
 				)
 			}
 		}

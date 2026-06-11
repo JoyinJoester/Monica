@@ -1796,6 +1796,7 @@ class KeePassKdbxService(
 
     private fun buildSecureItemFields(item: SecureItem): EntryFields {
         val monicaId = if (item.id > 0) item.id.toString() else ""
+        val portableItemData = portableSecureItemDataForKeePass(item)
         val noteForExternal = if (item.itemType == ItemType.NOTE) {
             val decoded = NoteContentCodec.decodeFromItem(item)
             NoteContentCodec.toExternalReadableContent(decoded.content)
@@ -1809,7 +1810,7 @@ class KeePassKdbxService(
             "URL" to EntryValue.Plain(""),
             "Notes" to EntryValue.Plain(noteForExternal),
             FIELD_MONICA_ITEM_TYPE to EntryValue.Plain(item.itemType.name),
-            FIELD_MONICA_ITEM_DATA to EntryValue.Encrypted(EncryptedValue.fromString(item.itemData)),
+            FIELD_MONICA_ITEM_DATA to EntryValue.Encrypted(EncryptedValue.fromString(portableItemData)),
             FIELD_MONICA_IMAGE_PATHS to EntryValue.Plain(item.imagePaths),
             FIELD_MONICA_IS_FAVORITE to EntryValue.Plain(item.isFavorite.toString())
         )
@@ -1817,6 +1818,19 @@ class KeePassKdbxService(
             pairs.add(FIELD_MONICA_ITEM_ID to EntryValue.Plain(monicaId))
         }
         return EntryFields.of(*pairs.toTypedArray())
+    }
+
+    private fun portableSecureItemDataForKeePass(item: SecureItem): String {
+        val itemData = item.itemData
+        if (itemData.isBlank() || !securityManager.looksLikeMonicaCiphertext(itemData)) {
+            return itemData
+        }
+        return runCatching { securityManager.decryptData(itemData) }.getOrElse { error ->
+            throw IllegalStateException(
+                "Cannot write encrypted secure item data to KeePass for itemId=${item.id}",
+                error
+            )
+        }
     }
 
     private fun updateEntry(

@@ -196,8 +196,6 @@ class SettingsManager(private val context: Context) {
         private val NOTIFICATION_VALIDATOR_ID_KEY = longPreferencesKey("notification_validator_id")
         private val IS_PLUS_ACTIVATED_KEY = booleanPreferencesKey("is_plus_activated")
         private val PLUS_BLUR_ENABLED_KEY = booleanPreferencesKey("plus_blur_enabled")
-        private val PLUS_BLUR_MODE_KEY = stringPreferencesKey("plus_blur_mode")
-        private val PLUS_BLUR_INTENSITY_KEY = stringPreferencesKey("plus_blur_intensity")
         private val PLUS_BLUR_REDUCE_ON_BATTERY_SAVER_KEY =
             booleanPreferencesKey("plus_blur_reduce_on_battery_saver")
         private val PLUS_LICENSE_CDK_KEY = stringPreferencesKey("plus_license_cdk")
@@ -574,16 +572,8 @@ class SettingsManager(private val context: Context) {
             notificationValidatorId = -1L,
             isPlusActivated = isPlusActivated,
             plusBlurEnabled = isPlusActivated && (preferences[PLUS_BLUR_ENABLED_KEY] ?: false),
-            plusBlurMode = runCatching {
-                MonicaBlurMode.valueOf(
-                    preferences[PLUS_BLUR_MODE_KEY] ?: MonicaBlurMode.DEFAULT.name
-                )
-            }.getOrDefault(MonicaBlurMode.DEFAULT),
-            plusBlurIntensity = runCatching {
-                MonicaBlurIntensity.valueOf(
-                    preferences[PLUS_BLUR_INTENSITY_KEY] ?: MonicaBlurIntensity.DEFAULT.name
-                )
-            }.getOrDefault(MonicaBlurIntensity.DEFAULT),
+            plusBlurMode = MonicaBlurMode.DEFAULT,
+            plusBlurIntensity = MonicaBlurIntensity.DEFAULT,
             plusBlurReduceOnBatterySaver =
                 preferences[PLUS_BLUR_REDUCE_ON_BATTERY_SAVER_KEY] ?: true,
             stackCardMode = preferences[STACK_CARD_MODE_KEY] ?: "AUTO",
@@ -947,18 +937,6 @@ class SettingsManager(private val context: Context) {
         dataStore.edit { preferences ->
             val isPlusActivated = preferences[IS_PLUS_ACTIVATED_KEY] ?: false
             preferences[PLUS_BLUR_ENABLED_KEY] = enabled && isPlusActivated
-        }
-    }
-
-    suspend fun updatePlusBlurMode(mode: MonicaBlurMode) {
-        dataStore.edit { preferences ->
-            preferences[PLUS_BLUR_MODE_KEY] = mode.name
-        }
-    }
-
-    suspend fun updatePlusBlurIntensity(intensity: MonicaBlurIntensity) {
-        dataStore.edit { preferences ->
-            preferences[PLUS_BLUR_INTENSITY_KEY] = intensity.name
         }
     }
 

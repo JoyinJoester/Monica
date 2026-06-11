@@ -114,6 +114,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CompletableDeferred
@@ -236,6 +237,8 @@ import takagi.ru.monica.ui.common.pull.rememberPullActionState
 import takagi.ru.monica.ui.common.selection.CategoryListItem
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.common.selection.SelectionModeTopBar
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.main.navigation.BottomNavItem
 import takagi.ru.monica.ui.main.navigation.fullLabelRes
 import takagi.ru.monica.ui.main.navigation.indexToDefaultTabKey
@@ -345,6 +348,12 @@ fun PasswordListContent(
     val currentFilter by viewModel.categoryFilter.collectAsState()
     // settings
     val appSettings by settingsViewModel.settings.collectAsState()
+    val plusBlurMenuHazeState = remember { HazeState() }
+    val plusBlurMenuHazeStyle = rememberMonicaFrostedGlassHazeStyle(appSettings.plusBlurIntensity)
+    val plusBlurMenuEnabled = rememberMonicaPlusBlurEnabledForSurface(
+        settings = appSettings,
+        enabledForThisSurface = true
+    )
     val mdbxDatabasesLoaded by remember(mdbxViewModel) {
         mdbxViewModel?.allDatabasesLoaded ?: kotlinx.coroutines.flow.flowOf(true)
     }.collectAsState(initial = mdbxViewModel == null)
@@ -1602,8 +1611,18 @@ fun PasswordListContent(
             onOpenCommonAccountTemplates = onOpenCommonAccountTemplates,
             onOpenHistory = onOpenHistory,
             onOpenTrash = onOpenTrash,
-            onScanFidoQr = onScanFidoQr
+            onScanFidoQr = onScanFidoQr,
+            plusBlurMenuEnabled = plusBlurMenuEnabled,
+            plusBlurMenuHazeState = plusBlurMenuHazeState,
+            plusBlurMenuHazeStyle = plusBlurMenuHazeStyle
         )
+    }
+
+    val decryptAuthenticatorKeyForPreview: (String) -> String = remember(securityManager) {
+        { value: String ->
+            runCatching { securityManager.decryptDataIfMonicaCiphertext(value) }
+                .getOrDefault(value)
+        }
     }
 
     @Composable
@@ -1682,6 +1701,8 @@ fun PasswordListContent(
             categoryQuickFilterShortcuts = effectiveCategoryQuickFilterShortcuts,
             quickFolderShortcuts = effectiveQuickFolderCardShortcuts,
             quickFolderStyle = quickFolderStyle,
+            plusBlurMenuHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+            plusBlurMenuHazeStyle = plusBlurMenuHazeStyle,
             passwordPageListItems = passwordPageListItems,
             effectiveStackCardMode = effectiveStackCardMode,
             expandedGroups = expandedGroups,
@@ -1703,7 +1724,8 @@ fun PasswordListContent(
             coroutineScope = coroutineScope,
             context = context,
             passwordEntries = passwordEntries,
-            aggregateConfig = aggregateConfig
+            aggregateConfig = aggregateConfig,
+            decryptAuthenticatorKey = decryptAuthenticatorKeyForPreview
         )
     }
 
@@ -1944,7 +1966,10 @@ private fun PasswordListMainPaneHost(
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     context: Context,
     passwordEntries: List<PasswordEntry>,
-    aggregateConfig: PasswordListAggregateConfig?
+    aggregateConfig: PasswordListAggregateConfig?,
+    decryptAuthenticatorKey: ((String) -> String)?,
+    plusBlurMenuHazeState: HazeState? = null,
+    plusBlurMenuHazeStyle: dev.chrisbanes.haze.HazeStyle = dev.chrisbanes.haze.HazeStyle.Unspecified
 ) {
     PasswordListMainPane(
         canCollapseExpandedGroups = canCollapseExpandedGroups,
@@ -2022,6 +2047,8 @@ private fun PasswordListMainPaneHost(
         categoryQuickFilterShortcuts = categoryQuickFilterShortcuts,
         quickFolderShortcuts = quickFolderShortcuts,
         quickFolderStyle = quickFolderStyle,
+        plusBlurMenuHazeState = plusBlurMenuHazeState,
+        plusBlurMenuHazeStyle = plusBlurMenuHazeStyle,
         renderPasswordRows = {
             passwordPageListRows(
                 passwordPageListItems = passwordPageListItems,
@@ -2062,7 +2089,8 @@ private fun PasswordListMainPaneHost(
                 context = context,
                 passwordEntries = passwordEntries,
                 aggregateConfig = aggregateConfig,
-                aggregateUiState = aggregateUiState
+                aggregateUiState = aggregateUiState,
+                decryptAuthenticatorKey = decryptAuthenticatorKey
             )
         }
     )

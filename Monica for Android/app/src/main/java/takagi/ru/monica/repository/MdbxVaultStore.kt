@@ -28,6 +28,7 @@ import takagi.ru.monica.data.SecureItemDao
 import takagi.ru.monica.attachments.model.Attachment
 import takagi.ru.monica.mdbx.MdbxDiagLogger
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.utils.OneDriveMdbxFileSource
 import takagi.ru.monica.utils.WebDavMdbxFileSource
 import java.io.File
@@ -1899,7 +1900,14 @@ class MdbxVaultStore(
             .put("bound_note_room_id", entry.boundNoteId)
             .put("bound_note_entry_id", resolveBoundNoteEntryId(entry))
             .put("login_type", entry.loginType)
-            .put("authenticator_key", entry.authenticatorKey)
+            .put(
+                "authenticator_key",
+                portableSensitiveValueForMdbx(
+                    value = entry.authenticatorKey,
+                    fieldName = "authenticator_key",
+                    roomId = entry.id
+                )
+            )
             .put("passkey_bindings", entry.passkeyBindings)
             .put("custom_fields", passwordCustomFieldsPayload(entry.id))
             .put("bitwarden_mode", entry.bitwardenVaultId != null)
@@ -1942,7 +1950,14 @@ class MdbxVaultStore(
             .put("kind", item.itemType.name.lowercase())
             .put("room_id", item.id)
             .put("notes", item.notes)
-            .put("item_data", item.itemData)
+            .put(
+                "item_data",
+                portableSensitiveValueForMdbx(
+                    value = item.itemData,
+                    fieldName = "item_data",
+                    roomId = item.id
+                )
+            )
             .put("image_paths", item.imagePaths)
             .put("category_id", item.categoryId)
             .put("mdbx_folder_id", item.mdbxFolderId)
@@ -1958,6 +1973,23 @@ class MdbxVaultStore(
             payloadJson = payload.toString(),
             deleted = item.isDeleted
         )
+    }
+
+    private fun portableSensitiveValueForMdbx(
+        value: String,
+        fieldName: String,
+        roomId: Long
+    ): String {
+        if (value.isBlank() || !securityManager.looksLikeMonicaCiphertext(value)) {
+            return value
+        }
+
+        return runCatching { securityManager.decryptData(value) }.getOrElse { error ->
+            throw IllegalStateException(
+                "Cannot write encrypted $fieldName for Room item $roomId into MDBX without decrypting it",
+                error
+            )
+        }
     }
 
     private fun passkeyEntryMutation(passkey: PasskeyEntry): MdbxEntryMutation? {
@@ -6489,9 +6521,11 @@ class MdbxVaultStore(
 
     private suspend fun resolveBoundPasswordEntryId(item: SecureItem): String? {
         if (item.itemType != ItemType.TOTP) return null
-        val data = runCatching {
-            kotlinx.serialization.json.Json.decodeFromString<takagi.ru.monica.data.model.TotpData>(item.itemData)
-        }.getOrNull() ?: return null
+        val data = TotpDataResolver.parseStoredItemData(
+            itemData = item.itemData,
+            fallbackIssuer = item.title,
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+        ) ?: return null
         val passwordId = data.boundPasswordId ?: return null
         val password = passwordEntryDao?.getPasswordEntryById(passwordId) ?: return null
         return passwordObjectId(password)

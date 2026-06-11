@@ -23,7 +23,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.CommonAccountPreferences
@@ -128,6 +130,7 @@ fun AddEditDocumentScreen(
     var identityDetailsExpanded by rememberSaveable { mutableStateOf(false) }
     var addressDetailsExpanded by rememberSaveable { mutableStateOf(false) }
     var showCommonNamePicker by rememberSaveable { mutableStateOf(false) }
+    var shouldLoadCommonNameAnalysis by rememberSaveable { mutableStateOf(false) }
     
     // 防止重复点击保存按钮
     var isSaving by remember { mutableStateOf(false) }
@@ -149,13 +152,22 @@ fun AddEditDocumentScreen(
     var currentReplicaGroupId by rememberSaveable { mutableStateOf<String?>(null) }
     var showStorageTargetSheet by remember { mutableStateOf(false) }
     var hasLoadedExistingDocumentFields by rememberSaveable(documentId) { mutableStateOf(false) }
-    val commonNameSuggestions = rememberCommonNameSuggestionState(database)
+    val commonNameSuggestions = rememberCommonNameSuggestionState(
+        database = database,
+        includeAnalyzedItems = shouldLoadCommonNameAnalysis || showCommonNamePicker
+    )
     val commonNameType = stringResource(R.string.common_account_type_name)
+    val showCommonNameAction = !shouldLoadCommonNameAnalysis ||
+        commonNameSuggestions.hasAny ||
+        fullName.isNotBlank()
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val mdbxDatabases by database.localMdbxDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
-    val allDocuments by viewModel.allDocuments.collectAsState(initial = emptyList())
+    val allDocumentsFlow = remember(documentId, viewModel) {
+        if (documentId != null) viewModel.allDocuments else flowOf(emptyList())
+    }
+    val allDocuments by allDocumentsFlow.collectAsState(initial = emptyList())
     val rememberedStorageTarget by settingsManager
         .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.DOCUMENT)
         .collectAsState(initial = null as RememberedStorageTarget?)
@@ -324,7 +336,15 @@ fun AddEditDocumentScreen(
     LaunchedEffect(documentId) {
         if (documentId != null) {
             if (hasLoadedExistingDocumentFields) return@LaunchedEffect
-            viewModel.getDocumentById(documentId)?.let { item ->
+            withContext(Dispatchers.IO) {
+                viewModel.getDocumentById(documentId)
+            }?.let { item ->
+                val parsedImagePaths = withContext(Dispatchers.Default) {
+                    parseSecureItemImagePaths(item.imagePaths)
+                }
+                val parsedDocumentData = withContext(Dispatchers.Default) {
+                    viewModel.parseDocumentData(item.itemData)
+                }
                 title = item.title
                 notes = item.notes
                 isFavorite = item.isFavorite
@@ -334,23 +354,10 @@ fun AddEditDocumentScreen(
                 bitwardenVaultId = item.bitwardenVaultId
                 bitwardenFolderId = item.bitwardenFolderId
                 currentReplicaGroupId = item.replicaGroupId
-                
-                // 解析图片路径
-                try {
-                    if (item.imagePaths.isNotBlank()) {
-                        val pathsList = Json.decodeFromString<List<String>>(item.imagePaths)
-                        if (pathsList.isNotEmpty() && pathsList[0].isNotBlank()) {
-                            frontImageFileName = pathsList[0]
-                        }
-                        if (pathsList.size > 1 && pathsList[1].isNotBlank()) {
-                            backImageFileName = pathsList[1]
-                        }
-                    }
-                } catch (e: Exception) {
-                    // 忽略解析错误
-                }
-                
-                viewModel.parseDocumentData(item.itemData)?.let { data -> 
+                frontImageFileName = parsedImagePaths.first
+                backImageFileName = parsedImagePaths.second
+
+                parsedDocumentData?.let { data ->
                     documentNumber = data.documentNumber
                     fullName = data.displayFullName()
                     issuedDate = data.issuedDate
@@ -441,9 +448,10 @@ fun AddEditDocumentScreen(
         existingReplicaTargetKeys = selectedTargets.map(StorageTarget::stableKey).toSet()
     }
 
-    val canSave = documentNumber.isNotBlank() && !isSaving
+    val isExistingDocumentReady = documentId == null || hasLoadedExistingDocumentFields
+    val canSave = isExistingDocumentReady && documentNumber.isNotBlank() && !isSaving
     val save: () -> Unit = saveAction@{
-        if (isSaving || documentNumber.isBlank()) return@saveAction
+        if (!isExistingDocumentReady || isSaving || documentNumber.isBlank()) return@saveAction
         isSaving = true // 防止重复点击
         val availableMdbxDatabaseIds = mdbxDatabases.map { it.id }.toSet()
         val effectiveTargets = selectedStorageTargets
@@ -561,31 +569,37 @@ fun AddEditDocumentScreen(
         onToggleFavoriteActionChanged?.invoke(toggleFavoriteAction)
     }
     val screenContent: @Composable (PaddingValues) -> Unit = { paddingValues ->
-        Column(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            MultiStorageTargetSelectorCard(
-                selectedTargets = selectedStorageTargets,
-                existingTargetKeys = existingReplicaTargetKeys,
-                categories = categories,
-                keepassDatabases = keepassDatabases,
-                mdbxDatabases = mdbxDatabases,
-                bitwardenVaults = bitwardenVaults,
-                bitwardenFolderDao = database.bitwardenFolderDao(),
-                isEditing = documentId != null,
-                onAddTargetClick = { showStorageTargetSheet = true },
-                onRemoveTarget = ::removeSelectedStorageTarget
+        if (!isExistingDocumentReady) {
+            DocumentEditLoadingPlaceholder(
+                modifier = modifier,
+                paddingValues = paddingValues
             )
+        } else {
+            Column(
+                modifier = modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                MultiStorageTargetSelectorCard(
+                    selectedTargets = selectedStorageTargets,
+                    existingTargetKeys = existingReplicaTargetKeys,
+                    categories = categories,
+                    keepassDatabases = keepassDatabases,
+                    mdbxDatabases = mdbxDatabases,
+                    bitwardenVaults = bitwardenVaults,
+                    bitwardenFolderDao = database.bitwardenFolderDao(),
+                    isEditing = documentId != null,
+                    onAddTargetClick = { showStorageTargetSheet = true },
+                    onRemoveTarget = ::removeSelectedStorageTarget
+                )
 
-            // Basic Info
-            InfoCard(title = stringResource(R.string.section_basic_info)) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Basic Info
+                InfoCard(title = stringResource(R.string.section_basic_info)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Title
                     OutlinedTextField(
                         value = title,
@@ -706,8 +720,11 @@ fun AddEditDocumentScreen(
                         placeholder = { Text(stringResource(R.string.holder_name_example)) },
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
                         trailingIcon = {
-                            if (commonNameSuggestions.hasAny || fullName.isNotBlank()) {
-                                IconButton(onClick = { showCommonNamePicker = true }) {
+                            if (showCommonNameAction) {
+                                IconButton(onClick = {
+                                    shouldLoadCommonNameAnalysis = true
+                                    showCommonNamePicker = true
+                                }) {
                                     Icon(
                                         imageVector = Icons.Default.PersonAdd,
                                         contentDescription = stringResource(R.string.common_name_fill_title),
@@ -880,6 +897,7 @@ fun AddEditDocumentScreen(
             }
         }
     }
+    }
 
     if (showTopBar || showFab) {
         Scaffold(
@@ -1013,6 +1031,78 @@ fun AddEditDocumentScreen(
         getKeePassGroups = localKeePassViewModel::getGroups,
         onDismiss = { showStorageTargetSheet = false },
         onSelectedTargetsChange = ::setSelectedStorageTargets
+    )
+}
+
+private fun parseSecureItemImagePaths(imagePaths: String): Pair<String?, String?> {
+    if (imagePaths.isBlank()) return null to null
+    return runCatching {
+        val paths = Json.decodeFromString<List<String>>(imagePaths)
+        paths.getOrNull(0)?.takeIf { it.isNotBlank() } to
+            paths.getOrNull(1)?.takeIf { it.isNotBlank() }
+    }.getOrDefault(null to null)
+}
+
+@Composable
+private fun DocumentEditLoadingPlaceholder(
+    modifier: Modifier = Modifier,
+    paddingValues: PaddingValues
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(paddingValues)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        LoadingPlaceholderCard(lines = 2)
+        LoadingPlaceholderCard(lines = 4)
+        LoadingPlaceholderCard(lines = 3)
+        LoadingPlaceholderCard(lines = 2)
+    }
+}
+
+@Composable
+private fun LoadingPlaceholderCard(lines: Int) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            LoadingPlaceholderBar(widthFraction = 0.38f, height = 18.dp)
+            repeat(lines) { index ->
+                LoadingPlaceholderBar(
+                    widthFraction = when (index % 3) {
+                        0 -> 0.88f
+                        1 -> 0.72f
+                        else -> 0.52f
+                    },
+                    height = 44.dp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoadingPlaceholderBar(
+    widthFraction: Float,
+    height: androidx.compose.ui.unit.Dp
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth(widthFraction)
+            .height(height),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f),
+        content = {}
     )
 }
 

@@ -17,6 +17,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.util.TotpDataResolver
 import java.util.Date
 
@@ -45,9 +46,24 @@ class BitwardenHistoricalTotpRepairService(
     private val database = PasswordDatabase.getDatabase(context)
     private val passwordEntryDao = database.passwordEntryDao()
     private val secureItemDao = database.secureItemDao()
+    private val securityManager = SecurityManager(context.applicationContext)
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
+    }
+
+    private fun decryptStoredSensitiveValue(value: String): String {
+        return runCatching {
+            securityManager.decryptDataIfMonicaCiphertext(value)
+        }.getOrDefault(value)
+    }
+
+    private fun encodeStoredSensitiveValueForRewrite(originalValue: String, plainValue: String): String {
+        return if (securityManager.looksLikeMonicaCiphertext(originalValue)) {
+            securityManager.encryptDataLegacyCompat(plainValue)
+        } else {
+            plainValue
+        }
     }
 
     suspend fun repairHistoricalTotp(
@@ -114,7 +130,8 @@ class BitwardenHistoricalTotpRepairService(
             fallbackAccountName = remote.username
         ) ?: return repairStandaloneTotpItemFromLocal(item, now)
 
-        val normalizedItemData = json.encodeToString(normalizedData)
+        val normalizedItemDataPlain = json.encodeToString(normalizedData)
+        val normalizedItemData = encodeStoredSensitiveValueForRewrite(item.itemData, normalizedItemDataPlain)
         val normalizedPayload = TotpDataResolver.toBitwardenPayload(remote.displayName, normalizedData)
         val shouldQueueRemoteRewrite = shouldQueueRemoteRewrite(remote.totpRaw, normalizedPayload)
 
@@ -153,8 +170,9 @@ class BitwardenHistoricalTotpRepairService(
             fallbackAccountName = remote.username
         ) ?: return repairBoundPasswordTotpFromLocal(entry, now)
 
-        val normalizedPayload = TotpDataResolver.toBitwardenPayload(remote.displayName, normalizedTotp)
-        val shouldQueueRemoteRewrite = shouldQueueRemoteRewrite(remote.totpRaw, normalizedPayload)
+        val normalizedPayloadPlain = TotpDataResolver.toBitwardenPayload(remote.displayName, normalizedTotp)
+        val normalizedPayload = encodeStoredSensitiveValueForRewrite(entry.authenticatorKey, normalizedPayloadPlain)
+        val shouldQueueRemoteRewrite = shouldQueueRemoteRewrite(remote.totpRaw, normalizedPayloadPlain)
 
         val updatedEntry = BitwardenHistoricalRepairStateHelper.applyToPasswordEntry(
             candidate = entry.copy(
@@ -180,13 +198,15 @@ class BitwardenHistoricalTotpRepairService(
     ): RepairOutcome {
         val normalizedData = TotpDataResolver.parseStoredItemData(
             itemData = item.itemData,
-            fallbackIssuer = item.title
+            fallbackIssuer = item.title,
+            decryptIfNeeded = ::decryptStoredSensitiveValue
         ) ?: return RepairOutcome.Skipped
 
-        val normalizedItemData = json.encodeToString(normalizedData)
+        val normalizedItemDataPlain = json.encodeToString(normalizedData)
+        val normalizedItemData = encodeStoredSensitiveValueForRewrite(item.itemData, normalizedItemDataPlain)
         val shouldQueueRemoteRewrite =
             (item.bitwardenCipherId != null) && (
-                item.itemData.contains("://", ignoreCase = true) ||
+                decryptStoredSensitiveValue(item.itemData).contains("://", ignoreCase = true) ||
                     TotpDataResolver.hasNonDefaultOtpSettings(normalizedData)
                 )
 
@@ -216,15 +236,16 @@ class BitwardenHistoricalTotpRepairService(
         }
 
         val normalizedTotp = TotpDataResolver.fromAuthenticatorKey(
-            rawKey = entry.authenticatorKey,
+            rawKey = decryptStoredSensitiveValue(entry.authenticatorKey),
             fallbackIssuer = entry.website.takeIf { it.isNotBlank() } ?: entry.title,
             fallbackAccountName = entry.username.takeIf { it.isNotBlank() } ?: entry.title
         ) ?: return RepairOutcome.Skipped
 
-        val normalizedPayload = TotpDataResolver.toBitwardenPayload(entry.title, normalizedTotp)
+        val normalizedPayloadPlain = TotpDataResolver.toBitwardenPayload(entry.title, normalizedTotp)
+        val normalizedPayload = encodeStoredSensitiveValueForRewrite(entry.authenticatorKey, normalizedPayloadPlain)
         val shouldQueueRemoteRewrite =
             (entry.bitwardenCipherId != null) && (
-                entry.authenticatorKey.contains("://", ignoreCase = true) ||
+                decryptStoredSensitiveValue(entry.authenticatorKey).contains("://", ignoreCase = true) ||
                     TotpDataResolver.hasNonDefaultOtpSettings(normalizedTotp)
                 )
 

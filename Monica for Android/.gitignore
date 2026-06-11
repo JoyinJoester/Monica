@@ -1,5 +1,6 @@
 *.iml
 .gradle
+.gradle-user-home/
 .idea/
 .kotlin/
 /local.properties
@@ -29,3 +30,9 @@ installed-monica.apk
 # Kiro files
 *.kiro
 .kiro
+
+# Local scratch files
+gradle_props.txt
+fix_webdav.py
+quick-fix.ps1
+test_crypto.kt

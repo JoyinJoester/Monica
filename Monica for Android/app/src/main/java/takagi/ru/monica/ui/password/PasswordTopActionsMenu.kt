@@ -30,41 +30,74 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
 import takagi.ru.monica.R
+import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.ui.effects.blur.MonicaPlusBlurPopupMenu
 
 internal val PasswordTopActionsMenuOffset = DpOffset(x = 48.dp, y = 6.dp)
+private val PasswordTopActionsMenuShape = RoundedCornerShape(20.dp)
+
+private fun passwordTopActionsMenuLayoutModifier(modifier: Modifier): Modifier {
+    return modifier.widthIn(min = 220.dp, max = 260.dp)
+}
 
 @Composable
 internal fun PasswordTopActionsDropdownMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    plusBlurSettings: AppSettings? = null,
+    plusBlurHazeState: HazeState? = null,
+    plusBlurHazeStyle: HazeStyle = HazeStyle.Unspecified,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     if (!expanded) return
 
+    val usePlusBlurSurface = plusBlurSettings != null
     MaterialTheme(
         shapes = MaterialTheme.shapes.copy(
             extraSmall = RoundedCornerShape(20.dp),
             small = RoundedCornerShape(20.dp)
         )
     ) {
+        if (usePlusBlurSurface) {
+            MonicaPlusBlurPopupMenu(
+                expanded = expanded,
+                onDismissRequest = onDismissRequest,
+                settings = requireNotNull(plusBlurSettings),
+                hazeState = plusBlurHazeState,
+                hazeStyle = plusBlurHazeStyle,
+                offset = PasswordTopActionsMenuOffset,
+                shape = PasswordTopActionsMenuShape,
+                modifier = passwordTopActionsMenuLayoutModifier(modifier)
+            ) {
+                content()
+            }
+            return@MaterialTheme
+        }
+
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = onDismissRequest,
             offset = PasswordTopActionsMenuOffset,
-            modifier = modifier
-                .widthIn(min = 220.dp, max = 260.dp)
-                .shadow(10.dp, RoundedCornerShape(20.dp))
-                .clip(RoundedCornerShape(20.dp))
+            shape = PasswordTopActionsMenuShape,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shadowElevation = 10.dp,
+            tonalElevation = 0.dp,
+            modifier = passwordTopActionsMenuLayoutModifier(modifier)
+                .shadow(10.dp, PasswordTopActionsMenuShape)
+                .clip(PasswordTopActionsMenuShape)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .border(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
-                    shape = RoundedCornerShape(20.dp)
-                ),
-            content = content
-        )
+                    shape = PasswordTopActionsMenuShape
+                )
+        ) {
+            content()
+        }
     }
 }
 

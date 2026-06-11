@@ -17,7 +17,6 @@ import androidx.compose.ui.unit.sp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.BankCardData
-import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.formatForDisplay
@@ -40,23 +39,19 @@ fun BankCardCard(
     onMoveDown: (() -> Unit)? = null,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
-    onLongClick: (() -> Unit)? = null
+    onLongClick: (() -> Unit)? = null,
+    cardData: BankCardData? = null
 ) {
-    // 解析银行卡数据
-    val cardData = CardWalletDataCodec.parseBankCardData(item.itemData)
-        ?: BankCardData(
-            cardNumber = "",
-            cardholderName = "",
-            expiryMonth = "",
-            expiryYear = ""
-        )
-    val billingAddress = remember(cardData.billingAddress) {
-        CardWalletDataCodec.parseBillingAddress(cardData.billingAddress)
+    val resolvedCardData = cardData ?: remember(item.itemData) {
+        CardWalletDataCodec.parseBankCardData(item.itemData) ?: emptyBankCardData()
+    }
+    val billingAddress = remember(resolvedCardData.billingAddress) {
+        CardWalletDataCodec.parseBillingAddress(resolvedCardData.billingAddress)
     }
     val hasBillingAddress = remember(billingAddress) { !billingAddress.isEmpty() }
     
     // 获取对应容器的文字颜色
-    val contentColor = when (cardData.cardType) {
+    val contentColor = when (resolvedCardData.cardType) {
         CardType.CREDIT -> MaterialTheme.colorScheme.onPrimaryContainer
         CardType.DEBIT -> MaterialTheme.colorScheme.onSecondaryContainer
         CardType.PREPAID -> MaterialTheme.colorScheme.onTertiaryContainer
@@ -87,7 +82,7 @@ fun BankCardCard(
             )
         } else {
             CardDefaults.cardColors(
-                containerColor = when (cardData.cardType) {
+                containerColor = when (resolvedCardData.cardType) {
                     CardType.CREDIT -> MaterialTheme.colorScheme.primaryContainer
                     CardType.DEBIT -> MaterialTheme.colorScheme.secondaryContainer
                     CardType.PREPAID -> MaterialTheme.colorScheme.tertiaryContainer
@@ -112,9 +107,9 @@ fun BankCardCard(
                         fontWeight = FontWeight.Bold,
                         color = contentColor
                     )
-                    if (cardData.bankName.isNotBlank()) {
+                    if (resolvedCardData.bankName.isNotBlank()) {
                         Text(
-                            text = cardData.bankName,
+                            text = resolvedCardData.bankName,
                             style = MaterialTheme.typography.bodySmall,
                             color = contentColor.copy(alpha = 0.7f)
                         )
@@ -256,7 +251,7 @@ fun BankCardCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = maskCardNumber(cardData.cardNumber),
+                    text = maskCardNumber(resolvedCardData.cardNumber),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 2.sp,
@@ -265,12 +260,12 @@ fun BankCardCard(
                 
                 // 卡类型图标
                 Icon(
-                    when (cardData.cardType) {
+                    when (resolvedCardData.cardType) {
                         CardType.CREDIT -> Icons.Default.CreditCard
                         CardType.DEBIT -> Icons.Default.AccountBalance
                         CardType.PREPAID -> Icons.Default.CardGiftcard
                     },
-                    contentDescription = cardData.cardType.name,
+                    contentDescription = resolvedCardData.cardType.name,
                     modifier = Modifier.size(32.dp),
                     tint = contentColor
                 )
@@ -283,7 +278,7 @@ fun BankCardCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                if (cardData.cardholderName.isNotBlank()) {
+                if (resolvedCardData.cardholderName.isNotBlank()) {
                     Column {
                         Text(
                             text = stringResource(R.string.cardholder_label),
@@ -292,7 +287,7 @@ fun BankCardCard(
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = cardData.cardholderName,
+                            text = resolvedCardData.cardholderName,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = contentColor
@@ -300,7 +295,7 @@ fun BankCardCard(
                     }
                 }
                 
-                if (cardData.expiryMonth.isNotBlank() && cardData.expiryYear.isNotBlank()) {
+                if (resolvedCardData.expiryMonth.isNotBlank() && resolvedCardData.expiryYear.isNotBlank()) {
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             text = stringResource(R.string.expiry_label),
@@ -309,7 +304,7 @@ fun BankCardCard(
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = "${cardData.expiryMonth}/${cardData.expiryYear}",
+                            text = "${resolvedCardData.expiryMonth}/${resolvedCardData.expiryYear}",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = contentColor
@@ -337,6 +332,13 @@ fun BankCardCard(
         }
     }
 }
+
+private fun emptyBankCardData() = BankCardData(
+    cardNumber = "",
+    cardholderName = "",
+    expiryMonth = "",
+    expiryYear = ""
+)
 
 /**
  * 卡号脱敏处理

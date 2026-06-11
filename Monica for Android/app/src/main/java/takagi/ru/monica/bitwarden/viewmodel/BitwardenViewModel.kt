@@ -7,6 +7,8 @@ import android.net.NetworkCapabilities
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.api.BitwardenTlsConfig
 import takagi.ru.monica.bitwarden.cache.BitwardenOfflineSecretCache
@@ -67,6 +70,8 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     companion object {
         private const val TAG = "BitwardenViewModel"
         private const val COLD_START_AUTO_SYNC_GRACE_MS = 8_000L
+        private const val SILENT_SYNC_UI_REFRESH_DELAY_MS = 1_500L
+        private const val SILENT_SYNC_CACHE_WARM_DELAY_MS = 12_000L
     }
     
     // 仓库
@@ -83,6 +88,8 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     private var pendingServerUrl: String? = null
     private var pendingTlsConfig: BitwardenTlsConfig? = null
     private val processStartMs = System.currentTimeMillis()
+    private var silentPostSyncRefreshJob: Job? = null
+    private val silentCacheWarmJobs = mutableMapOf<Long, Job>()
     
     // ==================== UI 状态 ====================
     
@@ -1439,7 +1446,11 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
 
             is BitwardenCoordinatedSyncResult.Completed -> when (val result = coordinatedResult.result) {
             is BitwardenRepository.SyncResult.Success -> {
-                val warmedCount = warmBitwardenOfflineSecretCacheForVault(vault.id)
+                val warmedCount = if (silent) {
+                    0
+                } else {
+                    warmBitwardenOfflineSecretCacheForVault(vault.id)
+                }
                 val offlineReadyCount = maxOf(result.availableOfflineCount, warmedCount)
                 val syncSummary = BitwardenSyncSummary(
                     vaultId = vault.id,
@@ -1475,12 +1486,17 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                         skippedDueToLocalDirtyCount = result.skippedDueToLocalDirtyCount
                     )
                 }
-                refreshVaultListSnapshot()
-                if (_activeVault.value?.id == vault.id) {
-                    loadVaultData(vault.id)
+                if (silent) {
+                    scheduleSilentPostSyncRefresh(vault.id)
+                    scheduleSilentOfflineCacheWarm(vault.id)
                 } else {
-                    // 即使同步的不是当前活跃 Vault，跨账号 Send 视图也要随之刷新。
-                    refreshSendsAcrossVaults()
+                    refreshVaultListSnapshot()
+                    if (_activeVault.value?.id == vault.id) {
+                        loadVaultData(vault.id)
+                    } else {
+                        // 即使同步的不是当前活跃 Vault，跨账号 Send 视图也要随之刷新。
+                        refreshSendsAcrossVaults()
+                    }
                 }
 
                 if (!silent) {
@@ -1551,6 +1567,35 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 SyncExecutionOutcome.FatalError("空 Vault 保护已触发")
             }
         }
+        }
+    }
+
+    private fun scheduleSilentPostSyncRefresh(vaultId: Long) {
+        viewModelScope.launch {
+            silentPostSyncRefreshJob?.cancel()
+            silentPostSyncRefreshJob = launch {
+                delay(SILENT_SYNC_UI_REFRESH_DELAY_MS)
+                refreshVaultListSnapshot()
+                if (_activeVault.value?.id == vaultId) {
+                    loadVaultData(vaultId)
+                } else {
+                    refreshSendsAcrossVaults()
+                }
+            }
+        }
+    }
+
+    private fun scheduleSilentOfflineCacheWarm(vaultId: Long) {
+        viewModelScope.launch {
+            silentCacheWarmJobs.remove(vaultId)?.cancel()
+            val job = launch {
+                delay(SILENT_SYNC_CACHE_WARM_DELAY_MS)
+                withContext(Dispatchers.IO) {
+                    warmBitwardenOfflineSecretCacheForVault(vaultId)
+                }
+                silentCacheWarmJobs.remove(vaultId)
+            }
+            silentCacheWarmJobs[vaultId] = job
         }
     }
 

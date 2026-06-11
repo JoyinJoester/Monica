@@ -13,7 +13,7 @@ object AccountFillPolicy {
         securityManager: SecurityManager
     ): String {
         return try {
-            if (entry.username.contains("==") && entry.username.length > 20) {
+            if (looksEncryptedPayload(entry.username)) {
                 securityManager.decryptData(entry.username)
             } else {
                 entry.username
@@ -42,6 +42,7 @@ object AccountFillPolicy {
     private fun looksEncryptedPayload(value: String): Boolean {
         return value.startsWith("V2|") ||
             value.startsWith("MDK|") ||
+            value.startsWith("C2|") ||
             (value.contains("==") && value.length > 20)
     }
 }

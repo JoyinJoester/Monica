@@ -98,7 +98,11 @@ class AutofillSaveTransparentActivity : ComponentActivity() {
             passwordHistoryDao = database.passwordHistoryDao(),
             mdbxRepository = mdbxRepository,
         )
-        val secureItemRepository = SecureItemRepository(database.secureItemDao(), mdbxRepository)
+        val secureItemRepository = SecureItemRepository(
+            database.secureItemDao(),
+            mdbxRepository,
+            securityManager::decryptDataIfMonicaCiphertext
+        )
         val customFieldRepository = CustomFieldRepository(database.customFieldDao())
         val application = applicationContext as Application
 

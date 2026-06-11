@@ -73,11 +73,15 @@ fun rememberPasswordAuthenticatorDisplayState(
     fallbackIssuer: String = "",
     fallbackAccountName: String = "",
     timeOffsetSeconds: Int,
-    smoothProgress: Boolean
+    smoothProgress: Boolean,
+    decryptAuthenticatorKey: ((String) -> String)? = null
 ): PasswordAuthenticatorDisplayState? {
-    val totpData = remember(authenticatorKey, fallbackIssuer, fallbackAccountName) {
+    val totpData = remember(authenticatorKey, fallbackIssuer, fallbackAccountName, decryptAuthenticatorKey) {
+        val resolvedAuthenticatorKey = decryptAuthenticatorKey?.let { decrypt ->
+            runCatching { decrypt(authenticatorKey) }.getOrDefault(authenticatorKey)
+        } ?: authenticatorKey
         parsePasswordAuthenticatorTotpData(
-            authenticatorKey = authenticatorKey,
+            authenticatorKey = resolvedAuthenticatorKey,
             fallbackIssuer = fallbackIssuer,
             fallbackAccountName = fallbackAccountName
         )

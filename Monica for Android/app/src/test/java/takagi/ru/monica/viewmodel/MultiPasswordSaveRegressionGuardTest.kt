@@ -2317,8 +2317,10 @@ class MultiPasswordSaveRegressionGuardTest {
                 mixedMoveSupportSource.contains("viewModel.copyBoundTotpsForPasswordCopies(idPairs)")
         )
         assertTrue(
-            "MDBX password payload should retain authenticator_key so refresh/import does not strip the copied login's own TOTP field.",
-            mdbxStoreSource.contains(".put(\"authenticator_key\", entry.authenticatorKey)")
+            "MDBX password payload should retain authenticator_key, but it must pass through the portable write boundary so local-only ciphertext is never synced into MDBX.",
+            mdbxStoreSource.contains("\"authenticator_key\",") &&
+                mdbxStoreSource.contains("portableSensitiveValueForMdbx(") &&
+                !mdbxStoreSource.contains(".put(\"authenticator_key\", entry.authenticatorKey)")
         )
     }
 
@@ -3021,15 +3023,46 @@ class MultiPasswordSaveRegressionGuardTest {
 
         assertTrue(
             "Successful Bitwarden full-sync raw logging must use a lightweight summary; re-encoding the full vault JSON causes large-object GC storms during rapid page changes.",
-            successFullSyncCapture.contains("responseBody = buildSyncFullRawSummary(syncResponse)") &&
+            successFullSyncCapture.contains("val rawForensicsEnabled = runCatching") &&
+                successFullSyncCapture.contains("BitwardenSyncForensicsLogger.isRawCaptureEnabled(context)") &&
+                successFullSyncCapture.contains("if (rawForensicsEnabled)") &&
+                successFullSyncCapture.contains("responseBody = buildSyncFullRawSummary(syncResponse)") &&
                 syncServiceSource.contains("private fun buildSyncFullRawSummary(response: SyncResponse): String") &&
                 syncServiceSource.contains("data class SyncFullRawSummary") &&
                 syncServiceSource.contains("rawResponseOmitted: Boolean = true") &&
                 syncServiceSource.contains("per-cipher snapshots are captured separately")
         )
+        assertTrue(
+            "The raw full-sync summary must only be built after the raw forensics gate is open.",
+            successFullSyncCapture.indexOf("if (rawForensicsEnabled)") <
+                successFullSyncCapture.indexOf("buildSyncFullRawSummary(syncResponse)")
+        )
         assertFalse(
             "Do not bring back json.encodeToString(syncResponse) in the sync_full success raw log path.",
             successFullSyncCapture.contains("json.encodeToString(syncResponse)")
+        )
+    }
+
+    @Test
+    fun bitwardenPerCipherRawSnapshotsAreGatedAndBounded() {
+        val forensicsSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/bitwarden/service/BitwardenSyncForensicsLogger.kt"
+        ).readText()
+        val snapshotBody = forensicsSource.substringAfter("suspend fun captureSyncCipherSnapshots(")
+            .substringBefore("fun exportPersistedLogs")
+
+        assertTrue(
+            "Per-cipher raw snapshots must be behind the raw forensics switches; otherwise normal full sync can allocate and encrypt hundreds of large JSON payloads.",
+            forensicsSource.contains("suspend fun isRawCaptureEnabled(context: Context)") &&
+                forensicsSource.contains("settings.bitwardenSyncForensicsEnabled && settings.bitwardenSyncForensicsRawCaptureEnabled") &&
+            snapshotBody.contains("settings.bitwardenSyncForensicsEnabled") &&
+                snapshotBody.contains("settings.bitwardenSyncForensicsRawCaptureEnabled") &&
+                snapshotBody.contains("return@withContext")
+        )
+        assertTrue(
+            "Per-cipher raw snapshots must be bounded per sync run to prevent GC storms when a large vault is refreshed.",
+            forensicsSource.contains("MAX_SYNC_CIPHER_SNAPSHOTS_PER_RUN") &&
+                snapshotBody.contains(".take(MAX_SYNC_CIPHER_SNAPSHOTS_PER_RUN)")
         )
     }
 

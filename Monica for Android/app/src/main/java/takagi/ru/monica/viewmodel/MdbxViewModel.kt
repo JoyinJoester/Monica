@@ -41,7 +41,6 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordEntryDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.SecureItemDao
-import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.mdbx.MdbxDiagLogger
 import takagi.ru.monica.repository.MdbxConflictResolution
 import takagi.ru.monica.repository.MdbxConflictSummary
@@ -74,6 +73,7 @@ import takagi.ru.monica.utils.OneDriveAuthManager
 import takagi.ru.monica.utils.OneDriveKeePassFileSource
 import takagi.ru.monica.utils.OneDriveMdbxFileSource
 import takagi.ru.monica.utils.WebDavMdbxFileSource
+import takagi.ru.monica.util.TotpDataResolver
 import java.io.File
 import java.text.Normalizer
 import java.util.Date
@@ -2646,7 +2646,10 @@ class MdbxViewModel(
             mdbxDatabaseId = databaseId,
             mdbxFolderId = payload.optMdbxFolderId(),
             replicaGroupId = stored.entryId,
-            authenticatorKey = payload.optString("authenticator_key"),
+            authenticatorKey = encodeMdbxSensitiveValueForLocalStorage(
+                value = payload.optString("authenticator_key"),
+                itemType = ItemType.TOTP
+            ),
             passkeyBindings = payload.optString("passkey_bindings"),
             loginType = payload.optString("login_type", "PASSWORD"),
             createdAt = existing?.createdAt ?: Date(),
@@ -2727,12 +2730,16 @@ class MdbxViewModel(
         } else {
             payload.optString("item_data")
         }
+        val storedItemData = encodeMdbxSensitiveValueForLocalStorage(
+            value = itemData,
+            itemType = itemType
+        )
         val item = SecureItem(
             id = existing?.id ?: 0L,
             itemType = itemType,
             title = stored.title,
             notes = payload.optString("notes"),
-            itemData = itemData,
+            itemData = storedItemData,
             imagePaths = payload.optString("image_paths"),
             categoryId = existing?.categoryId,
             mdbxDatabaseId = databaseId,
@@ -2761,8 +2768,35 @@ class MdbxViewModel(
             ?: return itemData
         val localPasswordId = importedPasswordIds[boundPasswordEntryId] ?: return itemData
         return runCatching {
-            Json.encodeToString(Json.decodeFromString<TotpData>(itemData).copy(boundPasswordId = localPasswordId))
+            val decoded = TotpDataResolver.parseStoredItemData(
+                itemData = itemData,
+                decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+            ) ?: return@runCatching itemData
+            val remappedJson = Json.encodeToString(decoded.copy(boundPasswordId = localPasswordId))
+            if (securityManager.looksLikeMonicaCiphertext(itemData)) {
+                securityManager.encryptDataLegacyCompat(remappedJson)
+            } else {
+                remappedJson
+            }
         }.getOrDefault(itemData)
+    }
+
+    private fun encodeMdbxSensitiveValueForLocalStorage(
+        value: String,
+        itemType: ItemType
+    ): String {
+        if (value.isBlank()) return value
+        if (
+            itemType != ItemType.TOTP &&
+            itemType != ItemType.BANK_CARD &&
+            itemType != ItemType.DOCUMENT
+        ) {
+            return value
+        }
+        if (securityManager.looksLikeMonicaCiphertext(value)) {
+            return value
+        }
+        return securityManager.encryptDataLegacyCompat(value)
     }
 
     private suspend fun restoreImportedBindings(

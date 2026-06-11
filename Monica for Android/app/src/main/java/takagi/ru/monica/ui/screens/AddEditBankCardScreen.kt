@@ -32,7 +32,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -142,6 +144,7 @@ fun AddEditBankCardScreen(
     var billingAddress by remember { mutableStateOf(BillingAddress()) }
     var showBillingAddressDialog by remember { mutableStateOf(false) }
     var customFields by remember { mutableStateOf<List<CustomFieldDraft>>(emptyList()) }
+    var shouldLoadCommonNameAnalysis by rememberSaveable { mutableStateOf(false) }
     
     // 防止重复点击保存按钮
     var isSaving by remember { mutableStateOf(false) }
@@ -162,7 +165,10 @@ fun AddEditBankCardScreen(
     var currentReplicaGroupId by rememberSaveable { mutableStateOf<String?>(null) }
     var showStorageTargetSheet by remember { mutableStateOf(false) }
     var hasLoadedExistingCardFields by rememberSaveable(cardId) { mutableStateOf(false) }
-    val commonNameSuggestions = rememberCommonNameSuggestionState(database)
+    val commonNameSuggestions = rememberCommonNameSuggestionState(
+        database = database,
+        includeAnalyzedItems = shouldLoadCommonNameAnalysis || showCommonNamePicker
+    )
     val commonNameType = stringResource(R.string.common_account_type_name)
     val inlineCardholderSuggestion = remember(commonNameSuggestions) {
         commonNameSuggestions.firstInlineSuggestion()
@@ -170,11 +176,17 @@ fun AddEditBankCardScreen(
     val inlineCardholderSuggestionVisible = isCardholderNameFocused &&
         cardholderName.isBlank() &&
         inlineCardholderSuggestion != null
+    val showCommonNameAction = !shouldLoadCommonNameAnalysis ||
+        commonNameSuggestions.hasAny ||
+        cardholderName.isNotBlank()
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val mdbxDatabases by database.localMdbxDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
-    val allCards by viewModel.allCards.collectAsState(initial = emptyList())
+    val allCardsFlow = remember(cardId, viewModel) {
+        if (cardId != null) viewModel.allCards else flowOf(emptyList())
+    }
+    val allCards by allCardsFlow.collectAsState(initial = emptyList())
     val rememberedStorageTarget by settingsManager
         .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.BANK_CARD)
         .collectAsState(initial = null as RememberedStorageTarget?)
@@ -343,7 +355,15 @@ fun AddEditBankCardScreen(
     LaunchedEffect(cardId) {
         if (cardId != null) {
             if (hasLoadedExistingCardFields) return@LaunchedEffect
-            viewModel.getCardById(cardId)?.let { item ->
+            withContext(Dispatchers.IO) {
+                viewModel.getCardById(cardId)
+            }?.let { item ->
+                val parsedImagePaths = withContext(Dispatchers.Default) {
+                    parseSecureItemImagePaths(item.imagePaths)
+                }
+                val parsedCardData = withContext(Dispatchers.Default) {
+                    viewModel.parseCardData(item.itemData)
+                }
                 title = item.title
                 notes = item.notes
                 isFavorite = item.isFavorite
@@ -353,23 +373,10 @@ fun AddEditBankCardScreen(
                 bitwardenVaultId = item.bitwardenVaultId
                 bitwardenFolderId = item.bitwardenFolderId
                 currentReplicaGroupId = item.replicaGroupId
-                
-                // 解析图片路径
-                try {
-                    if (item.imagePaths.isNotBlank()) {
-                        val pathsList = Json.decodeFromString<List<String>>(item.imagePaths)
-                        if (pathsList.isNotEmpty() && pathsList[0].isNotBlank()) {
-                            frontImageFileName = pathsList[0]
-                        }
-                        if (pathsList.size > 1 && pathsList[1].isNotBlank()) {
-                            backImageFileName = pathsList[1]
-                        }
-                    }
-                } catch (e: Exception) {
-                    // 忽略解析错误
-                }
-                
-                viewModel.parseCardData(item.itemData)?.let { data ->
+                frontImageFileName = parsedImagePaths.first
+                backImageFileName = parsedImagePaths.second
+
+                parsedCardData?.let { data ->
                     cardNumber = data.cardNumber
                     cardholderName = data.cardholderName
                     expiryMonth = data.expiryMonth
@@ -455,9 +462,10 @@ fun AddEditBankCardScreen(
         existingReplicaTargetKeys = selectedTargets.map(StorageTarget::stableKey).toSet()
     }
 
-    val canSave = cardNumber.isNotBlank() && !isSaving
+    val isExistingCardReady = cardId == null || hasLoadedExistingCardFields
+    val canSave = isExistingCardReady && cardNumber.isNotBlank() && !isSaving
     val save: () -> Unit = saveAction@{
-        if (isSaving || cardNumber.isBlank()) return@saveAction
+        if (!isExistingCardReady || isSaving || cardNumber.isBlank()) return@saveAction
         isSaving = true // 防止重复点击
         val availableMdbxDatabaseIds = mdbxDatabases.map { it.id }.toSet()
         val effectiveTargets = selectedStorageTargets
@@ -558,31 +566,37 @@ fun AddEditBankCardScreen(
         onToggleFavoriteActionChanged?.invoke(toggleFavoriteAction)
     }
     val screenContent: @Composable (PaddingValues) -> Unit = { paddingValues ->
-        Column(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            MultiStorageTargetSelectorCard(
-                selectedTargets = selectedStorageTargets,
-                existingTargetKeys = existingReplicaTargetKeys,
-                categories = categories,
-                keepassDatabases = keepassDatabases,
-                mdbxDatabases = mdbxDatabases,
-                bitwardenVaults = bitwardenVaults,
-                bitwardenFolderDao = database.bitwardenFolderDao(),
-                isEditing = cardId != null,
-                onAddTargetClick = { showStorageTargetSheet = true },
-                onRemoveTarget = ::removeSelectedStorageTarget
+        if (!isExistingCardReady) {
+            BankCardEditLoadingPlaceholder(
+                modifier = modifier,
+                paddingValues = paddingValues
             )
+        } else {
+            Column(
+                modifier = modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                MultiStorageTargetSelectorCard(
+                    selectedTargets = selectedStorageTargets,
+                    existingTargetKeys = existingReplicaTargetKeys,
+                    categories = categories,
+                    keepassDatabases = keepassDatabases,
+                    mdbxDatabases = mdbxDatabases,
+                    bitwardenVaults = bitwardenVaults,
+                    bitwardenFolderDao = database.bitwardenFolderDao(),
+                    isEditing = cardId != null,
+                    onAddTargetClick = { showStorageTargetSheet = true },
+                    onRemoveTarget = ::removeSelectedStorageTarget
+                )
 
-            // Basic Information
-            InfoCard(title = stringResource(R.string.section_basic_info)) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Basic Information
+                InfoCard(title = stringResource(R.string.section_basic_info)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Card Name
                     OutlinedTextField(
                         value = title,
@@ -693,8 +707,11 @@ fun AddEditBankCardScreen(
                         placeholder = { Text("ZHANG SAN") },
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
                         trailingIcon = {
-                            if (commonNameSuggestions.hasAny || cardholderName.isNotBlank()) {
-                                IconButton(onClick = { showCommonNamePicker = true }) {
+                            if (showCommonNameAction) {
+                                IconButton(onClick = {
+                                    shouldLoadCommonNameAnalysis = true
+                                    showCommonNamePicker = true
+                                }) {
                                     Icon(
                                         imageVector = Icons.Default.PersonAdd,
                                         contentDescription = stringResource(R.string.common_name_fill_title),
@@ -708,6 +725,9 @@ fun AddEditBankCardScreen(
                             .fillMaxWidth()
                             .onFocusChanged { focusState ->
                                 isCardholderNameFocused = focusState.isFocused
+                                if (focusState.isFocused) {
+                                    shouldLoadCommonNameAnalysis = true
+                                }
                             },
                         singleLine = true,
                         keyboardActions = KeyboardActions(
@@ -1106,6 +1126,7 @@ fun AddEditBankCardScreen(
             }
         }
     }
+    }
 
     if (showTopBar || showFab) {
         Scaffold(
@@ -1352,6 +1373,78 @@ fun AddEditBankCardScreen(
             }
         )
     }
+}
+
+private fun parseSecureItemImagePaths(imagePaths: String): Pair<String?, String?> {
+    if (imagePaths.isBlank()) return null to null
+    return runCatching {
+        val paths = Json.decodeFromString<List<String>>(imagePaths)
+        paths.getOrNull(0)?.takeIf { it.isNotBlank() } to
+            paths.getOrNull(1)?.takeIf { it.isNotBlank() }
+    }.getOrDefault(null to null)
+}
+
+@Composable
+private fun BankCardEditLoadingPlaceholder(
+    modifier: Modifier = Modifier,
+    paddingValues: PaddingValues
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(paddingValues)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        LoadingPlaceholderCard(lines = 2)
+        LoadingPlaceholderCard(lines = 4)
+        LoadingPlaceholderCard(lines = 3)
+        LoadingPlaceholderCard(lines = 2)
+    }
+}
+
+@Composable
+private fun LoadingPlaceholderCard(lines: Int) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            LoadingPlaceholderBar(widthFraction = 0.38f, height = 18.dp)
+            repeat(lines) { index ->
+                LoadingPlaceholderBar(
+                    widthFraction = when (index % 3) {
+                        0 -> 0.88f
+                        1 -> 0.72f
+                        else -> 0.52f
+                    },
+                    height = 44.dp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoadingPlaceholderBar(
+    widthFraction: Float,
+    height: androidx.compose.ui.unit.Dp
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth(widthFraction)
+            .height(height),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f),
+        content = {}
+    )
 }
 
 @Composable

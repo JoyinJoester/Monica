@@ -10,6 +10,7 @@ import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
@@ -70,12 +71,30 @@ internal fun buildPasswordAggregateItems(
     totpItems: List<SecureItem>,
     passkeys: List<PasskeyEntry>,
     searchQuery: String,
-    categoryFilter: CategoryFilter
+    categoryFilter: CategoryFilter,
+    parseBankCardData: (SecureItem) -> BankCardData? = {
+        CardWalletDataCodec.parseBankCardData(it.itemData)
+    },
+    parseDocumentData: (SecureItem) -> DocumentData? = {
+        CardWalletDataCodec.parseDocumentData(it.itemData)
+    },
+    parseTotpData: (SecureItem) -> TotpData? = {
+        TotpDataResolver.parseStoredItemData(it.itemData, fallbackIssuer = it.title)
+    }
 ): List<PasswordAggregateListItemUi> {
     val items = mutableListOf<PasswordAggregateListItemUi>()
-    appendCardItems(items, selectedContentTypes, bankCards, documents, searchQuery, categoryFilter)
+    appendCardItems(
+        items,
+        selectedContentTypes,
+        bankCards,
+        documents,
+        searchQuery,
+        categoryFilter,
+        parseBankCardData,
+        parseDocumentData
+    )
     appendNoteItems(items, selectedContentTypes, notes, searchQuery, categoryFilter)
-    appendAuthenticatorItems(items, selectedContentTypes, totpItems, searchQuery, categoryFilter)
+    appendAuthenticatorItems(items, selectedContentTypes, totpItems, searchQuery, categoryFilter, parseTotpData)
     appendPasskeyItems(items, selectedContentTypes, passkeys, searchQuery, categoryFilter)
     return items.sortedByDescending(PasswordAggregateListItemUi::sortTime)
 }
@@ -87,7 +106,10 @@ internal fun resolveNonEmptyAggregateContentTypes(
     notes: List<SecureItem>,
     totpItems: List<SecureItem>,
     passkeys: List<PasskeyEntry>,
-    categoryFilter: CategoryFilter
+    categoryFilter: CategoryFilter,
+    parseTotpData: (SecureItem) -> TotpData? = {
+        TotpDataResolver.parseStoredItemData(it.itemData, fallbackIssuer = it.title)
+    }
 ): List<PasswordPageContentType> {
     return configuredTypes.filter { type ->
         when (type) {
@@ -99,7 +121,7 @@ internal fun resolveNonEmptyAggregateContentTypes(
                 notes.any { it.matchesAggregateCategory(categoryFilter) }
             PasswordPageContentType.AUTHENTICATOR ->
                 totpItems.any { item ->
-                    val data = decodeJson<TotpData>(item.itemData) ?: return@any false
+                    val data = parseTotpData(item) ?: return@any false
                     !item.isDeleted &&
                         data.boundPasswordId == null &&
                         item.matchesAggregateCategory(categoryFilter, data.categoryId)
@@ -186,14 +208,16 @@ private fun appendCardItems(
     bankCards: List<SecureItem>,
     documents: List<SecureItem>,
     searchQuery: String,
-    categoryFilter: CategoryFilter
+    categoryFilter: CategoryFilter,
+    parseBankCardData: (SecureItem) -> BankCardData?,
+    parseDocumentData: (SecureItem) -> DocumentData?
 ) {
     if (!selectedContentTypes.contains(PasswordPageContentType.CARD_WALLET)) return
 
     bankCards
         .filter { it.matchesAggregateCategory(categoryFilter) && it.matchesAggregateQuery(searchQuery) }
         .forEach { item ->
-            val data = decodeJson<BankCardData>(item.itemData)
+            val data = parseBankCardData(item)
             items += PasswordAggregateListItemUi(
                 key = "bank:${item.id}",
                 entry = item.toAggregatePasswordEntry(
@@ -211,7 +235,7 @@ private fun appendCardItems(
     documents
         .filter { it.matchesAggregateCategory(categoryFilter) && it.matchesAggregateQuery(searchQuery) }
         .forEach { item ->
-            val data = decodeJson<DocumentData>(item.itemData)
+            val data = parseDocumentData(item)
             items += PasswordAggregateListItemUi(
                 key = "document:${item.id}",
                 entry = item.toAggregatePasswordEntry(
@@ -263,13 +287,14 @@ private fun appendAuthenticatorItems(
     selectedContentTypes: Set<PasswordPageContentType>,
     totpItems: List<SecureItem>,
     searchQuery: String,
-    categoryFilter: CategoryFilter
+    categoryFilter: CategoryFilter,
+    parseTotpData: (SecureItem) -> TotpData?
 ) {
     if (!selectedContentTypes.contains(PasswordPageContentType.AUTHENTICATOR)) return
 
     totpItems
         .mapNotNull { item ->
-            val data = decodeJson<TotpData>(item.itemData) ?: return@mapNotNull null
+            val data = parseTotpData(item) ?: return@mapNotNull null
             if (item.isDeleted || data.boundPasswordId != null) return@mapNotNull null
             if (!item.matchesAggregateCategory(categoryFilter, data.categoryId)) return@mapNotNull null
             if (!item.matchesAggregateQuery(searchQuery, data.issuer, data.accountName)) return@mapNotNull null

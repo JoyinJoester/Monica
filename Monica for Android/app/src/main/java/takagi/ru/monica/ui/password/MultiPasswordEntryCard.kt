@@ -50,7 +50,8 @@ fun MultiPasswordEntryCard(
     showAuthenticator: Boolean = false,
     hideOtherContentWhenAuthenticator: Boolean = false,
     totpTimeOffsetSeconds: Int = 0,
-    smoothAuthenticatorProgress: Boolean = true
+    smoothAuthenticatorProgress: Boolean = true,
+    decryptAuthenticatorKey: ((String) -> String)? = null
 ) {
     val firstEntry = passwords.first()
     val firstEntryTitle = firstEntry.title.ifBlank { stringResource(R.string.untitled) }
@@ -280,7 +281,8 @@ fun MultiPasswordEntryCard(
                     fallbackIssuer = firstEntry.website.ifBlank { firstEntry.title },
                     fallbackAccountName = firstEntry.username.ifBlank { firstEntry.title },
                     timeOffsetSeconds = totpTimeOffsetSeconds,
-                    smoothProgress = smoothAuthenticatorProgress
+                    smoothProgress = smoothAuthenticatorProgress,
+                    decryptAuthenticatorKey = decryptAuthenticatorKey
                 )
             } else {
                 null

@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -44,6 +45,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -127,6 +129,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import takagi.ru.monica.R
 import takagi.ru.monica.attachments.facade.AttachmentUriMetadata
 import takagi.ru.monica.bitwarden.BitwardenVaultPremiumStore
@@ -134,14 +138,20 @@ import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.bitwarden.sync.buildHeadline
 import takagi.ru.monica.bitwarden.sync.isUserVisibleSyncInProgress
+import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.components.PlusBlurSimpleTopBar
 import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
+import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.util.VibrationPatterns
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private enum class SendCreateType {
@@ -228,6 +238,7 @@ fun SendScreen(
         if (anyVaultUnlocked) {
             // 至少有一个已解锁账号就允许刷新视图：当前活跃账号触发自动同步，
             // 其它账号通过 sendsAcrossVaults 直接复用本地缓存。
+            delay(1_200L)
             if (canCreateSend) {
                 bitwardenViewModel.requestPageEnterAutoSync()
             }
@@ -1000,26 +1011,39 @@ fun AddEditSendScreen(
         // remember 缓存时序问题导致按钮灰色。
         SendCreateType.File -> selectedFileUri != null && selectedFileMeta != null
     }
+    val settingsManager = remember { SettingsManager(context) }
+    val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
+    val sendTopBarTitle = stringResource(R.string.send_create_title)
+    val sendTopBarBlurEnabled = rememberMonicaPlusBlurEnabledForSurface(
+        settings = settings,
+        enabledForThisSurface = true
+    )
+    val sendTopBarHazeState = remember { HazeState() }
+    val sendTopBarHazeStyle = rememberMonicaFrostedGlassHazeStyle(settings.plusBlurIntensity)
+    val sendBlurTopBarHeight =
+        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.send_create_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack, enabled = !isSubmitting) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
+            if (!sendTopBarBlurEnabled) {
+                TopAppBar(
+                    title = { Text(sendTopBarTitle) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack, enabled = !isSubmitting) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back)
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 )
-            )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -1079,165 +1103,201 @@ fun AddEditSendScreen(
             }
         }
     ) { paddingValues ->
-        Column(
+        val contentPadding = if (sendTopBarBlurEnabled) {
+            PaddingValues(
+                top = sendBlurTopBarHeight + 10.dp,
+                bottom = paddingValues.calculateBottomPadding()
+            )
+        } else {
+            paddingValues
+        }
+
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
                 .imePadding()
-                .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (isSubmitting) {
-                StateBanner("正在创建 Send，请稍候…")
-            }
-
-            SendFormSectionCard(title = stringResource(R.string.send_account_section_title)) {
-                if (availableVaults.isEmpty()) {
-                    StateBanner(stringResource(R.string.send_account_locked_hint))
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        availableVaults.forEach { vault ->
-                            SendVaultChoiceRow(
-                                vault = vault,
-                                selected = vault.id == selectedVaultId,
-                                onClick = { selectedVaultId = vault.id }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (sendTopBarBlurEnabled) {
+                            Modifier.haze(
+                                state = sendTopBarHazeState,
+                                style = sendTopBarHazeStyle
                             )
+                        } else {
+                            Modifier
                         }
-                    }
-                }
-            }
-
-            SendFormSectionCard(title = stringResource(R.string.send_type_section_title)) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = sendType == SendCreateType.Text,
-                            onClick = { sendType = SendCreateType.Text },
-                            label = { Text(stringResource(R.string.send_type_text)) },
-                            leadingIcon = if (sendType == SendCreateType.Text) {
-                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                            } else null
-                        )
-                        FilterChip(
-                            selected = sendType == SendCreateType.File,
-                            enabled = fileSendAllowed,
-                            onClick = { sendType = SendCreateType.File },
-                            label = { Text(stringResource(R.string.send_type_file)) },
-                            leadingIcon = if (sendType == SendCreateType.File) {
-                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                            } else null
-                        )
-                    }
-                    if (!fileSendAllowed) {
-                        StateBanner(stringResource(R.string.send_file_premium_required_hint))
-                    }
-                }
-            }
-
-            SendFormSectionCard(
-                title = if (sendType == SendCreateType.File) {
-                    stringResource(R.string.send_file_send_heading)
-                } else {
-                    stringResource(R.string.send_text_send_heading)
-                }
+                    )
+                    .padding(contentPadding)
+                    .padding(horizontal = 16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        label = { Text(stringResource(R.string.title)) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                if (isSubmitting) {
+                    StateBanner("正在创建 Send，请稍候…")
+                }
 
-                    if (sendType == SendCreateType.File) {
-                        OutlinedButton(
-                            onClick = { filePicker.launch(arrayOf("*/*")) },
-                            enabled = fileSendAllowed && !creating,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(selectedFileMeta?.fileName ?: stringResource(R.string.send_select_file))
+                SendFormSectionCard(title = stringResource(R.string.send_account_section_title)) {
+                    if (availableVaults.isEmpty()) {
+                        StateBanner(stringResource(R.string.send_account_locked_hint))
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            availableVaults.forEach { vault ->
+                                SendVaultChoiceRow(
+                                    vault = vault,
+                                    selected = vault.id == selectedVaultId,
+                                    onClick = { selectedVaultId = vault.id }
+                                )
+                            }
                         }
-                        selectedFileMeta?.let { meta ->
-                            Text(
-                                text = stringResource(R.string.send_selected_file_meta, meta.fileName, formatFileSize(meta.sizeBytes)),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                }
+
+                SendFormSectionCard(title = stringResource(R.string.send_type_section_title)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = sendType == SendCreateType.Text,
+                                onClick = { sendType = SendCreateType.Text },
+                                label = { Text(stringResource(R.string.send_type_text)) },
+                                leadingIcon = if (sendType == SendCreateType.Text) {
+                                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                                } else null
+                            )
+                            FilterChip(
+                                selected = sendType == SendCreateType.File,
+                                enabled = fileSendAllowed,
+                                onClick = { sendType = SendCreateType.File },
+                                label = { Text(stringResource(R.string.send_type_file)) },
+                                leadingIcon = if (sendType == SendCreateType.File) {
+                                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                                } else null
                             )
                         }
+                        if (!fileSendAllowed) {
+                            StateBanner(stringResource(R.string.send_file_premium_required_hint))
+                        }
+                    }
+                }
+
+                SendFormSectionCard(
+                    title = if (sendType == SendCreateType.File) {
+                        stringResource(R.string.send_file_send_heading)
                     } else {
+                        stringResource(R.string.send_text_send_heading)
+                    }
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedTextField(
-                            value = text,
-                            onValueChange = { text = it },
-                            label = { Text(stringResource(R.string.send_content_label)) },
+                            value = title,
+                            onValueChange = { title = it },
+                            label = { Text(stringResource(R.string.title)) },
+                            singleLine = true,
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(130.dp)
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        if (sendType == SendCreateType.File) {
+                            OutlinedButton(
+                                onClick = { filePicker.launch(arrayOf("*/*")) },
+                                enabled = fileSendAllowed && !creating,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(selectedFileMeta?.fileName ?: stringResource(R.string.send_select_file))
+                            }
+                            selectedFileMeta?.let { meta ->
+                                Text(
+                                    text = stringResource(R.string.send_selected_file_meta, meta.fileName, formatFileSize(meta.sizeBytes)),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            OutlinedTextField(
+                                value = text,
+                                onValueChange = { text = it },
+                                label = { Text(stringResource(R.string.send_content_label)) },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(130.dp)
+                            )
+                        }
+
+                        OutlinedTextField(
+                            value = notes,
+                            onValueChange = { notes = it },
+                            label = { Text(stringResource(R.string.notes_optional)) },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
-
-                    OutlinedTextField(
-                        value = notes,
-                        onValueChange = { notes = it },
-                        label = { Text(stringResource(R.string.notes_optional)) },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
-            }
 
-            SendFormSectionCard(title = stringResource(R.string.send_options_section_title)) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = { Text(stringResource(R.string.send_access_password_optional)) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SendFormSectionCard(title = stringResource(R.string.send_options_section_title)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedTextField(
-                            value = maxAccessCount,
-                            onValueChange = { maxAccessCount = it.filter(Char::isDigit) },
-                            label = { Text(stringResource(R.string.send_max_access_count)) },
+                            value = password,
+                            onValueChange = { password = it },
+                            label = { Text(stringResource(R.string.send_access_password_optional)) },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        OutlinedTextField(
-                            value = expireDaysText,
-                            onValueChange = { expireDaysText = it.filter(Char::isDigit) },
-                            label = { Text(stringResource(R.string.send_valid_days)) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
 
-                    SendSwitchRow(
-                        title = stringResource(R.string.send_hide_email),
-                        description = stringResource(R.string.send_hide_email_desc),
-                        checked = hideEmail,
-                        onCheckedChange = { hideEmail = it }
-                    )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = maxAccessCount,
+                                onValueChange = { maxAccessCount = it.filter(Char::isDigit) },
+                                label = { Text(stringResource(R.string.send_max_access_count)) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = expireDaysText,
+                                onValueChange = { expireDaysText = it.filter(Char::isDigit) },
+                                label = { Text(stringResource(R.string.send_valid_days)) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
 
-                    if (sendType == SendCreateType.Text) {
                         SendSwitchRow(
-                            title = stringResource(R.string.send_hide_text),
-                            description = stringResource(R.string.send_hide_text_desc),
-                            checked = hiddenText,
-                            onCheckedChange = { hiddenText = it }
+                            title = stringResource(R.string.send_hide_email),
+                            description = stringResource(R.string.send_hide_email_desc),
+                            checked = hideEmail,
+                            onCheckedChange = { hideEmail = it }
                         )
+
+                        if (sendType == SendCreateType.Text) {
+                            SendSwitchRow(
+                                title = stringResource(R.string.send_hide_text),
+                                description = stringResource(R.string.send_hide_text_desc),
+                                checked = hiddenText,
+                                onCheckedChange = { hiddenText = it }
+                            )
+                        }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(76.dp))
             }
 
-            Spacer(modifier = Modifier.height(76.dp))
+            if (sendTopBarBlurEnabled) {
+                PlusBlurSimpleTopBar(
+                    title = sendTopBarTitle,
+                    settings = settings,
+                    hazeState = sendTopBarHazeState,
+                    hazeStyle = sendTopBarHazeStyle,
+                    onNavigateBack = onNavigateBack,
+                    enabled = !isSubmitting,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
+            }
         }
     }
 }

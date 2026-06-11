@@ -484,7 +484,7 @@ enum class MonicaBlurMode {
     COMPATIBLE;
 
     companion object {
-        val DEFAULT = AUTOMATIC
+        val DEFAULT = GLASS
     }
 }
 
@@ -494,7 +494,7 @@ enum class MonicaBlurIntensity {
     STRONG;
 
     companion object {
-        val DEFAULT = STANDARD
+        val DEFAULT = LIGHT
     }
 }
 

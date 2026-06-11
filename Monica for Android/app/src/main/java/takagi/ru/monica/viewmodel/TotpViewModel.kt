@@ -4,7 +4,9 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import takagi.ru.monica.keepass.KeePassSecureItemCreateExecutor
@@ -50,6 +52,7 @@ import kotlinx.serialization.encodeToString
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import takagi.ru.monica.utils.SavedCategoryFilterState
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.util.TotpDataResolver
@@ -76,6 +79,11 @@ sealed class TotpCategoryFilter {
     data class MdbxDatabase(val databaseId: Long) : TotpCategoryFilter()
 }
 
+data class ParsedTotpItem(
+    val item: SecureItem,
+    val totpData: TotpData
+)
+
 /**
  * TOTP验证器ViewModel
  */
@@ -84,7 +92,7 @@ class TotpViewModel(
     private val passwordRepository: PasswordRepository,
     context: Context? = null,
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
-    securityManager: SecurityManager? = null
+    private val securityManager: SecurityManager? = null
 ) : ViewModel() {
     private data class KeePassMutationIdentity(
         val groupPath: String?,
@@ -141,9 +149,95 @@ class TotpViewModel(
     private val keepassSecureItemUpdateExecutor = KeePassSecureItemUpdateExecutor(keepassBridge)
     private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
     private val settingsManager = context?.let { SettingsManager(it.applicationContext) }
+    private val parsedTotpDataCache = ConcurrentHashMap<String, TotpData>()
 
     private fun requestBitwardenMutationSync(vaultId: Long?) {
         vaultId?.let { bitwardenRepository?.requestLocalMutationSync(it) }
+    }
+
+    private fun decryptStoredSensitiveValue(value: String): String {
+        return securityManager?.decryptDataIfMonicaCiphertext(value) ?: value
+    }
+
+    private fun looksLikeStoredSensitiveCiphertext(value: String): Boolean {
+        return securityManager?.looksLikeMonicaCiphertext(value) == true
+    }
+
+    private fun encodeStoredSensitiveValueForRewrite(originalValue: String, plainValue: String): String {
+        return if (looksLikeStoredSensitiveCiphertext(originalValue)) {
+            securityManager?.encryptDataLegacyCompat(plainValue) ?: plainValue
+        } else {
+            plainValue
+        }
+    }
+
+    private fun encodeStoredSensitiveValueForNewWrite(plainValue: String): String {
+        if (plainValue.isBlank()) return plainValue
+        return securityManager?.encryptDataLegacyCompat(plainValue) ?: plainValue
+    }
+
+    private suspend fun updatePasswordAuthenticatorKeyForStorage(passwordId: Long, plainAuthenticatorKey: String) {
+        val storedAuthenticatorKey = encodeStoredSensitiveValueForNewWrite(plainAuthenticatorKey)
+        passwordRepository.updateAuthenticatorKey(passwordId, storedAuthenticatorKey)
+    }
+
+    private fun parseStoredTotpData(
+        item: SecureItem,
+        fallbackIssuer: String = item.title,
+        fallbackAccountName: String = ""
+    ): TotpData? {
+        val cacheKey = buildString {
+            append("item|")
+            append(item.id)
+            append('|')
+            append(item.itemData)
+            append('|')
+            append(fallbackIssuer)
+            append('|')
+            append(fallbackAccountName)
+        }
+        return cachedParsedTotpData(cacheKey) {
+            TotpDataResolver.parseStoredItemData(
+                itemData = item.itemData,
+                fallbackIssuer = fallbackIssuer,
+                fallbackAccountName = fallbackAccountName,
+                decryptIfNeeded = ::decryptStoredSensitiveValue
+            )
+        }
+    }
+
+    fun parseTotpDataForDisplay(item: SecureItem): TotpData? {
+        return parseStoredTotpData(item)
+    }
+
+    private fun parsePasswordAuthenticatorKey(password: PasswordEntry): TotpData? {
+        val cacheKey = buildString {
+            append("password|")
+            append(password.id)
+            append('|')
+            append(password.authenticatorKey)
+            append('|')
+            append(password.title)
+            append('|')
+            append(password.username)
+        }
+        return cachedParsedTotpData(cacheKey) {
+            TotpDataResolver.fromAuthenticatorKey(
+                rawKey = decryptStoredSensitiveValue(password.authenticatorKey),
+                fallbackIssuer = password.title,
+                fallbackAccountName = password.username
+            )
+        }
+    }
+
+    private fun cachedParsedTotpData(cacheKey: String, parser: () -> TotpData?): TotpData? {
+        parsedTotpDataCache[cacheKey]?.let { return it }
+        val parsed = parser() ?: return null
+        if (parsedTotpDataCache.size > 1024) {
+            parsedTotpDataCache.clear()
+        }
+        parsedTotpDataCache[cacheKey] = parsed
+        return parsed
     }
     
     // 搜索查询
@@ -191,9 +285,7 @@ class TotpViewModel(
     ): List<SecureItem> {
         val displayStoredTotps = collapseDuplicateBoundStoredTotps(storedTotps)
         val existingKeys = storedTotps.mapNotNull { item ->
-            runCatching { Json.decodeFromString<TotpData>(item.itemData) }
-                .getOrNull()
-                ?.let(TotpDataResolver::normalizeTotpData)
+            parseStoredTotpData(item)
                 ?.let(::buildTotpIdentityKey)
         }.toSet()
 
@@ -230,7 +322,7 @@ class TotpViewModel(
     private fun collapseDuplicateBoundStoredTotps(storedTotps: List<SecureItem>): List<SecureItem> {
         val seenBoundKeys = mutableSetOf<String>()
         return storedTotps.filter { item ->
-            val data = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull()
+            val data = parseStoredTotpData(item)
                 ?: return@filter true
             val boundPasswordId = data.boundPasswordId ?: return@filter true
             val key = "$boundPasswordId|${buildTotpIdentityKey(data)}"
@@ -246,7 +338,7 @@ class TotpViewModel(
             storedTotps = storedTotps,
             allPasswords = allPasswords
         )
-    }
+    }.flowOn(Dispatchers.Default)
 
     val allTotpItems: StateFlow<List<SecureItem>> = allTotpItemsSource.stateIn(
         scope = viewModelScope,
@@ -267,25 +359,20 @@ class TotpViewModel(
             is TotpCategoryFilter.Local -> allTotps.filter { it.isLocalOnlyItem() }
             is TotpCategoryFilter.Starred -> allTotps.filter { it.isFavorite }
             is TotpCategoryFilter.Uncategorized -> allTotps.filter { 
-                it.categoryId == null && try {
-                    Json.decodeFromString<TotpData>(it.itemData).categoryId == null
-                } catch (e: Exception) { true }
+                it.categoryId == null && (parseStoredTotpData(it)?.categoryId == null)
             }
             is TotpCategoryFilter.LocalStarred -> allTotps.filter {
                 it.isLocalOnlyItem() && it.isFavorite
             }
             is TotpCategoryFilter.LocalUncategorized -> allTotps.filter {
                 it.isLocalOnlyItem() && (
-                    it.categoryId == null && try {
-                        Json.decodeFromString<TotpData>(it.itemData).categoryId == null
-                    } catch (e: Exception) { true }
+                    it.categoryId == null && (parseStoredTotpData(it)?.categoryId == null)
                 )
             }
             is TotpCategoryFilter.Custom -> allTotps.filter { item ->
                 item.isLocalOnlyItem() && (
-                    item.categoryId == filter.categoryId || try {
-                        Json.decodeFromString<TotpData>(item.itemData).categoryId == filter.categoryId
-                    } catch (e: Exception) { false }
+                    item.categoryId == filter.categoryId ||
+                        parseStoredTotpData(item)?.categoryId == filter.categoryId
                 )
             }
             is TotpCategoryFilter.KeePassDatabase -> allTotps.filter {
@@ -340,20 +427,35 @@ class TotpViewModel(
             categoryFiltered.filter { item ->
                 item.title.contains(query, ignoreCase = true) ||
                 item.notes.contains(query, ignoreCase = true) ||
-                try {
-                    val data = Json.decodeFromString<TotpData>(item.itemData)
+                parseStoredTotpData(item)?.let { data ->
                     data.issuer.contains(query, ignoreCase = true) ||
-                    data.accountName.contains(query, ignoreCase = true)
-                } catch (e: Exception) {
-                    false
-                }
+                        data.accountName.contains(query, ignoreCase = true)
+                } ?: false
             }
         }
-    }.stateIn(
+    }.flowOn(Dispatchers.Default)
+        .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    val parsedTotpItems: StateFlow<List<ParsedTotpItem>> = totpItems
+        .map { items ->
+            withContext(Dispatchers.Default) {
+                items.map { item ->
+                    ParsedTotpItem(
+                        item = item,
+                        totpData = parseStoredTotpData(item) ?: TotpData(secret = "")
+                    )
+                }
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
     
     /**
      * 更新搜索查询
@@ -414,7 +516,7 @@ class TotpViewModel(
 
     private fun resolvePasswordAuthenticatorTotp(password: PasswordEntry): TotpData? {
         return TotpDataResolver.fromAuthenticatorKey(
-            rawKey = password.authenticatorKey,
+            rawKey = decryptStoredSensitiveValue(password.authenticatorKey),
             fallbackIssuer = password.website.takeIf { it.isNotBlank() } ?: password.title,
             fallbackAccountName = password.username.takeIf { it.isNotBlank() } ?: password.title
         )?.copy(
@@ -436,7 +538,9 @@ class TotpViewModel(
     }
 
     private fun buildTotpIdentityKeyFromRawKey(rawKey: String): String? {
-        return TotpDataResolver.fromAuthenticatorKey(rawKey)?.let(::buildTotpIdentityKey)
+        return TotpDataResolver.fromAuthenticatorKey(
+            decryptStoredSensitiveValue(rawKey)
+        )?.let(::buildTotpIdentityKey)
     }
 
     suspend fun repairHistoricalBitwardenTotp(vaultId: Long): BitwardenTotpRepairResult {
@@ -467,31 +571,35 @@ class TotpViewModel(
             .asSequence()
             .filter { it.bitwardenVaultId == vaultId && !it.isDeleted }
             .forEach { item ->
-                val normalizedData = TotpDataResolver.parseStoredItemData(
-                    itemData = item.itemData,
-                    fallbackIssuer = item.title
-                )
+                val normalizedData = parseStoredTotpData(item)
                 if (normalizedData == null) {
                     skippedItems += 1
                     return@forEach
                 }
 
-                val normalizedItemData = Json.encodeToString(normalizedData)
+                val originalItemDataPlain = decryptStoredSensitiveValue(item.itemData)
+                val normalizedItemDataPlain = Json.encodeToString(normalizedData)
+                val itemDataChanged = normalizedItemDataPlain != originalItemDataPlain
+                val normalizedItemData = if (itemDataChanged) {
+                    encodeStoredSensitiveValueForRewrite(item.itemData, normalizedItemDataPlain)
+                } else {
+                    item.itemData
+                }
                 val canSafelyQueueRemoteRepair =
-                    item.itemData.contains("://", ignoreCase = true) ||
+                    originalItemDataPlain.contains("://", ignoreCase = true) ||
                         TotpDataResolver.hasNonDefaultOtpSettings(normalizedData)
 
                 val updatedItem = BitwardenHistoricalRepairStateHelper.applyToSecureItem(
                     candidate = item.copy(
                         itemData = normalizedItemData,
-                        updatedAt = if (normalizedItemData != item.itemData || canSafelyQueueRemoteRepair) now else item.updatedAt
+                        updatedAt = if (itemDataChanged || canSafelyQueueRemoteRepair) now else item.updatedAt
                     ),
                     shouldQueueRemoteRewrite = canSafelyQueueRemoteRepair
                 )
 
                 if (updatedItem != item) {
                     repository.updateItem(updatedItem)
-                    if (normalizedItemData != item.itemData) {
+                    if (itemDataChanged) {
                         normalizedTotpItems += 1
                     }
                     if (canSafelyQueueRemoteRepair && item.bitwardenCipherId != null) {
@@ -506,7 +614,7 @@ class TotpViewModel(
             .filter { it.bitwardenVaultId == vaultId && !it.isDeleted && it.authenticatorKey.isNotBlank() }
             .forEach { entry ->
                 val normalizedTotp = TotpDataResolver.fromAuthenticatorKey(
-                    rawKey = entry.authenticatorKey,
+                    rawKey = decryptStoredSensitiveValue(entry.authenticatorKey),
                     fallbackIssuer = entry.website.takeIf { it.isNotBlank() } ?: entry.title,
                     fallbackAccountName = entry.username.takeIf { it.isNotBlank() } ?: entry.title
                 )
@@ -515,22 +623,29 @@ class TotpViewModel(
                     return@forEach
                 }
 
-                val normalizedPayload = TotpDataResolver.toBitwardenPayload(entry.title, normalizedTotp)
+                val originalPayloadPlain = decryptStoredSensitiveValue(entry.authenticatorKey)
+                val normalizedPayloadPlain = TotpDataResolver.toBitwardenPayload(entry.title, normalizedTotp)
+                val payloadChanged = normalizedPayloadPlain != originalPayloadPlain
+                val normalizedPayload = if (payloadChanged) {
+                    encodeStoredSensitiveValueForRewrite(entry.authenticatorKey, normalizedPayloadPlain)
+                } else {
+                    entry.authenticatorKey
+                }
                 val canSafelyQueueRemoteRepair =
-                    entry.authenticatorKey.contains("://", ignoreCase = true) ||
+                    originalPayloadPlain.contains("://", ignoreCase = true) ||
                         TotpDataResolver.hasNonDefaultOtpSettings(normalizedTotp)
 
                 val updatedEntry = BitwardenHistoricalRepairStateHelper.applyToPasswordEntry(
                     candidate = entry.copy(
                         authenticatorKey = normalizedPayload,
-                        updatedAt = if (normalizedPayload != entry.authenticatorKey || canSafelyQueueRemoteRepair) now else entry.updatedAt
+                        updatedAt = if (payloadChanged || canSafelyQueueRemoteRepair) now else entry.updatedAt
                     ),
                     shouldQueueRemoteRewrite = canSafelyQueueRemoteRepair
                 )
 
                 if (updatedEntry != entry) {
                     passwordRepository.updatePasswordEntry(updatedEntry)
-                    if (normalizedPayload != entry.authenticatorKey) {
+                    if (payloadChanged) {
                         normalizedPasswords += 1
                     }
                     if (canSafelyQueueRemoteRepair && entry.bitwardenCipherId != null) {
@@ -748,12 +863,9 @@ class TotpViewModel(
     fun findTotpBySecret(secret: String): SecureItem? {
         val targetKey = buildTotpIdentityKeyFromRawKey(secret) ?: return null
         return totpItems.value.find { item ->
-            try {
-                val data = Json.decodeFromString<TotpData>(item.itemData)
+            parseStoredTotpData(item)?.let { data ->
                 buildTotpIdentityKey(data) == targetKey
-            } catch (e: Exception) {
-                false
-            }
+            } ?: false
         }
     }
 
@@ -780,7 +892,7 @@ class TotpViewModel(
                 val existingStoredTotps = repository.getItemsByType(ItemType.TOTP).first()
                 val activeBoundItems = existingStoredTotps.mapNotNull { item ->
                     if (item.isDeleted) return@mapNotNull null
-                    val data = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull()
+                    val data = parseStoredTotpData(item)
                         ?: return@mapNotNull null
                     if (data.boundPasswordId == passwordId) {
                         item to data
@@ -1055,13 +1167,7 @@ class TotpViewModel(
             Log.e("TotpViewModel", "saveTotpItemInternal failed because item does not exist id=$id")
             return false
         }
-        val previousTotpData = existingItem?.let { item ->
-            try {
-                Json.decodeFromString<TotpData>(item.itemData)
-            } catch (e: Exception) {
-                null
-            }
-        }
+        val previousTotpData = existingItem?.let(::parseStoredTotpData)
         val previousBoundId = previousTotpData?.boundPasswordId
         val previousSecret = previousTotpData?.secret ?: ""
 
@@ -1103,6 +1209,7 @@ class TotpViewModel(
             keepassDatabaseId = resolvedKeepassDatabaseId
         )
         val itemDataJson = Json.encodeToString(updatedTotpData)
+        val storedItemData = encodeStoredSensitiveValueForNewWrite(itemDataJson)
 
         if (
             shouldFollowBoundPassword &&
@@ -1115,7 +1222,7 @@ class TotpViewModel(
                 databaseId = boundPassword.mdbxDatabaseId,
                 title = title,
                 notes = notes,
-                itemData = itemDataJson,
+                itemData = storedItemData,
                 imagePaths = existingItem.imagePaths,
                 isFavorite = isFavorite,
                 categoryId = null,
@@ -1123,7 +1230,7 @@ class TotpViewModel(
             )
             val authenticatorPayload = TotpDataResolver.toBitwardenPayload(title, updatedTotpData)
             if (authenticatorPayload.isNotBlank()) {
-                passwordRepository.updateAuthenticatorKey(boundPassword.id, authenticatorPayload)
+                updatePasswordAuthenticatorKeyForStorage(boundPassword.id, authenticatorPayload)
             }
             return true
         }
@@ -1152,7 +1259,8 @@ class TotpViewModel(
             existingItem?.copy(
                 title = title,
                 notes = notes,
-                itemData = itemDataJson,
+                itemData = storedItemData,
+                isFavorite = isFavorite,
                 categoryId = categoryId,
                 keepassDatabaseId = resolvedKeepassDatabaseId,
                 keepassGroupPath = keepassIdentity.groupPath,
@@ -1180,7 +1288,7 @@ class TotpViewModel(
                 itemType = ItemType.TOTP,
                 title = title,
                 notes = notes,
-                itemData = itemDataJson,
+                itemData = storedItemData,
                 isFavorite = isFavorite,
                 categoryId = categoryId,
                 keepassDatabaseId = resolvedKeepassDatabaseId,
@@ -1248,7 +1356,7 @@ class TotpViewModel(
         val boundId = updatedTotpData.boundPasswordId
         val authenticatorPayload = TotpDataResolver.toBitwardenPayload(title, updatedTotpData)
         if (boundId != null && authenticatorPayload.isNotBlank()) {
-            passwordRepository.updateAuthenticatorKey(boundId, authenticatorPayload)
+            updatePasswordAuthenticatorKeyForStorage(boundId, authenticatorPayload)
             passwordRepository.getPasswordEntryById(boundId)?.bitwardenVaultId?.let(::requestBitwardenMutationSync)
         }
 
@@ -1259,7 +1367,7 @@ class TotpViewModel(
                 ?.let(::buildTotpIdentityKeyFromRawKey)
             val previousTotpKey = buildTotpIdentityKeyFromRawKey(previousSecret)
             if (previousPasswordKey != null && previousPasswordKey == previousTotpKey) {
-                passwordRepository.updateAuthenticatorKey(previousBoundId, "")
+                updatePasswordAuthenticatorKeyForStorage(previousBoundId, "")
                 previousPassword.bitwardenVaultId?.let(::requestBitwardenMutationSync)
             }
         }
@@ -1313,11 +1421,7 @@ class TotpViewModel(
                     ?.takeIf { it.isNotBlank() }
                     ?.let(::buildTotpIdentityKeyFromRawKey)
                 val target = items.firstOrNull { item ->
-                    val data = try {
-                        Json.decodeFromString<TotpData>(item.itemData)
-                    } catch (e: Exception) {
-                        null
-                    }
+                    val data = parseStoredTotpData(item)
                     data?.let { parsed ->
                         parsed.boundPasswordId == passwordId &&
                             (targetKey == null || buildTotpIdentityKey(parsed) == targetKey)
@@ -1325,11 +1429,15 @@ class TotpViewModel(
                 }
 
                 if (target != null) {
-                    val data = Json.decodeFromString<TotpData>(target.itemData)
+                    val data = parseStoredTotpData(target) ?: return@launch
                     val updatedData = data.copy(boundPasswordId = null)
+                    val updatedItemDataPlain = Json.encodeToString(updatedData)
                     repository.updateItem(
                         target.copy(
-                            itemData = Json.encodeToString(updatedData),
+                            itemData = encodeStoredSensitiveValueForRewrite(
+                                target.itemData,
+                                updatedItemDataPlain
+                            ),
                             updatedAt = Date()
                         )
                     )
@@ -1348,7 +1456,7 @@ class TotpViewModel(
         val items = repository.getItemsByType(ItemType.TOTP).first()
         val matchingItems = items.mapNotNull { item ->
             if (item.id == keepItemId || item.isDeleted) return@mapNotNull null
-            val data = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull()
+            val data = parseStoredTotpData(item)
                 ?: return@mapNotNull null
             if (data.boundPasswordId == passwordId) {
                 item
@@ -1379,11 +1487,7 @@ class TotpViewModel(
      */
     fun deleteTotpItem(item: SecureItem, softDelete: Boolean = true) {
         viewModelScope.launch {
-            val totpData = try {
-                Json.decodeFromString<TotpData>(item.itemData)
-            } catch (e: Exception) {
-                null
-            }
+            val totpData = parseStoredTotpData(item)
 
             if (totpData?.boundPasswordId != null && totpData.secret.isNotBlank()) {
                 val boundId = totpData.boundPasswordId
@@ -1394,9 +1498,7 @@ class TotpViewModel(
                     .first()
                     .any { candidate ->
                         if (candidate.id == item.id || candidate.isDeleted) return@any false
-                        val candidateData = runCatching {
-                            Json.decodeFromString<TotpData>(candidate.itemData)
-                        }.getOrNull() ?: return@any false
+                        val candidateData = parseStoredTotpData(candidate) ?: return@any false
                         candidateData.boundPasswordId == boundId &&
                             buildTotpIdentityKey(candidateData) == itemKey
                     }
@@ -1412,7 +1514,7 @@ class TotpViewModel(
                         )
                         requestBitwardenMutationSync(password.bitwardenVaultId)
                     } else {
-                        passwordRepository.updateAuthenticatorKey(boundId, "")
+                        updatePasswordAuthenticatorKeyForStorage(boundId, "")
                     }
                 }
             }
@@ -1528,7 +1630,7 @@ class TotpViewModel(
                 val item = repository.getItemById(itemId) ?: return@launch
                 
                 // 解析TOTP数据
-                val totpData = Json.decodeFromString<TotpData>(item.itemData)
+                val totpData = parseStoredTotpData(item) ?: return@launch
                 
                 // 只处理HOTP类型
                 if (totpData.otpType != takagi.ru.monica.data.model.OtpType.HOTP) {
@@ -1537,7 +1639,10 @@ class TotpViewModel(
                 
                 // 增加计数器
                 val updatedTotpData = totpData.copy(counter = totpData.counter + 1)
-                val updatedItemData = Json.encodeToString(updatedTotpData)
+                val updatedItemData = encodeStoredSensitiveValueForRewrite(
+                    item.itemData,
+                    Json.encodeToString(updatedTotpData)
+                )
                 
                 // 更新数据库
                 val updatedItem = item.copy(
@@ -1562,13 +1667,12 @@ class TotpViewModel(
                     val item = repository.getItemById(id) ?: return@forEach
                     
                     // 更新TotpData中的categoryId
-                    val totpData = try {
-                        Json.decodeFromString<TotpData>(item.itemData)
-                    } catch (e: Exception) {
-                        return@forEach
-                    }
+                    val totpData = parseStoredTotpData(item) ?: return@forEach
                     val updatedTotpData = totpData.copy(categoryId = categoryId)
-                    val updatedItemData = Json.encodeToString(updatedTotpData)
+                    val updatedItemData = encodeStoredSensitiveValueForRewrite(
+                        item.itemData,
+                        Json.encodeToString(updatedTotpData)
+                    )
                     
                     // 更新数据库
                     val updatedItem = item.copy(
@@ -1600,14 +1704,17 @@ class TotpViewModel(
         categoryId: Long?
     ): Long? {
         if (item.itemType != ItemType.TOTP || item.hasOwnershipConflict()) return null
-        val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return null
+        val totpData = parseStoredTotpData(item) ?: return null
         val detachedTotpData = totpData.copy(
             boundPasswordId = null,
             categoryId = categoryId,
             keepassDatabaseId = null
         )
         val localCopy = item.asMonicaLocalCopy(categoryId).copy(
-            itemData = Json.encodeToString(detachedTotpData),
+            itemData = encodeStoredSensitiveValueForRewrite(
+                item.itemData,
+                Json.encodeToString(detachedTotpData)
+            ),
             createdAt = Date(),
             updatedAt = Date()
         )
@@ -1671,7 +1778,7 @@ class TotpViewModel(
             ids.forEach { id ->
                 try {
                     val item = repository.getItemById(id) ?: return@forEach
-                    val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
+                    val totpData = parseStoredTotpData(item) ?: return@forEach
                     val updatedData = totpData.copy(keepassDatabaseId = databaseId)
                     val keepassIdentity = resolveKeePassMutationIdentity(
                         existingItem = item,
@@ -1679,7 +1786,10 @@ class TotpViewModel(
                         requestedGroupPath = null
                     )
                     val updatedItem = item.copy(
-                        itemData = Json.encodeToString(updatedData),
+                        itemData = encodeStoredSensitiveValueForRewrite(
+                            item.itemData,
+                            Json.encodeToString(updatedData)
+                        ),
                         keepassDatabaseId = databaseId,
                         keepassGroupPath = keepassIdentity.groupPath,
                         keepassEntryUuid = keepassIdentity.entryUuid,
@@ -1716,7 +1826,7 @@ class TotpViewModel(
             ids.forEach { id ->
                 try {
                     val item = repository.getItemById(id) ?: return@forEach
-                    val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
+                    val totpData = parseStoredTotpData(item) ?: return@forEach
                     val updatedData = totpData.copy(keepassDatabaseId = databaseId)
                     val keepassIdentity = resolveKeePassMutationIdentity(
                         existingItem = item,
@@ -1724,7 +1834,10 @@ class TotpViewModel(
                         requestedGroupPath = groupPath
                     )
                     val updatedItem = item.copy(
-                        itemData = Json.encodeToString(updatedData),
+                        itemData = encodeStoredSensitiveValueForRewrite(
+                            item.itemData,
+                            Json.encodeToString(updatedData)
+                        ),
                         keepassDatabaseId = databaseId,
                         keepassGroupPath = keepassIdentity.groupPath,
                         keepassEntryUuid = keepassIdentity.entryUuid,
@@ -1761,7 +1874,7 @@ class TotpViewModel(
             ids.forEach { id ->
                 try {
                     val item = repository.getItemById(id) ?: return@forEach
-                    val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
+                    val totpData = parseStoredTotpData(item) ?: return@forEach
                     val updatedData = totpData.copy(keepassDatabaseId = null)
                     val keepassIdentity = resolveKeePassMutationIdentity(
                         existingItem = item,
@@ -1769,7 +1882,10 @@ class TotpViewModel(
                         requestedGroupPath = null
                     )
                     val updatedItem = item.copy(
-                        itemData = Json.encodeToString(updatedData),
+                        itemData = encodeStoredSensitiveValueForRewrite(
+                            item.itemData,
+                            Json.encodeToString(updatedData)
+                        ),
                         keepassDatabaseId = null,
                         keepassGroupPath = keepassIdentity.groupPath,
                         keepassEntryUuid = keepassIdentity.entryUuid,
@@ -1808,7 +1924,7 @@ class TotpViewModel(
             ids.forEach { id ->
                 try {
                     val item = repository.getItemById(id) ?: return@forEach
-                    val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
+                    val totpData = parseStoredTotpData(item) ?: return@forEach
                     val updatedData = totpData.copy(
                         boundPasswordId = null,
                         categoryId = null,
@@ -1820,7 +1936,10 @@ class TotpViewModel(
                         requestedGroupPath = null
                     )
                     val updatedItem = item.copy(
-                        itemData = Json.encodeToString(updatedData),
+                        itemData = encodeStoredSensitiveValueForRewrite(
+                            item.itemData,
+                            Json.encodeToString(updatedData)
+                        ),
                         categoryId = null,
                         keepassDatabaseId = null,
                         keepassGroupPath = keepassIdentity.groupPath,

@@ -223,6 +223,7 @@ class CipherSyncProcessor(
             android.util.Log.i(TAG, "syncPasswordCipher cipherId=${cipher.id} loginType=$remoteLoginType sshDataBlank=${remoteSshKeyData.isBlank()}")
         }
         val encryptedPassword = encryptBitwardenPasswordForOfflineDisplay(password, cipher.id)
+        val storedTotp = encodeBitwardenTotpForLocalStorage(totp)
         
         if (existing == null) {
             if (hasPendingDelete && !isServerDeleted) {
@@ -235,7 +236,7 @@ class CipherSyncProcessor(
                 username = username,
                 password = encryptedPassword,
                 notes = notes,
-                authenticatorKey = totp,
+                authenticatorKey = storedTotp,
                 appPackageName = remoteAppPackage,
                 appName = remoteAppName,
                 email = remoteEmail,
@@ -276,7 +277,7 @@ class CipherSyncProcessor(
                         username = username,
                         password = encryptedPassword,
                         notes = notes,
-                        authenticatorKey = totp,
+                        authenticatorKey = storedTotp,
                         appPackageName = remoteAppPackage.ifBlank { existing.appPackageName },
                         appName = remoteAppName.ifBlank { existing.appName },
                         email = remoteEmail.ifBlank { existing.email },
@@ -333,7 +334,7 @@ class CipherSyncProcessor(
                 username = username,
                 password = encryptedPassword,
                 notes = notes,
-                authenticatorKey = totp,
+                authenticatorKey = storedTotp,
                 appPackageName = remoteAppPackage.ifBlank { existing.appPackageName },
                 appName = remoteAppName.ifBlank { existing.appName },
                 email = remoteEmail.ifBlank { existing.email },
@@ -611,6 +612,16 @@ class CipherSyncProcessor(
         }
     }
 
+    private fun encodeBitwardenTotpForLocalStorage(totpPayload: String): String {
+        if (totpPayload.isBlank()) return ""
+        return securityManager.encryptDataLegacyCompat(totpPayload)
+    }
+
+    private fun encodeSecureItemDataForLocalStorage(itemData: String): String {
+        if (itemData.isBlank()) return ""
+        return securityManager.encryptDataLegacyCompat(itemData)
+    }
+
     /**
      * Bitwarden 条目在离线浏览时只能依赖本地缓存。
      * 若当前 MDK 状态不稳定，优先降级到可立即读回的兼容密文，避免详情页显示空密码。
@@ -684,7 +695,10 @@ class CipherSyncProcessor(
         // 构建 TOTP 数据
         // 从已有条目解析图标字段，同步时保留用户手动设置的图标
         val existingIconFields = existing?.itemData?.let {
-            TotpDataResolver.parseStoredItemData(it)
+            TotpDataResolver.parseStoredItemData(
+                itemData = it,
+                decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+            )
         }
         val totpData = resolvedTotpData.copy(
             issuer = resolvedTotpData.issuer.ifBlank { name },
@@ -693,7 +707,7 @@ class CipherSyncProcessor(
             customIconValue = existingIconFields?.customIconValue,
             customIconUpdatedAt = existingIconFields?.customIconUpdatedAt ?: 0L
         )
-        val itemData = json.encodeToString(totpData)
+        val itemData = securityManager.encryptDataLegacyCompat(json.encodeToString(totpData))
         
         if (existing == null) {
             val newItem = SecureItem(
@@ -917,7 +931,9 @@ class CipherSyncProcessor(
             customerServicePhone = fieldMap["monica_customer_service_phone"].orEmpty(),
             customFields = decryptedFields.toCardCustomFields()
         )
-        val itemData = CardWalletDataCodec.encodeBankCardData(cardData)
+        val itemData = encodeSecureItemDataForLocalStorage(
+            CardWalletDataCodec.encodeBankCardData(cardData)
+        )
         
         if (existing == null) {
             val newItem = SecureItem(
@@ -1061,7 +1077,9 @@ class CipherSyncProcessor(
             licenseNumber = licenseNumber,
             customFields = decryptedFields.toDocumentCustomFields()
         )
-        val itemData = CardWalletDataCodec.encodeDocumentData(docData)
+        val itemData = encodeSecureItemDataForLocalStorage(
+            CardWalletDataCodec.encodeDocumentData(docData)
+        )
         
         if (existing == null) {
             val newItem = SecureItem(

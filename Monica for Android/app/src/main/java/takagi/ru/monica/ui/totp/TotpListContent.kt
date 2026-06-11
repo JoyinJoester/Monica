@@ -102,6 +102,8 @@ import androidx.activity.compose.BackHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.sync.isUserVisibleSyncInProgress
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
@@ -174,6 +176,8 @@ import takagi.ru.monica.ui.common.state.rememberSaveableLazyListState
 import takagi.ru.monica.ui.common.selection.CategoryListItem
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.common.selection.SelectionModeTopBar
+import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
+import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.main.navigation.BottomNavItem
 import takagi.ru.monica.ui.main.navigation.fullLabelRes
 import takagi.ru.monica.ui.main.navigation.indexToDefaultTabKey
@@ -182,6 +186,7 @@ import takagi.ru.monica.ui.main.navigation.toBottomNavItem
 import takagi.ru.monica.ui.main.layout.AdaptiveMainScaffold
 import takagi.ru.monica.ui.password.buildAdditionalInfoPreview
 import takagi.ru.monica.ui.password.MultiPasswordEntryCard
+import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.ui.password.StackedPasswordGroup
 import takagi.ru.monica.ui.password.PasswordEntryCard
 import takagi.ru.monica.ui.password.StackCardMode
@@ -203,6 +208,7 @@ import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditNoteScreen
 import takagi.ru.monica.ui.screens.AddEditSendScreen
 import takagi.ru.monica.ui.theme.MonicaTheme
+import takagi.ru.monica.util.TotpDataResolver
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -227,6 +233,7 @@ fun TotpListContent(
     onOpenStandaloneSettings: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val securityManager = remember(context) { SecurityManager(context.applicationContext) }
     val bitwardenRepository = remember { takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context) }
     val database = remember { takagi.ru.monica.data.PasswordDatabase.getDatabase(context) }
     val scope = rememberCoroutineScope()
@@ -238,7 +245,7 @@ fun TotpListContent(
             KeePassWorkspaceRepository(
                 context,
                 database.localKeePassDatabaseDao(),
-                SecurityManager(context)
+                securityManager
             )
         )
     }
@@ -258,7 +265,9 @@ fun TotpListContent(
             flow
         }
     }
-    val totpItems by viewModel.totpItems.collectAsState()
+    val parsedTotpItems by viewModel.parsedTotpItems.collectAsState()
+    val totpItems = remember(parsedTotpItems) { parsedTotpItems.map { it.item } }
+    val totpDataById = remember(parsedTotpItems) { parsedTotpItems.associate { it.item.id to it.totpData } }
     val searchQuery by viewModel.searchQuery.collectAsState()
     val passwords by passwordViewModel.allPasswords.collectAsState(initial = emptyList())
     val passwordMap = remember(passwords) { passwords.associateBy { it.id } }
@@ -377,6 +386,12 @@ fun TotpListContent(
     val coroutineScope = rememberCoroutineScope()
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
     val appSettings by settingsManager.settingsFlow.collectAsState(initial = takagi.ru.monica.data.AppSettings())
+    val plusBlurMenuHazeState = remember { HazeState() }
+    val plusBlurMenuHazeStyle = rememberMonicaFrostedGlassHazeStyle(appSettings.plusBlurIntensity)
+    val plusBlurMenuEnabled = rememberMonicaPlusBlurEnabledForSurface(
+        settings = appSettings,
+        enabledForThisSurface = true
+    )
     val activity = context as? FragmentActivity
     val biometricHelper = remember { BiometricHelper(context) }
     val canUseBiometric = activity != null && appSettings.biometricEnabled && biometricHelper.isBiometricAvailable()
@@ -480,7 +495,11 @@ fun TotpListContent(
                             }
                             return@forEach
                         }
-                        val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
+                        val totpData = TotpDataResolver.parseStoredItemData(
+                            itemData = item.itemData,
+                            fallbackIssuer = item.title,
+                            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+                        ) ?: return@forEach
                         val detachedTotpData = totpData.copy(
                             boundPasswordId = null,
                             categoryId = null,
@@ -597,7 +616,20 @@ fun TotpListContent(
         }
     )
 
-    Column {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(
+                if (plusBlurMenuEnabled) {
+                    Modifier.haze(
+                        state = plusBlurMenuHazeState,
+                        style = plusBlurMenuHazeStyle
+                    )
+                } else {
+                    Modifier
+                }
+            )
+    ) {
         // M3E Top Bar with integrated search - 根据当前分类过滤器动态显示标题
         val title = when (val filter = currentFilter) {
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.All -> stringResource(R.string.nav_authenticator)
@@ -665,7 +697,10 @@ fun TotpListContent(
                         UnifiedCategoryFilterChipMenuDropdown(
                             expanded = isCategorySheetVisible,
                             onDismissRequest = { isCategorySheetVisible = false },
-                            offset = UnifiedCategoryFilterChipMenuOffset
+                            offset = UnifiedCategoryFilterChipMenuOffset,
+                            plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
+                            plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+                            plusBlurHazeStyle = plusBlurMenuHazeStyle
                         ) {
                             UnifiedCategoryFilterChipMenu(
                                 visible = true,
@@ -695,27 +730,13 @@ fun TotpListContent(
                             )
                         }
                     }
-                    MaterialTheme(
-                        shapes = MaterialTheme.shapes.copy(
-                            extraSmall = RoundedCornerShape(20.dp),
-                            small = RoundedCornerShape(20.dp)
-                        )
+                    PasswordTopActionsDropdownMenu(
+                        expanded = showTopActionsMenu,
+                        onDismissRequest = { showTopActionsMenu = false },
+                        plusBlurSettings = appSettings.takeIf { plusBlurMenuEnabled },
+                        plusBlurHazeState = plusBlurMenuHazeState.takeIf { plusBlurMenuEnabled },
+                        plusBlurHazeStyle = plusBlurMenuHazeStyle
                     ) {
-                        DropdownMenu(
-                            expanded = showTopActionsMenu,
-                            onDismissRequest = { showTopActionsMenu = false },
-                            offset = androidx.compose.ui.unit.DpOffset(x = 48.dp, y = 6.dp),
-                            modifier = Modifier
-                                .widthIn(min = 220.dp, max = 260.dp)
-                                .shadow(10.dp, RoundedCornerShape(20.dp))
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                .border(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
-                                    shape = RoundedCornerShape(20.dp)
-                                )
-                        ) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.quick_action_scan_qr)) },
                                 leadingIcon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
@@ -834,7 +855,6 @@ fun TotpListContent(
                             }
                         }
                     }
-                }
             }
         )
         
@@ -1040,7 +1060,8 @@ fun TotpListContent(
                                     sharedProgressTimeMillis = sharedProgressTimeMillis,
                                     appSettings = appSettings.copy(
                                         iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.authenticatorPageIconEnabled
-                                    )
+                                    ),
+                                    parsedTotpData = totpDataById[item.id]
                                 )
                             }
                         }

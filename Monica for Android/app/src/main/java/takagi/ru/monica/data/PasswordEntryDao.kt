@@ -57,6 +57,17 @@ interface PasswordEntryDao {
 
     @Query("SELECT * FROM password_entries WHERE id IN (:ids) AND isDeleted = 0 AND isArchived = 0")
     suspend fun getActivePasswordsByIds(ids: List<Long>): List<PasswordEntry>
+
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE id > :afterId
+          AND authenticatorKey != ''
+        ORDER BY id ASC
+        LIMIT :limit
+        """
+    )
+    suspend fun getAuthenticatorKeyMigrationBatch(afterId: Long, limit: Int): List<PasswordEntry>
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPasswordEntry(entry: PasswordEntry): Long

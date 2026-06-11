@@ -67,7 +67,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
 import takagi.ru.monica.R
+import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalMdbxDatabase
@@ -76,6 +79,7 @@ import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.repository.MdbxStoredFolderEntry
+import takagi.ru.monica.ui.effects.blur.MonicaPlusBlurPopupMenu
 import takagi.ru.monica.ui.isDirectMdbxChildOf
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
@@ -124,11 +128,16 @@ fun rememberUnifiedCategoryFilterChipMenuWidth(): androidx.compose.ui.unit.Dp {
 }
 
 @Composable
-fun unifiedCategoryFilterChipMenuModifier(): Modifier {
+private fun unifiedCategoryFilterChipMenuLayoutModifier(): Modifier {
     val resolvedMenuWidth = rememberUnifiedCategoryFilterChipMenuWidth()
     return Modifier
         .widthIn(min = resolvedMenuWidth, max = resolvedMenuWidth)
         .heightIn(max = 460.dp)
+}
+
+@Composable
+fun unifiedCategoryFilterChipMenuModifier(): Modifier {
+    return unifiedCategoryFilterChipMenuLayoutModifier()
         .shadow(10.dp, UnifiedCategoryFilterChipMenuShape)
         .clip(UnifiedCategoryFilterChipMenuShape)
         .background(MaterialTheme.colorScheme.surfaceContainerHigh)
@@ -144,18 +153,42 @@ fun UnifiedCategoryFilterChipMenuDropdown(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     offset: DpOffset = UnifiedCategoryFilterChipMenuOffset,
+    plusBlurSettings: AppSettings? = null,
+    plusBlurHazeState: HazeState? = null,
+    plusBlurHazeStyle: HazeStyle = HazeStyle.Unspecified,
     content: @Composable () -> Unit
 ) {
+    val usePlusBlurSurface = plusBlurSettings != null
     MaterialTheme(
         shapes = MaterialTheme.shapes.copy(
             extraSmall = RoundedCornerShape(20.dp),
             small = RoundedCornerShape(20.dp)
         )
     ) {
+        if (usePlusBlurSurface) {
+            MonicaPlusBlurPopupMenu(
+                expanded = expanded,
+                onDismissRequest = onDismissRequest,
+                settings = requireNotNull(plusBlurSettings),
+                hazeState = plusBlurHazeState,
+                hazeStyle = plusBlurHazeStyle,
+                offset = offset,
+                shape = UnifiedCategoryFilterChipMenuShape,
+                modifier = unifiedCategoryFilterChipMenuLayoutModifier()
+            ) {
+                content()
+            }
+            return@MaterialTheme
+        }
+
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = onDismissRequest,
             offset = offset,
+            shape = UnifiedCategoryFilterChipMenuShape,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shadowElevation = 10.dp,
+            tonalElevation = 0.dp,
             modifier = unifiedCategoryFilterChipMenuModifier()
         ) {
             content()

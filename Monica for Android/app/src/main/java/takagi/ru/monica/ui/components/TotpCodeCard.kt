@@ -43,7 +43,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.ProgressBarStyle
@@ -86,7 +85,9 @@ fun TotpCodeCard(
     boundPasswordSummary: String? = null,
     sharedTickSeconds: Long? = null,
     sharedProgressTimeMillis: Long? = null,
-    appSettings: AppSettings? = null
+    appSettings: AppSettings? = null,
+    parsedTotpData: TotpData? = null,
+    decryptStoredValue: ((String) -> String)? = null
 ) {
     val context = LocalContext.current
     val screenLifecycleOwner = LocalLifecycleOwner.current
@@ -95,12 +96,14 @@ fun TotpCodeCard(
     val settings = appSettings ?: AppSettings()
     
     // 解析TOTP数据
-    val parsedTotpData = try {
-        Json.decodeFromString<TotpData>(item.itemData)
-    } catch (e: Exception) {
-        TotpData(secret = "")
+    val resolvedTotpData = remember(item.itemData, item.title, parsedTotpData, decryptStoredValue) {
+        parsedTotpData ?: TotpDataResolver.parseStoredItemData(
+            itemData = item.itemData,
+            fallbackIssuer = item.title,
+            decryptIfNeeded = decryptStoredValue
+        ) ?: TotpData(secret = "")
     }
-    val totpData = remember(parsedTotpData) { normalizeTotpData(parsedTotpData) }
+    val totpData = remember(resolvedTotpData) { normalizeTotpData(resolvedTotpData) }
     
     // 共享定时器（外部传入时不再单独启动）
     val fallbackProgressTimeMillis = rememberTotpTickerMillis(settings.validatorSmoothProgress)

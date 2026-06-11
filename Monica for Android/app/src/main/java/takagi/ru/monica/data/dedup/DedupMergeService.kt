@@ -18,6 +18,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenVaultDao
 import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.isLocalOnlyPasskey
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.NoteData
 import takagi.ru.monica.data.model.TotpData
@@ -26,6 +27,7 @@ import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.util.TotpDataResolver
 
 class DedupMergeService(
     private val passwordRepository: PasswordRepository,
@@ -912,15 +914,25 @@ class DedupMergeService(
     }
 
     private fun decodeTotpData(item: SecureItem): TotpData? {
-        return runCatching { json.decodeFromString<TotpData>(item.itemData) }.getOrNull()
+        return TotpDataResolver.parseStoredItemData(
+            itemData = item.itemData,
+            fallbackIssuer = item.title,
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+        )
     }
 
     private fun decodeBankCardData(item: SecureItem): BankCardData? {
-        return runCatching { json.decodeFromString<BankCardData>(item.itemData) }.getOrNull()
+        return CardWalletDataCodec.parseBankCardData(
+            raw = item.itemData,
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+        )
     }
 
     private fun decodeDocumentData(item: SecureItem): DocumentData? {
-        return runCatching { json.decodeFromString<DocumentData>(item.itemData) }.getOrNull()
+        return CardWalletDataCodec.parseDocumentData(
+            raw = item.itemData,
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+        )
     }
 
     private fun decodeNoteData(item: SecureItem): NoteData? {

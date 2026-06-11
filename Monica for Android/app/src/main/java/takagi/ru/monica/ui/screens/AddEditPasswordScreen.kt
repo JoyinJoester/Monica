@@ -1,6 +1,5 @@
 package takagi.ru.monica.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Context
@@ -20,7 +19,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,12 +42,8 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -65,18 +59,18 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.haze
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
@@ -105,6 +99,7 @@ import takagi.ru.monica.data.model.LOGIN_TYPE_BARCODE
 import takagi.ru.monica.data.model.isBarcodeEntry
 import takagi.ru.monica.data.model.isSshKeyEntry
 import takagi.ru.monica.attachments.facade.AttachmentFacade
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.AppSelectorDialog
 import takagi.ru.monica.ui.components.CustomIconActionDialog
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
@@ -119,10 +114,10 @@ import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.components.NotePickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
+import takagi.ru.monica.ui.components.PlusBlurEntryTypeTopBar
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
 import takagi.ru.monica.ui.components.keepassBlockReasonLabel
 import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
-import takagi.ru.monica.ui.effects.blur.MonicaPlusBlurIslandSurface
 import takagi.ru.monica.ui.effects.blur.rememberMonicaFrostedGlassHazeStyle
 import takagi.ru.monica.ui.effects.blur.rememberMonicaPlusBlurEnabledForSurface
 import takagi.ru.monica.ui.icons.MonicaIcons
@@ -149,7 +144,6 @@ import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
-import kotlin.math.roundToInt
 
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.MdbxViewModel
@@ -196,344 +190,6 @@ private data class KeePassOperationBlockUiState(
     val reason: KeePassOperationBlockReason
 )
 
-@Composable
-private fun AddPasswordBlurIslandTopBar(
-    title: String,
-    settings: AppSettings,
-    hazeState: HazeState,
-    hazeStyle: HazeStyle,
-    modifier: Modifier = Modifier,
-    isBarcodeMode: Boolean,
-    isEditing: Boolean,
-    passwordId: Long?,
-    isFavorite: Boolean,
-    onNavigateBack: () -> Unit,
-    onFavoriteChange: (Boolean) -> Unit,
-    onSwitchToWifi: ((Long?) -> Unit)?,
-    onSwitchToSshKey: ((Long?) -> Unit)?,
-    onLoginTypeChange: (String) -> Unit
-) {
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val density = LocalDensity.current
-    val islandSize = 40.dp
-    val topBarHeight = statusBarTop + 52.dp
-    val menuGap = 10.dp
-    var entryTypeMenuExpanded by remember { mutableStateOf(false) }
-    var topBarRootOffset by remember { mutableStateOf(IntOffset.Zero) }
-    var entryTypeButtonOffset by remember { mutableStateOf<IntOffset?>(null) }
-    val currentEntryType = if (isBarcodeMode) {
-        EntryTypeChipOption.BARCODE
-    } else {
-        EntryTypeChipOption.PASSWORD
-    }
-
-    fun selectEntryType(option: EntryTypeChipOption) {
-        entryTypeMenuExpanded = false
-        when (option) {
-            EntryTypeChipOption.WIFI ->
-                onSwitchToWifi?.invoke(if (isEditing) passwordId else null)
-            EntryTypeChipOption.SSH_KEY ->
-                onSwitchToSshKey?.invoke(if (isEditing) passwordId else null)
-            EntryTypeChipOption.BARCODE ->
-                onLoginTypeChange(LOGIN_TYPE_BARCODE)
-            EntryTypeChipOption.PASSWORD ->
-                onLoginTypeChange("PASSWORD")
-        }
-    }
-
-    BackHandler(enabled = entryTypeMenuExpanded) {
-        entryTypeMenuExpanded = false
-    }
-
-    Box(
-        modifier = modifier
-            .then(
-                if (entryTypeMenuExpanded) {
-                    Modifier.fillMaxSize()
-                } else {
-                    Modifier
-                        .fillMaxWidth()
-                        .height(topBarHeight)
-                }
-            )
-            .onGloballyPositioned { coordinates ->
-                val position = coordinates.positionInRoot()
-                topBarRootOffset = IntOffset(position.x.roundToInt(), position.y.roundToInt())
-            }
-    ) {
-        if (entryTypeMenuExpanded) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures(onTap = { entryTypeMenuExpanded = false })
-                    }
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = statusBarTop)
-                .height(52.dp)
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            MonicaPlusBlurIslandSurface(
-                settings = settings,
-                enabledForThisSurface = !isEditing,
-                modifier = Modifier.size(islandSize),
-                shape = CircleShape,
-                contentPadding = PaddingValues(0.dp),
-                fillContent = true,
-                hazeState = hazeState,
-                hazeStyle = hazeStyle
-            ) {
-                AddPasswordBlurIslandIconButton(
-                    icon = MonicaIcons.Navigation.back,
-                    contentDescription = stringResource(R.string.back),
-                    onClick = onNavigateBack
-                )
-            }
-
-            MonicaPlusBlurIslandSurface(
-                settings = settings,
-                enabledForThisSurface = !isEditing,
-                modifier = Modifier
-                    .height(islandSize)
-                    .widthIn(max = 176.dp),
-                shape = RoundedCornerShape(20.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-                contentAlignment = Alignment.CenterStart,
-                fillContent = false,
-                hazeState = hazeState,
-                hazeStyle = hazeStyle
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            if (onSwitchToWifi != null) {
-                Box(
-                    modifier = Modifier.onGloballyPositioned { coordinates ->
-                        val position = coordinates.positionInRoot()
-                        entryTypeButtonOffset = IntOffset(
-                            x = position.x.roundToInt() - topBarRootOffset.x,
-                            y = position.y.roundToInt() - topBarRootOffset.y
-                        )
-                    }
-                ) {
-                    MonicaPlusBlurIslandSurface(
-                        settings = settings,
-                        enabledForThisSurface = !isEditing,
-                        modifier = Modifier.height(islandSize),
-                        shape = RoundedCornerShape(20.dp),
-                        contentPadding = PaddingValues(0.dp),
-                        hazeState = hazeState,
-                        hazeStyle = hazeStyle
-                    ) {
-                        AddPasswordBlurEntryTypeButton(
-                            current = currentEntryType,
-                            expanded = entryTypeMenuExpanded,
-                            enabled = !isEditing,
-                            onClick = { entryTypeMenuExpanded = !entryTypeMenuExpanded }
-                        )
-                    }
-                }
-            }
-
-            MonicaPlusBlurIslandSurface(
-                settings = settings,
-                enabledForThisSurface = !isEditing,
-                modifier = Modifier.size(islandSize),
-                shape = CircleShape,
-                contentPadding = PaddingValues(0.dp),
-                fillContent = true,
-                hazeState = hazeState,
-                hazeStyle = hazeStyle
-            ) {
-                AddPasswordBlurIslandIconButton(
-                    icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = stringResource(R.string.favorite),
-                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current,
-                    onClick = { onFavoriteChange(!isFavorite) }
-                )
-            }
-        }
-
-        entryTypeButtonOffset?.let { anchorOffset ->
-            AnimatedVisibility(
-                visible = entryTypeMenuExpanded && onSwitchToWifi != null,
-                enter = fadeIn(animationSpec = tween(120)) + expandVertically(
-                    animationSpec = tween(180, easing = FastOutSlowInEasing),
-                    expandFrom = Alignment.Top
-                ),
-                exit = fadeOut(animationSpec = tween(90)) + shrinkVertically(
-                    animationSpec = tween(120, easing = FastOutSlowInEasing),
-                    shrinkTowards = Alignment.Top
-                ),
-                modifier = Modifier.offset(
-                    x = with(density) { anchorOffset.x.toDp() },
-                    y = with(density) { anchorOffset.y.toDp() } + islandSize + menuGap
-                )
-            ) {
-                MonicaPlusBlurIslandSurface(
-                    settings = settings,
-                    enabledForThisSurface = !isEditing,
-                    modifier = Modifier.width(176.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    contentPadding = PaddingValues(vertical = 8.dp),
-                    hazeState = hazeState,
-                    hazeStyle = hazeStyle
-                ) {
-                    Column {
-                        EntryTypeChipOption.entries.forEach { option ->
-                            AddPasswordBlurEntryTypeMenuItem(
-                                option = option,
-                                selected = option == currentEntryType,
-                                onClick = { selectEntryType(option) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AddPasswordBlurEntryTypeButton(
-    current: EntryTypeChipOption,
-    expanded: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .height(40.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Icon(
-            imageVector = addPasswordEntryTypeIcon(current),
-            contentDescription = null,
-            modifier = Modifier.size(18.dp)
-        )
-        Text(
-            text = addPasswordEntryTypeLabel(current),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Icon(
-            imageVector = Icons.Default.ExpandMore,
-            contentDescription = null,
-            modifier = Modifier
-                .size(18.dp)
-                .rotate(if (expanded) 180f else 0f)
-        )
-    }
-}
-
-@Composable
-private fun AddPasswordBlurEntryTypeMenuItem(
-    option: EntryTypeChipOption,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    val contentColor = if (selected) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Icon(
-            imageVector = addPasswordEntryTypeIcon(option),
-            contentDescription = null,
-            tint = if (selected) contentColor else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(22.dp)
-        )
-        Text(
-            text = addPasswordEntryTypeLabel(option),
-            color = contentColor,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        if (selected) {
-            Icon(
-                imageVector = Icons.Default.Check,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(22.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun addPasswordEntryTypeLabel(option: EntryTypeChipOption): String = stringResource(
-    when (option) {
-        EntryTypeChipOption.PASSWORD -> R.string.entry_type_password
-        EntryTypeChipOption.WIFI -> R.string.entry_type_wifi
-        EntryTypeChipOption.SSH_KEY -> R.string.entry_type_ssh_key
-        EntryTypeChipOption.BARCODE -> R.string.entry_type_barcode
-    }
-)
-
-private fun addPasswordEntryTypeIcon(option: EntryTypeChipOption): ImageVector = when (option) {
-    EntryTypeChipOption.PASSWORD -> Icons.Default.Password
-    EntryTypeChipOption.WIFI -> Icons.Default.Wifi
-    EntryTypeChipOption.SSH_KEY -> Icons.Default.Key
-    EntryTypeChipOption.BARCODE -> Icons.Default.QrCode2
-}
-
-@Composable
-private fun AddPasswordBlurIslandIconButton(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-    tint: Color = LocalContentColor.current
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = tint,
-            modifier = Modifier.size(22.dp)
-        )
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEditPasswordScreen(
@@ -566,6 +222,7 @@ fun AddEditPasswordScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val database = remember { PasswordDatabase.getDatabase(context) }
+    val securityManager = remember(context) { SecurityManager(context.applicationContext) }
 
     // 获取设置以读取进度条样式
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
@@ -718,8 +375,8 @@ fun AddEditPasswordScreen(
     var ssoRefEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
     var barcodePayload by rememberSaveable { mutableStateOf("") }
     
-    // 获取所有密码条目用于SSO关联选择
-    val allPasswordsForRef by viewModel.allPasswords.collectAsState(initial = emptyList())
+    // 获取所有密码条目用于SSO关联选择；只需要元数据，避免打开编辑页时解密全量密码。
+    val allPasswordsForRef by viewModel.allPasswordsForUi.collectAsState(initial = emptyList())
     val allNotes by (noteViewModel?.allNotes ?: flowOf(emptyList())).collectAsState(initial = emptyList())
     val selectableNotes = remember(allNotes) { allNotes.filter { !it.isDeleted } }
     val selectedBoundNote = remember(boundNoteId, selectableNotes) {
@@ -1433,7 +1090,9 @@ fun AddEditPasswordScreen(
         if (passwordId != null) {
             coroutineScope.launch {
                 val actualId = if (passwordId < 0) -passwordId else passwordId
-                viewModel.getRawPasswordEntryById(actualId)?.let { rawEntry ->
+                withContext(Dispatchers.IO) {
+                    viewModel.getRawPasswordEntryById(actualId)
+                }?.let { rawEntry ->
                     // WIFI 条目走独立编辑页；这里立即重定向，不继续解包普通密码 UI 状态。
                     if (rawEntry.isWifiEntry() && onSwitchToWifi != null) {
                         onSwitchToWifi(actualId)
@@ -1445,7 +1104,9 @@ fun AddEditPasswordScreen(
                         return@launch
                     }
                     hasOwnershipConflict = viewModel.hasOwnershipConflict(rawEntry)
-                    val secretState = viewModel.inspectSecretState(rawEntry)
+                    val secretState = withContext(Dispatchers.Default) {
+                        viewModel.inspectSecretState(rawEntry)
+                    }
                     val entry = rawEntry.copy(
                         password = secretState.plainValueOrEmpty()
                     )
@@ -1488,14 +1149,21 @@ fun AddEditPasswordScreen(
                     bitwardenVaultId = entry.bitwardenVaultId
                     bitwardenFolderId = entry.bitwardenFolderId
                     currentReplicaGroupId = entry.replicaGroupId
-                    val authenticatorDraft = resolvePasswordScreenAuthenticatorDraft(
-                        rawKey = entry.authenticatorKey,
-                        fallbackIssuer = entry.title,
-                        fallbackAccountName = entry.username
-                    )
+                    val resolvedAuthenticatorKey = withContext(Dispatchers.Default) {
+                        runCatching {
+                            securityManager.decryptDataIfMonicaCiphertext(entry.authenticatorKey)
+                        }.getOrDefault(entry.authenticatorKey)
+                    }
+                    val authenticatorDraft = withContext(Dispatchers.Default) {
+                        resolvePasswordScreenAuthenticatorDraft(
+                            rawKey = resolvedAuthenticatorKey,
+                            fallbackIssuer = entry.title,
+                            fallbackAccountName = entry.username
+                        )
+                    }
                     authenticatorSecret = authenticatorDraft.secret
                     selectedAuthenticatorOtpTypeName = authenticatorDraft.otpType.toPasswordScreenOtpType().name
-                    originalAuthenticatorKey = entry.authenticatorKey
+                    originalAuthenticatorKey = resolvedAuthenticatorKey
                     passkeyBindings = entry.passkeyBindings
                     existingSshKeyData = entry.sshKeyData
                     
@@ -1518,19 +1186,30 @@ fun AddEditPasswordScreen(
                         isFavorite = entry.isFavorite
                         
                         // Fetch all passwords in the group
-                        val allEntries = viewModel.getRawActivePasswordEntries()
-                        val key = buildPasswordSiblingGroupKey(entry)
-                        val siblings = allEntries.filter { item: PasswordEntry -> 
-                            val itKey = buildPasswordSiblingGroupKey(item)
-                            itKey == key
-                        }.sortedBy { it.id }
+                        val allEntries = withContext(Dispatchers.IO) {
+                            viewModel.getRawActivePasswordEntries()
+                        }
+                        val key = withContext(Dispatchers.Default) {
+                            buildPasswordSiblingGroupKey(entry)
+                        }
+                        val siblings = withContext(Dispatchers.Default) {
+                            allEntries.filter { item: PasswordEntry ->
+                                val itKey = buildPasswordSiblingGroupKey(item)
+                                itKey == key
+                            }.sortedBy { it.id }
+                        }
                         
                         passwords.clear()
                         if (siblings.isNotEmpty()) {
-                            val unreadableIds = mutableSetOf<Long>()
-                            passwords.addAll(
+                            val siblingSecretStates = withContext(Dispatchers.Default) {
                                 siblings.map { sibling ->
                                     val secretState = viewModel.inspectSecretState(sibling)
+                                    sibling to secretState
+                                }
+                            }
+                            val unreadableIds = mutableSetOf<Long>()
+                            passwords.addAll(
+                                siblingSecretStates.map { (sibling, secretState) ->
                                     if (
                                         secretState is SecretValueState.Unreadable &&
                                         secretState.source is PasswordSource.Bitwarden
@@ -1582,7 +1261,9 @@ fun AddEditPasswordScreen(
                             .toSet()
                         
                         // 加载自定义字段
-                        val existingFields = viewModel.getCustomFieldsByEntryIdSync(actualId)
+                        val existingFields = withContext(Dispatchers.IO) {
+                            viewModel.getCustomFieldsByEntryIdSync(actualId)
+                        }
                         customFields.clear()
                         
                         // 将现有字段转换为Draft
@@ -3307,30 +2988,29 @@ fun AddEditPasswordScreen(
                             
                             // Bank Card Selection Logic (retained)
                             if (showBankCardDialog) {
-                                val bankCards by bankCardViewModel.allCards.collectAsState(initial = emptyList())
+                                val bankCards by bankCardViewModel.parsedCards.collectAsState(initial = emptyList())
                                 AlertDialog(
                                     onDismissRequest = { showBankCardDialog = false },
                                     title = { Text(stringResource(R.string.select_bank_card)) },
                                     text = {
                                         if (bankCards.isEmpty()) Text(stringResource(R.string.no_bank_card_data))
                                         else LazyColumn {
-                                            items(bankCards) { item ->
-                                                val cardData = try { Json.decodeFromString<BankCardData>(item.itemData) } catch (e: Exception) { null }
+                                            items(bankCards) { parsedCard ->
+                                                val item = parsedCard.item
+                                                val cardData = parsedCard.cardData
                                                 ListItem(
                                                     headlineContent = { Text(item.title) },
-                                                    supportingContent = { Text(if (cardData != null) stringResource(R.string.tail_number_last4, cardData.cardNumber.takeLast(4)) else stringResource(R.string.parse_failed)) },
+                                                    supportingContent = { Text(stringResource(R.string.tail_number_last4, cardData.cardNumber.takeLast(4))) },
                                                     leadingContent = { Icon(Icons.Default.CreditCard, null) },
                                                     modifier = Modifier.clickable {
-                                                        if (cardData != null) {
-                                                            creditCardNumber = cardData.cardNumber
-                                                            creditCardHolder = cardData.cardholderName
-                                                            creditCardCVV = cardData.cvv
-                                                            val month = cardData.expiryMonth.padStart(2, '0')
-                                                            val year = if (cardData.expiryYear.length == 4) cardData.expiryYear.takeLast(2) else cardData.expiryYear
-                                                            creditCardExpiry = "$month/$year"
-                                                            showBankCardDialog = false
-                                                            Toast.makeText(context, context.getString(R.string.imported), Toast.LENGTH_SHORT).show()
-                                                        }
+                                                        creditCardNumber = cardData.cardNumber
+                                                        creditCardHolder = cardData.cardholderName
+                                                        creditCardCVV = cardData.cvv
+                                                        val month = cardData.expiryMonth.padStart(2, '0')
+                                                        val year = if (cardData.expiryYear.length == 4) cardData.expiryYear.takeLast(2) else cardData.expiryYear
+                                                        creditCardExpiry = "$month/$year"
+                                                        showBankCardDialog = false
+                                                        Toast.makeText(context, context.getString(R.string.imported), Toast.LENGTH_SHORT).show()
                                                     }
                                                 )
                                             }
@@ -3405,21 +3085,34 @@ fun AddEditPasswordScreen(
             }  // Payment Info if 结束
         }
             if (addPasswordTopBarBlurEnabled) {
-                AddPasswordBlurIslandTopBar(
-                    title = topBarTitle,
+                PlusBlurEntryTypeTopBar(
                     settings = settings,
                     hazeState = addPasswordTopBarHazeState,
                     hazeStyle = addPasswordTopBarHazeStyle,
                     modifier = Modifier.align(Alignment.TopCenter),
-                    isBarcodeMode = isBarcodeMode,
-                    isEditing = isEditing,
-                    passwordId = passwordId,
+                    currentEntryType = if (isBarcodeMode) {
+                        EntryTypeChipOption.BARCODE
+                    } else {
+                        EntryTypeChipOption.PASSWORD
+                    },
+                    entryTypeEnabled = !isEditing,
                     isFavorite = isFavorite,
                     onNavigateBack = onNavigateBack,
                     onFavoriteChange = { isFavorite = it },
-                    onSwitchToWifi = onSwitchToWifi,
-                    onSwitchToSshKey = onSwitchToSshKey,
-                    onLoginTypeChange = { loginType = it }
+                    onEntryTypeSelect = { option ->
+                        when (option) {
+                            EntryTypeChipOption.WIFI ->
+                                onSwitchToWifi?.invoke(if (isEditing) passwordId else null)
+                            EntryTypeChipOption.SSH_KEY ->
+                                onSwitchToSshKey?.invoke(if (isEditing) passwordId else null)
+                            EntryTypeChipOption.BARCODE -> {
+                                loginType = LOGIN_TYPE_BARCODE
+                            }
+                            EntryTypeChipOption.PASSWORD -> {
+                                loginType = "PASSWORD"
+                            }
+                        }
+                    }
                 )
             }
         }
