@@ -305,7 +305,7 @@ impl ProjectRepo {
             .map_err(StorageError::Crypto)
     }
 
-    fn decrypt_metadata(
+    pub(crate) fn decrypt_metadata(
         conn: &VaultConnection,
         id: &str,
         field: &str,

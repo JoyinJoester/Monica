@@ -6,6 +6,7 @@ use rusqlite::params;
 
 use crate::connection::VaultConnection;
 use crate::error::{StorageError, StorageResult};
+use crate::repo::project::ProjectRepo;
 
 /// 搜索结果条目。
 #[derive(Debug, Clone)]
@@ -103,7 +104,7 @@ impl SearchService {
 
         let mut count: u32 = 0;
         for (project_id, title_ct) in &rows {
-            let title = String::from_utf8_lossy(title_ct);
+            let title = Self::decrypt_title(conn, project_id, title_ct)?;
             Self::index_project_title(conn, project_id, &title)?;
             count += 1;
         }
@@ -269,31 +270,33 @@ impl SearchService {
             )
             .map_err(StorageError::Database)?;
 
-        let rows: Vec<SearchResult> = stmt
+        let rows: Vec<(String, Vec<u8>, Option<Vec<u8>>, String, f64)> = stmt
             .query_map(params![fts_query], |row| {
-                let project_id: String = row.get(0)?;
-                let title_ct: Vec<u8> = row.get(1)?;
-                let summary_ct: Option<Vec<u8>> = row.get(2)?;
-                let updated_at: String = row.get(3)?;
-                let rank: f64 = row.get(4)?;
-
-                Ok(SearchResult {
-                    project_id,
-                    title: String::from_utf8_lossy(&title_ct).to_string(),
-                    summary: summary_ct
-                        .map(|b| String::from_utf8_lossy(&b).to_string())
-                        .unwrap_or_default(),
-                    entry_types: Vec::new(),
-                    tags: Vec::new(),
-                    updated_at,
-                    relevance_score: Some(-rank), // FTS5 rank 越低越好
-                })
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
             })
             .map_err(StorageError::Database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(StorageError::Database)?;
 
-        Ok(rows)
+        let mut results = Vec::new();
+        for (project_id, title_ct, summary_ct, updated_at, rank) in rows {
+            let title = Self::decrypt_title(conn, &project_id, &title_ct)?;
+            let summary = match summary_ct {
+                Some(b) => Self::decrypt_summary(conn, &project_id, &b)?,
+                None => String::new(),
+            };
+            results.push(SearchResult {
+                project_id,
+                title,
+                summary,
+                entry_types: Vec::new(),
+                tags: Vec::new(),
+                updated_at,
+                relevance_score: Some(-rank),
+            });
+        }
+
+        Ok(results)
     }
 
     /// LIKE 回退搜索。
@@ -312,30 +315,15 @@ impl SearchService {
             )
             .map_err(StorageError::Database)?;
 
-        let rows: Vec<SearchResult> = stmt
+        let rows: Vec<(String, Vec<u8>, Option<Vec<u8>>, String)> = stmt
             .query_map(params![pattern], |row| {
-                let project_id: String = row.get(0)?;
-                let title_ct: Vec<u8> = row.get(1)?;
-                let summary_ct: Option<Vec<u8>> = row.get(2)?;
-                let updated_at: String = row.get(3)?;
-
-                Ok(SearchResult {
-                    project_id,
-                    title: String::from_utf8_lossy(&title_ct).to_string(),
-                    summary: summary_ct
-                        .map(|b| String::from_utf8_lossy(&b).to_string())
-                        .unwrap_or_default(),
-                    entry_types: Vec::new(),
-                    tags: Vec::new(),
-                    updated_at,
-                    relevance_score: None,
-                })
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
             })
             .map_err(StorageError::Database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(StorageError::Database)?;
 
-        Ok(rows)
+        Self::build_results(conn, &rows)
     }
 
     /// 按标签搜索项目。
@@ -352,30 +340,16 @@ impl SearchService {
             )
             .map_err(StorageError::Database)?;
 
-        let rows: Vec<SearchResult> = stmt
+        let rows: Vec<(String, Vec<u8>, Option<Vec<u8>>, String)> = stmt
             .query_map(params![tag.trim().to_lowercase()], |row| {
-                let project_id: String = row.get(0)?;
-                let title_ct: Vec<u8> = row.get(1)?;
-                let summary_ct: Option<Vec<u8>> = row.get(2)?;
-                let updated_at: String = row.get(3)?;
-
-                Ok(SearchResult {
-                    project_id,
-                    title: String::from_utf8_lossy(&title_ct).to_string(),
-                    summary: summary_ct
-                        .map(|b| String::from_utf8_lossy(&b).to_string())
-                        .unwrap_or_default(),
-                    entry_types: Vec::new(),
-                    tags: Vec::new(),
-                    updated_at,
-                    relevance_score: None,
-                })
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
             })
             .map_err(StorageError::Database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(StorageError::Database)?;
 
-        Self::enrich_results(conn, &rows)
+        let results = Self::build_results(conn, &rows)?;
+        Self::enrich_results(conn, &results)
     }
 
     /// 按 entry 类型搜索。
@@ -397,30 +371,16 @@ impl SearchService {
             )
             .map_err(StorageError::Database)?;
 
-        let rows: Vec<SearchResult> = stmt
+        let rows: Vec<(String, Vec<u8>, Option<Vec<u8>>, String)> = stmt
             .query_map(params![entry_type.to_string()], |row| {
-                let project_id: String = row.get(0)?;
-                let title_ct: Vec<u8> = row.get(1)?;
-                let summary_ct: Option<Vec<u8>> = row.get(2)?;
-                let updated_at: String = row.get(3)?;
-
-                Ok(SearchResult {
-                    project_id,
-                    title: String::from_utf8_lossy(&title_ct).to_string(),
-                    summary: summary_ct
-                        .map(|b| String::from_utf8_lossy(&b).to_string())
-                        .unwrap_or_default(),
-                    entry_types: Vec::new(),
-                    tags: Vec::new(),
-                    updated_at,
-                    relevance_score: None,
-                })
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
             })
             .map_err(StorageError::Database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(StorageError::Database)?;
 
-        Self::enrich_results(conn, &rows)
+        let results = Self::build_results(conn, &rows)?;
+        Self::enrich_results(conn, &results)
     }
 
     /// 按更新时间范围搜索。
@@ -444,30 +404,16 @@ impl SearchService {
             )
             .map_err(StorageError::Database)?;
 
-        let rows: Vec<SearchResult> = stmt
+        let rows: Vec<(String, Vec<u8>, Option<Vec<u8>>, String)> = stmt
             .query_map(params![from, to], |row| {
-                let project_id: String = row.get(0)?;
-                let title_ct: Vec<u8> = row.get(1)?;
-                let summary_ct: Option<Vec<u8>> = row.get(2)?;
-                let updated_at: String = row.get(3)?;
-
-                Ok(SearchResult {
-                    project_id,
-                    title: String::from_utf8_lossy(&title_ct).to_string(),
-                    summary: summary_ct
-                        .map(|b| String::from_utf8_lossy(&b).to_string())
-                        .unwrap_or_default(),
-                    entry_types: Vec::new(),
-                    tags: Vec::new(),
-                    updated_at,
-                    relevance_score: None,
-                })
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
             })
             .map_err(StorageError::Database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(StorageError::Database)?;
 
-        Self::enrich_results(conn, &rows)
+        let results = Self::build_results(conn, &rows)?;
+        Self::enrich_results(conn, &results)
     }
 
     /// 组合搜索：标题 + 标签 + entry 类型 + 时间范围。
@@ -545,31 +491,17 @@ impl SearchService {
         let param_refs: Vec<&dyn rusqlite::types::ToSql> =
             param_values.iter().map(|p| p.as_ref()).collect();
 
-        let rows: Vec<SearchResult> = stmt
+        let rows: Vec<(String, Vec<u8>, Option<Vec<u8>>, String)> = stmt
             .query_map(param_refs.as_slice(), |row| {
-                let project_id: String = row.get(0)?;
-                let title_ct: Vec<u8> = row.get(1)?;
-                let summary_ct: Option<Vec<u8>> = row.get(2)?;
-                let updated_at: String = row.get(3)?;
-
-                Ok(SearchResult {
-                    project_id,
-                    title: String::from_utf8_lossy(&title_ct).to_string(),
-                    summary: summary_ct
-                        .map(|b| String::from_utf8_lossy(&b).to_string())
-                        .unwrap_or_default(),
-                    entry_types: Vec::new(),
-                    tags: Vec::new(),
-                    updated_at,
-                    relevance_score: None,
-                })
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
             })
             .map_err(StorageError::Database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(StorageError::Database)?;
 
         // 填充每个结果的 entry_types 和 tags
-        let enriched = Self::enrich_results(conn, &rows)?;
+        let results = Self::build_results(conn, &rows)?;
+        let enriched = Self::enrich_results(conn, &results)?;
 
         Ok(enriched)
     }
@@ -577,6 +509,40 @@ impl SearchService {
     // -----------------------------------------------------------------------
     // HELPERS
     // -----------------------------------------------------------------------
+
+    fn decrypt_title(conn: &VaultConnection, project_id: &str, title_ct: &[u8]) -> StorageResult<String> {
+        let plaintext = ProjectRepo::decrypt_metadata(conn, project_id, "title", title_ct)?;
+        Ok(String::from_utf8_lossy(&plaintext).to_string())
+    }
+
+    fn decrypt_summary(conn: &VaultConnection, project_id: &str, summary_ct: &[u8]) -> StorageResult<String> {
+        let plaintext = ProjectRepo::decrypt_metadata(conn, project_id, "summary", summary_ct)?;
+        Ok(String::from_utf8_lossy(&plaintext).to_string())
+    }
+
+    fn build_results(
+        conn: &VaultConnection,
+        rows: &[(String, Vec<u8>, Option<Vec<u8>>, String)],
+    ) -> StorageResult<Vec<SearchResult>> {
+        let mut results = Vec::new();
+        for (project_id, title_ct, summary_ct, updated_at) in rows {
+            let title = Self::decrypt_title(conn, project_id, title_ct)?;
+            let summary = match summary_ct {
+                Some(b) => Self::decrypt_summary(conn, project_id, b)?,
+                None => String::new(),
+            };
+            results.push(SearchResult {
+                project_id: project_id.clone(),
+                title,
+                summary,
+                entry_types: Vec::new(),
+                tags: Vec::new(),
+                updated_at: updated_at.clone(),
+                relevance_score: None,
+            });
+        }
+        Ok(results)
+    }
 
     /// 为搜索结果填充 entry_types 和 tags。
     fn enrich_results(
