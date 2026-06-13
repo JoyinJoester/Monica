@@ -1,16 +1,12 @@
 {
   "repo": "Monica-Pass/Monica",
   "repoUrl": "https://github.com/Monica-Pass/Monica",
-  "generatedAt": "2026-06-12T22:00:49.497Z",
+  "generatedAt": "2026-06-13T21:38:02.749Z",
   "range": {
-    "from": "2025-06-13",
-    "to": "2026-06-12"
+    "from": "2025-06-14",
+    "to": "2026-06-13"
   },
   "activity": [
-    {
-      "date": "2025-06-13",
-      "count": 0
-    },
     {
       "date": "2025-06-14",
       "count": 0
@@ -1465,10 +1461,50 @@
     },
     {
       "date": "2026-06-12",
-      "count": 0
+      "count": 1
+    },
+    {
+      "date": "2026-06-13",
+      "count": 3
     }
   ],
   "latest": [
+    {
+      "sha": "f2cb170973c04f28db41ae2bf7083a56efb98fb7",
+      "shortSha": "f2cb170",
+      "message": "Update contributor flag SVG",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-13T08:26:39Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/f2cb170973c04f28db41ae2bf7083a56efb98fb7"
+    },
+    {
+      "sha": "243b058b68bda76382a31d38a3a64099e8070003",
+      "shortSha": "243b058",
+      "message": "Merge pull request #63 from Monica-Pass/codex/readme-android-sync-20260613",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-06-13T08:26:22Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/243b058b68bda76382a31d38a3a64099e8070003"
+    },
+    {
+      "sha": "6d93aa9ffd607f326b230f2eb328b62a30294142",
+      "shortSha": "6d93aa9",
+      "message": "chore: sync Android app and README updates",
+      "authorName": "JoyinJoester",
+      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
+      "date": "2026-06-13T08:16:16Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/6d93aa9ffd607f326b230f2eb328b62a30294142"
+    },
+    {
+      "sha": "1930384c1bf8b52f09109629db2aed6a92faa56d",
+      "shortSha": "1930384",
+      "message": "chore: update github commit data",
+      "authorName": "github-actions[bot]",
+      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "date": "2026-06-12T22:00:49Z",
+      "url": "https://github.com/Monica-Pass/Monica/commit/1930384c1bf8b52f09109629db2aed6a92faa56d"
+    },
     {
       "sha": "c1d4c3fa896b6e9d871d89e70b0647eada2eaf40",
       "shortSha": "c1d4c3f",
@@ -1522,42 +1558,6 @@
       "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
       "date": "2026-06-09T12:42:30Z",
       "url": "https://github.com/Monica-Pass/Monica/commit/c4cd7f2bcdd9891c390d8b0ac65d875861c10e72"
-    },
-    {
-      "sha": "f87dc3a9acc928cd9985c48df34d9b0a7b494097",
-      "shortSha": "f87dc3a",
-      "message": "Update contributor flag SVG",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-09T12:38:37Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/f87dc3a9acc928cd9985c48df34d9b0a7b494097"
-    },
-    {
-      "sha": "30a41dd95759f7d656087dd6fe00c1d35deefb01",
-      "shortSha": "30a41dd",
-      "message": "Fix Android passkey discoverability compatibility",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-09T12:38:21Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/30a41dd95759f7d656087dd6fe00c1d35deefb01"
-    },
-    {
-      "sha": "dde696061f1adb41e847eba41a5db5df61ac2614",
-      "shortSha": "dde6960",
-      "message": "chore: update github commit data",
-      "authorName": "github-actions[bot]",
-      "authorAvatar": "https://avatars.githubusercontent.com/in/15368?v=4",
-      "date": "2026-06-08T22:01:01Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/dde696061f1adb41e847eba41a5db5df61ac2614"
-    },
-    {
-      "sha": "436c7948e41fe5d2670b44bd8c6ef1a3194d391d",
-      "shortSha": "436c794",
-      "message": "Update Android password UI and diagnostics fixes",
-      "authorName": "JoyinJoester",
-      "authorAvatar": "https://avatars.githubusercontent.com/u/87232423?v=4",
-      "date": "2026-06-08T09:17:05Z",
-      "url": "https://github.com/Monica-Pass/Monica/commit/436c7948e41fe5d2670b44bd8c6ef1a3194d391d"
     }
   ]
 }
