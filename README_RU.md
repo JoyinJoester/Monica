@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | **Русский** | [黑羽川](readme_Nya.md)
+[中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | **Русский** | [黑羽川](README_Nya.md)
 
 <img src="image/themepng.png" alt="Monica App Icon" width="500" />
 
@@ -186,4 +186,5 @@ Monica распространяется по лицензии [GNU General Publi
 ## Указание сторонних иконок
 
 - Проект локально включает ресурсы иконок из [Stratum Auth app](https://github.com/stratumauth/app) (версия [v1.4.0](https://github.com/stratumauth/app/releases/tag/v1.4.0), каталоги [icons](https://github.com/stratumauth/app/tree/v1.4.0/icons) / [extraicons](https://github.com/stratumauth/app/tree/v1.4.0/extraicons), GPL-3.0).
+- Источник иконок банковских/платежных карт: локальный каталог [SVG Credit Card & Payment Icons](svg-credit-card-payment-icons-main) (Apache-2.0).
 - Названия брендов и логотипы принадлежат соответствующим правообладателям.

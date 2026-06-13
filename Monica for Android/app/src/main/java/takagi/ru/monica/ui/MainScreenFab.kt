@@ -69,6 +69,9 @@ internal fun BoxScope.MainScreenFabOverlay(
     isAddingDocumentInline: Boolean,
     inlineDocumentEditorId: Long?,
     selectedDocumentId: Long?,
+    isAddingBillingAddressInline: Boolean,
+    inlineBillingAddressEditorId: Long?,
+    selectedBillingAddressId: Long?,
     isAddingNoteInline: Boolean,
     inlineNoteEditorId: Long?,
     isAddingSendInline: Boolean,
@@ -132,7 +135,10 @@ internal fun BoxScope.MainScreenFabOverlay(
             selectedBankCardId != null ||
             isAddingDocumentInline ||
             inlineDocumentEditorId != null ||
-            selectedDocumentId != null
+            selectedDocumentId != null ||
+            isAddingBillingAddressInline ||
+            inlineBillingAddressEditorId != null ||
+            selectedBillingAddressId != null
         BottomNavItem.Notes -> isAddingNoteInline || inlineNoteEditorId != null
         BottomNavItem.Send -> isAddingSendInline
         else -> false
@@ -653,6 +659,7 @@ internal fun MainScreenAddFab(
     val compactWalletAddType = when (cardWalletSubTab) {
         CardWalletTab.DOCUMENTS -> CardWalletTab.DOCUMENTS
         CardWalletTab.BANK_CARDS -> CardWalletTab.BANK_CARDS
+        CardWalletTab.BILLING_ADDRESSES -> CardWalletTab.BILLING_ADDRESSES
         CardWalletTab.ALL -> walletUnifiedAddType
     }
     val shouldApplyPasswordAggregateDefaults =

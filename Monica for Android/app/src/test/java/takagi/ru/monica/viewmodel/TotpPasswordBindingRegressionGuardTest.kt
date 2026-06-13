@@ -38,10 +38,12 @@ class TotpPasswordBindingRegressionGuardTest {
                 saveTotpSection.contains("totpData = totpData")
         )
         assertTrue(
-            "The bound TOTP path must update an existing persisted binding when present.",
+            "The bound TOTP path must update the selected persisted item first, then fall back to an existing binding.",
             savePasswordBoundTotpBody.contains("repository.getItemsByType(ItemType.TOTP).first()") &&
+                savePasswordBoundTotpBody.contains("val activeStoredItems = existingStoredTotps.mapNotNull") &&
                 savePasswordBoundTotpBody.contains("data.boundPasswordId == passwordId") &&
-                savePasswordBoundTotpBody.contains("val preferredItem = activeBoundItems") &&
+                savePasswordBoundTotpBody.contains("val preferredItem = activeStoredItems") &&
+                savePasswordBoundTotpBody.contains("preferredTotpId != null && item.id == preferredTotpId") &&
                 savePasswordBoundTotpBody.contains("id = preferredItem?.first?.id")
         )
         assertTrue(

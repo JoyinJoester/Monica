@@ -133,6 +133,7 @@ import takagi.ru.monica.viewmodel.GeneratorType
 import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.TimelineViewModel
+import takagi.ru.monica.viewmodel.BillingAddressViewModel
 import takagi.ru.monica.ui.screens.SettingsScreen
 import takagi.ru.monica.ui.screens.GeneratorScreen  // 添加生成器页面导入
 import takagi.ru.monica.ui.screens.NoteListScreen
@@ -142,6 +143,7 @@ import takagi.ru.monica.ui.screens.SendScreen
 import takagi.ru.monica.ui.screens.CardWalletScreen
 import takagi.ru.monica.ui.screens.CardWalletTab
 import takagi.ru.monica.ui.screens.BankCardDetailScreen
+import takagi.ru.monica.ui.screens.BillingAddressDetailScreen
 import takagi.ru.monica.ui.screens.DocumentDetailScreen
 import takagi.ru.monica.ui.screens.HistoryTab
 import takagi.ru.monica.ui.screens.TimelineScreen
@@ -217,6 +219,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.ui.screens.AddEditTotpScreen
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
+import takagi.ru.monica.ui.screens.AddEditBillingAddressScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditNoteScreen
 import takagi.ru.monica.ui.screens.AddEditSendScreen
@@ -236,6 +239,7 @@ fun UnifiedWalletAddScreen(
     onNavigateBack: () -> Unit,
     bankCardViewModel: BankCardViewModel,
     documentViewModel: DocumentViewModel,
+    billingAddressViewModel: BillingAddressViewModel,
     stateHolder: androidx.compose.runtime.saveable.SaveableStateHolder,
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
@@ -263,8 +267,9 @@ fun UnifiedWalletAddScreen(
         WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 52.dp
 
     val titleRes = when (selectedType) {
-        CardWalletTab.DOCUMENTS -> R.string.add_document_title
-        else -> R.string.add_bank_card_title
+        CardWalletTab.DOCUMENTS -> R.string.item_type_document
+        CardWalletTab.BILLING_ADDRESSES -> R.string.billing_address
+        else -> R.string.item_type_bank_card
     }
     val topBarTitle = stringResource(titleRes)
 
@@ -355,7 +360,25 @@ fun UnifiedWalletAddScreen(
                     )
                     .padding(contentPadding)
             ) {
-                if (selectedType == CardWalletTab.DOCUMENTS) {
+                if (selectedType == CardWalletTab.BILLING_ADDRESSES) {
+                    stateHolder.SaveableStateProvider("wallet_add_billing_address") {
+                        AddEditBillingAddressScreen(
+                            viewModel = billingAddressViewModel,
+                            addressId = null,
+                            onNavigateBack = onNavigateBack,
+                            initialCategoryId = initialCategoryId,
+                            initialMdbxDatabaseId = initialMdbxDatabaseId,
+                            initialMdbxFolderId = initialMdbxFolderId,
+                            showTopBar = false,
+                            showFab = false,
+                            onFavoriteStateChanged = { isFavorite = it },
+                            onCanSaveChanged = { canSave = it },
+                            onSaveActionChanged = { onSaveAction = it },
+                            onToggleFavoriteActionChanged = { onToggleFavoriteAction = it },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                } else if (selectedType == CardWalletTab.DOCUMENTS) {
                     stateHolder.SaveableStateProvider("wallet_add_document") {
                         AddEditDocumentScreen(
                             viewModel = documentViewModel,
@@ -442,6 +465,10 @@ private data class MainScreenHandlers(
     val documentAddOpen: () -> Unit,
     val documentEditOpen: (Long) -> Unit,
     val inlineDocumentEditorBack: () -> Unit,
+    val billingAddressOpen: (Long) -> Unit,
+    val billingAddressAddOpen: () -> Unit,
+    val billingAddressEditOpen: (Long) -> Unit,
+    val inlineBillingAddressEditorBack: () -> Unit,
     val walletAddOpen: () -> Unit,
     val noteOpen: (Long?) -> Unit,
     val inlineNoteEditorBack: () -> Unit,
@@ -714,6 +741,7 @@ fun SimpleMainScreen(
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
+    billingAddressViewModel: BillingAddressViewModel,
     generatorViewModel: GeneratorViewModel = viewModel(), // 添加GeneratorViewModel
     noteViewModel: NoteViewModel = viewModel(),
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel(),
@@ -732,6 +760,7 @@ fun SimpleMainScreen(
     onNavigateToFidoQrScan: () -> Unit,
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
+    onNavigateToAddBillingAddress: (Long?) -> Unit,
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
     onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _, _, _ -> },
     onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _, _, _ -> },
@@ -744,6 +773,7 @@ fun SimpleMainScreen(
     onNavigateToPasskeyDetail: (Long) -> Unit,
     onNavigateToBankCardDetail: (Long) -> Unit, // Add this
     onNavigateToDocumentDetail: (Long) -> Unit, // Keep this
+    onNavigateToBillingAddressDetail: (Long) -> Unit,
     onNavigateToChangePassword: () -> Unit = {},
     onNavigateToSecurityQuestion: () -> Unit = {},
     onNavigateToMasterPasswordLocking: () -> Unit = {},
@@ -885,6 +915,7 @@ fun SimpleMainScreen(
 
     // CardWallet state
     var cardWalletSubTab by rememberSaveable { mutableStateOf(CardWalletTab.ALL) }
+    var cardWalletBitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
     var walletUnifiedAddType by rememberSaveable { mutableStateOf(CardWalletTab.BANK_CARDS) }
     val walletAddSaveableStateHolder = rememberSaveableStateHolder()
     val cardWalletSaveableStateHolder = rememberSaveableStateHolder()
@@ -939,6 +970,12 @@ fun SimpleMainScreen(
 
     val currentTab = tabs.firstOrNull { it.key == selectedTabKey } ?: tabs.first()
 
+    LaunchedEffect(currentTab.key) {
+        if (currentTab != BottomNavItem.CardWallet) {
+            cardWalletBitwardenVaultId = null
+        }
+    }
+
     var passwordPaneState by rememberSaveable(stateSaver = PasswordPaneUiStateSaver) {
         mutableStateOf(PasswordPaneUiState())
     }
@@ -989,6 +1026,9 @@ fun SimpleMainScreen(
     val selectedDocumentId = cardWalletPaneState.selectedDocumentId
     val inlineDocumentEditorId = cardWalletPaneState.inlineDocumentEditorId
     val isAddingDocumentInline = cardWalletPaneState.isAddingDocumentInline
+    val selectedBillingAddressId = cardWalletPaneState.selectedBillingAddressId
+    val inlineBillingAddressEditorId = cardWalletPaneState.inlineBillingAddressEditorId
+    val isAddingBillingAddressInline = cardWalletPaneState.isAddingBillingAddressInline
     val inlineNoteEditorId = notePaneState.inlineNoteEditorId
     val isAddingNoteInline = notePaneState.isAddingInline
     val selectedSend = sendPaneState.selectedSend
@@ -1059,6 +1099,22 @@ fun SimpleMainScreen(
     val clearSelectedDocumentPaneItem: () -> Unit = {
         cardWalletPaneState = CardWalletPaneUiStateTransitions.clearSelectedDocument(cardWalletPaneState)
     }
+    val openInlineBillingAddressAdd: () -> Unit = {
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.openBillingAddressAddInline()
+    }
+    val openInlineBillingAddressEditor: (Long) -> Unit = { addressId ->
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.openBillingAddressEditInline(addressId)
+    }
+    val openInlineBillingAddressDetail: (Long) -> Unit = { addressId ->
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.openBillingAddressDetail(addressId)
+    }
+    val closeInlineBillingAddressEditor: () -> Unit = {
+        pendingInlineWalletAddStorageDefaults = null
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.closeBillingAddressEditor(cardWalletPaneState)
+    }
+    val clearSelectedBillingAddressPaneItem: () -> Unit = {
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.clearSelectedBillingAddress(cardWalletPaneState)
+    }
     val resetDocumentPaneState: () -> Unit = {
         pendingInlineWalletAddStorageDefaults = null
         cardWalletPaneState = CardWalletPaneUiStateTransitions.resetDocumentPane(cardWalletPaneState)
@@ -1066,6 +1122,10 @@ fun SimpleMainScreen(
     val resetBankCardPaneState: () -> Unit = {
         pendingInlineWalletAddStorageDefaults = null
         cardWalletPaneState = CardWalletPaneUiStateTransitions.resetBankCardPane(cardWalletPaneState)
+    }
+    val resetBillingAddressPaneState: () -> Unit = {
+        pendingInlineWalletAddStorageDefaults = null
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.resetBillingAddressPane(cardWalletPaneState)
     }
     val resetNotePaneState: () -> Unit = {
         pendingInlineNoteAddStorageDefaults = null
@@ -1353,10 +1413,29 @@ fun SimpleMainScreen(
             pendingInlineWalletAddStorageDefaults = null
             closeInlineDocumentEditor()
         }
+        val handleBillingAddressAddOpen: () -> Unit = {
+            if (isCompactWidth) {
+                onNavigateToAddBillingAddress(null)
+            } else {
+                openInlineBillingAddressAdd()
+            }
+        }
+        val handleBillingAddressEditOpen: (Long) -> Unit = { addressId ->
+            if (isCompactWidth) {
+                onNavigateToAddBillingAddress(addressId)
+            } else {
+                openInlineBillingAddressEditor(addressId)
+            }
+        }
+        val handleInlineBillingAddressEditorBack: () -> Unit = {
+            pendingInlineWalletAddStorageDefaults = null
+            closeInlineBillingAddressEditor()
+        }
         val handleWalletAddOpen: () -> Unit = {
             when (cardWalletSubTab) {
                 CardWalletTab.BANK_CARDS -> handleBankCardAddOpen()
                 CardWalletTab.DOCUMENTS -> handleDocumentAddOpen()
+                CardWalletTab.BILLING_ADDRESSES -> handleBillingAddressAddOpen()
                 CardWalletTab.ALL -> {
                     if (isCompactWidth) {
                         onNavigateToWalletAdd(walletUnifiedAddType)
@@ -1408,6 +1487,13 @@ fun SimpleMainScreen(
                 onNavigateToDocumentDetail(documentId)
             } else {
                 openInlineDocumentDetail(documentId)
+            }
+        }
+        val handleBillingAddressOpen: (Long) -> Unit = { addressId ->
+            if (isCompactWidth) {
+                onNavigateToBillingAddressDetail(addressId)
+            } else {
+                openInlineBillingAddressDetail(addressId)
             }
         }
         val handlePasskeyOpen: (PasskeyEntry) -> Unit = { passkey ->
@@ -1527,6 +1613,10 @@ fun SimpleMainScreen(
             documentAddOpen = handleDocumentAddOpen,
             documentEditOpen = handleDocumentEditOpen,
             inlineDocumentEditorBack = handleInlineDocumentEditorBack,
+            billingAddressOpen = handleBillingAddressOpen,
+            billingAddressAddOpen = handleBillingAddressAddOpen,
+            billingAddressEditOpen = handleBillingAddressEditOpen,
+            inlineBillingAddressEditorBack = handleInlineBillingAddressEditorBack,
             walletAddOpen = handleWalletAddOpen,
             noteOpen = handleNoteOpen,
             inlineNoteEditorBack = handleInlineNoteEditorBack,
@@ -1556,6 +1646,10 @@ fun SimpleMainScreen(
     val handleDocumentAddOpen = handlers.documentAddOpen
     val handleDocumentEditOpen = handlers.documentEditOpen
     val handleInlineDocumentEditorBack = handlers.inlineDocumentEditorBack
+    val handleBillingAddressOpen = handlers.billingAddressOpen
+    val handleBillingAddressAddOpen = handlers.billingAddressAddOpen
+    val handleBillingAddressEditOpen = handlers.billingAddressEditOpen
+    val handleInlineBillingAddressEditorBack = handlers.inlineBillingAddressEditorBack
     val handleWalletAddOpen = handlers.walletAddOpen
     val handleNoteOpen = handlers.noteOpen
     val handleInlineNoteEditorBack = handlers.inlineNoteEditorBack
@@ -1597,6 +1691,9 @@ fun SimpleMainScreen(
         },
         onResetCardWalletBankCardPane = {
             resetBankCardPaneState()
+        },
+        onResetCardWalletBillingAddressPane = {
+            resetBillingAddressPaneState()
         },
         onSyncWalletUnifiedAddType = { walletUnifiedAddType = it },
         onResetNotePane = {
@@ -1641,21 +1738,31 @@ fun SimpleMainScreen(
         onDocumentClick = { documentId ->
             handleDocumentOpen(documentId)
         },
+        onBillingAddressClick = { addressId ->
+            handleBillingAddressOpen(addressId)
+        },
         onDocumentSelectionModeChange = onCardWalletDocumentSelectionModeChange,
-        onBankCardSelectionModeChange = onCardWalletBankCardSelectionModeChange
+        onBankCardSelectionModeChange = onCardWalletBankCardSelectionModeChange,
+        onBitwardenScopeChanged = { vaultId ->
+            cardWalletBitwardenVaultId = vaultId
+        }
     )
     
     val isBitwardenPageContext = when (currentTab) {
         BottomNavItem.VaultV2,
         BottomNavItem.Passwords -> isBitwardenPasswordFilter(currentFilter)
         BottomNavItem.Authenticator -> isBitwardenTotpFilter(totpFilter)
-        BottomNavItem.CardWallet,
+        BottomNavItem.CardWallet -> cardWalletBitwardenVaultId != null
         BottomNavItem.Notes,
         BottomNavItem.Passkey,
         BottomNavItem.Send -> activeBitwardenVault != null
         else -> false
     }
-    val activeVaultSyncState = activeBitwardenVault?.id?.let(bitwardenSyncStatusByVault::get)
+    val bitwardenStatusVaultId = when (currentTab) {
+        BottomNavItem.CardWallet -> cardWalletBitwardenVaultId
+        else -> activeBitwardenVault?.id
+    }
+    val activeVaultSyncState = bitwardenStatusVaultId?.let(bitwardenSyncStatusByVault::get)
     val nowMs by produceState(
         initialValue = System.currentTimeMillis(),
         key1 = activeVaultSyncState?.lastSuccessAt
@@ -1839,6 +1946,7 @@ fun SimpleMainScreen(
                     cardWalletSaveableStateHolder = cardWalletSaveableStateHolder,
                     bankCardViewModel = bankCardViewModel,
                     documentViewModel = documentViewModel,
+                    billingAddressViewModel = billingAddressViewModel,
                     cardWalletContentState = cardWalletContentState,
                     generatorViewModel = generatorViewModel,
                     generatorRefreshRequestKey = generatorRefreshRequestKey,
@@ -1849,6 +1957,7 @@ fun SimpleMainScreen(
                     onNavigateToNoteDetail = onNavigateToNoteDetail,
                     onNavigateToBankCardDetail = onNavigateToBankCardDetail,
                     onNavigateToDocumentDetail = onNavigateToDocumentDetail,
+                    onNavigateToBillingAddressDetail = handleBillingAddressOpen,
                     onNavigateToPasskeyDetail = onNavigateToPasskeyDetail,
                     onNoteSelectionModeChange = { isSelectionMode ->
                         isNoteSelectionMode = isSelectionMode
@@ -2071,10 +2180,11 @@ fun SimpleMainScreen(
                             )
                         },
                         onPasswordOpen = handlePasswordDetailOpen,
-                        onNavigateToAddTotp = onNavigateToAddTotp,
-                        onNavigateToBankCardDetail = onNavigateToBankCardDetail,
-                        onNavigateToDocumentDetail = onNavigateToDocumentDetail,
-                        onNavigateToAddNote = handleNoteOpen,
+                    onNavigateToAddTotp = onNavigateToAddTotp,
+                    onNavigateToBankCardDetail = onNavigateToBankCardDetail,
+                    onNavigateToDocumentDetail = onNavigateToDocumentDetail,
+                    onNavigateToBillingAddressDetail = handleBillingAddressOpen,
+                    onNavigateToAddNote = handleNoteOpen,
                         onNavigateToNoteDetail = onNavigateToNoteDetail,
                         onNavigateToPasskeyDetail = onNavigateToPasskeyDetail,
                         onOpenHistoryPage = openHistoryPage,
@@ -2114,6 +2224,7 @@ fun SimpleMainScreen(
                         bankCardViewModel = bankCardViewModel,
                         noteViewModel = noteViewModel,
                         documentViewModel = documentViewModel,
+                        billingAddressViewModel = billingAddressViewModel,
                         passkeyViewModel = passkeyViewModel,
                         biometricEnabled = appSettings.biometricEnabled,
                         iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
@@ -2157,7 +2268,9 @@ fun SimpleMainScreen(
                         saveableStateHolder = cardWalletSaveableStateHolder,
                         bankCardViewModel = bankCardViewModel,
                         documentViewModel = documentViewModel,
+                        billingAddressViewModel = billingAddressViewModel,
                         passwordViewModel = passwordViewModel,
+                        bitwardenViewModel = bitwardenViewModel,
                         contentState = cardWalletContentState,
                         isAddingBankCardInline = isAddingBankCardInline,
                         inlineBankCardEditorId = inlineBankCardEditorId,
@@ -2165,12 +2278,18 @@ fun SimpleMainScreen(
                         isAddingDocumentInline = isAddingDocumentInline,
                         inlineDocumentEditorId = inlineDocumentEditorId,
                         onInlineDocumentEditorBack = handleInlineDocumentEditorBack,
+                        isAddingBillingAddressInline = isAddingBillingAddressInline,
+                        inlineBillingAddressEditorId = inlineBillingAddressEditorId,
+                        onInlineBillingAddressEditorBack = handleInlineBillingAddressEditorBack,
                         selectedBankCardId = selectedBankCardId,
                         onClearSelectedBankCard = clearSelectedBankCardPaneItem,
                         onEditBankCard = handleBankCardEditOpen,
                         selectedDocumentId = selectedDocumentId,
                         onClearSelectedDocument = clearSelectedDocumentPaneItem,
                         onEditDocument = handleDocumentEditOpen,
+                        selectedBillingAddressId = selectedBillingAddressId,
+                        onClearSelectedBillingAddress = clearSelectedBillingAddressPaneItem,
+                        onEditBillingAddress = handleBillingAddressEditOpen,
                         initialCategoryId = pendingInlineWalletAddStorageDefaults?.categoryId,
                         initialKeePassDatabaseId = pendingInlineWalletAddStorageDefaults?.keepassDatabaseId,
                         initialKeePassGroupPath = pendingInlineWalletAddStorageDefaults?.keepassGroupPath,
@@ -2461,6 +2580,7 @@ fun SimpleMainScreen(
                             onNavigateToAddTotp = onNavigateToAddTotp,
                             onNavigateToBankCardDetail = onNavigateToBankCardDetail,
                             onNavigateToDocumentDetail = onNavigateToDocumentDetail,
+                            onNavigateToBillingAddressDetail = handleBillingAddressOpen,
                             onNavigateToAddNote = handleNoteOpen,
                             onNavigateToNoteDetail = onNavigateToNoteDetail,
                             onNavigateToPasskeyDetail = onNavigateToPasskeyDetail,
@@ -2501,6 +2621,7 @@ fun SimpleMainScreen(
                             bankCardViewModel = bankCardViewModel,
                             noteViewModel = noteViewModel,
                             documentViewModel = documentViewModel,
+                            billingAddressViewModel = billingAddressViewModel,
                             passkeyViewModel = passkeyViewModel,
                             biometricEnabled = appSettings.biometricEnabled,
                             iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
@@ -2544,7 +2665,9 @@ fun SimpleMainScreen(
                             saveableStateHolder = cardWalletSaveableStateHolder,
                             bankCardViewModel = bankCardViewModel,
                             documentViewModel = documentViewModel,
+                            billingAddressViewModel = billingAddressViewModel,
                             passwordViewModel = passwordViewModel,
+                            bitwardenViewModel = bitwardenViewModel,
                             contentState = cardWalletContentState,
                             isAddingBankCardInline = isAddingBankCardInline,
                             inlineBankCardEditorId = inlineBankCardEditorId,
@@ -2552,12 +2675,18 @@ fun SimpleMainScreen(
                             isAddingDocumentInline = isAddingDocumentInline,
                             inlineDocumentEditorId = inlineDocumentEditorId,
                             onInlineDocumentEditorBack = handleInlineDocumentEditorBack,
+                            isAddingBillingAddressInline = isAddingBillingAddressInline,
+                            inlineBillingAddressEditorId = inlineBillingAddressEditorId,
+                            onInlineBillingAddressEditorBack = handleInlineBillingAddressEditorBack,
                             selectedBankCardId = selectedBankCardId,
                             onClearSelectedBankCard = clearSelectedBankCardPaneItem,
                             onEditBankCard = handleBankCardEditOpen,
                             selectedDocumentId = selectedDocumentId,
                             onClearSelectedDocument = clearSelectedDocumentPaneItem,
                             onEditDocument = handleDocumentEditOpen,
+                            selectedBillingAddressId = selectedBillingAddressId,
+                            onClearSelectedBillingAddress = clearSelectedBillingAddressPaneItem,
+                            onEditBillingAddress = handleBillingAddressEditOpen,
                             initialCategoryId = pendingInlineWalletAddStorageDefaults?.categoryId,
                             initialKeePassDatabaseId = pendingInlineWalletAddStorageDefaults?.keepassDatabaseId,
                             initialKeePassGroupPath = pendingInlineWalletAddStorageDefaults?.keepassGroupPath,
@@ -2818,6 +2947,9 @@ fun SimpleMainScreen(
         isAddingDocumentInline = isAddingDocumentInline,
         inlineDocumentEditorId = inlineDocumentEditorId,
         selectedDocumentId = selectedDocumentId,
+        isAddingBillingAddressInline = isAddingBillingAddressInline,
+        inlineBillingAddressEditorId = inlineBillingAddressEditorId,
+        selectedBillingAddressId = selectedBillingAddressId,
         isAddingNoteInline = isAddingNoteInline,
         inlineNoteEditorId = inlineNoteEditorId,
         isAddingSendInline = isAddingSendInline,
@@ -2995,6 +3127,7 @@ private fun MainScreenTabResetEffects(
     onResetCardWalletPaneAll: () -> Unit,
     onResetCardWalletDocumentPane: () -> Unit,
     onResetCardWalletBankCardPane: () -> Unit,
+    onResetCardWalletBillingAddressPane: () -> Unit,
     onSyncWalletUnifiedAddType: (CardWalletTab) -> Unit,
     onResetNotePane: () -> Unit,
     onResetPasskeyPane: () -> Unit,
@@ -3022,14 +3155,28 @@ private fun MainScreenTabResetEffects(
             onResetCardWalletPaneAll()
         } else {
             when (cardWalletSubTab) {
-                CardWalletTab.BANK_CARDS -> onResetCardWalletDocumentPane()
-                CardWalletTab.DOCUMENTS -> onResetCardWalletBankCardPane()
+                CardWalletTab.BANK_CARDS -> {
+                    onResetCardWalletDocumentPane()
+                    onResetCardWalletBillingAddressPane()
+                }
+                CardWalletTab.DOCUMENTS -> {
+                    onResetCardWalletBankCardPane()
+                    onResetCardWalletBillingAddressPane()
+                }
+                CardWalletTab.BILLING_ADDRESSES -> {
+                    onResetCardWalletBankCardPane()
+                    onResetCardWalletDocumentPane()
+                }
                 CardWalletTab.ALL -> Unit
             }
         }
     }
     LaunchedEffect(cardWalletSubTab) {
-        if (cardWalletSubTab == CardWalletTab.BANK_CARDS || cardWalletSubTab == CardWalletTab.DOCUMENTS) {
+        if (
+            cardWalletSubTab == CardWalletTab.BANK_CARDS ||
+            cardWalletSubTab == CardWalletTab.DOCUMENTS ||
+            cardWalletSubTab == CardWalletTab.BILLING_ADDRESSES
+        ) {
             onSyncWalletUnifiedAddType(cardWalletSubTab)
         }
     }

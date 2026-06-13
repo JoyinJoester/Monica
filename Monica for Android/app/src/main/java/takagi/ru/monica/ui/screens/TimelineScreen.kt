@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
@@ -2670,6 +2672,8 @@ private fun TrashItemCard(
         takagi.ru.monica.data.ItemType.TOTP -> Icons.Default.History to colorScheme.secondary
         takagi.ru.monica.data.ItemType.BANK_CARD -> Icons.Default.CreditCard to colorScheme.tertiary
         takagi.ru.monica.data.ItemType.DOCUMENT -> Icons.Default.Description to colorScheme.error
+        takagi.ru.monica.data.ItemType.BILLING_ADDRESS -> Icons.Default.Home to colorScheme.secondary
+        takagi.ru.monica.data.ItemType.PAYMENT_ACCOUNT -> Icons.Default.AccountBalanceWallet to colorScheme.tertiary
         takagi.ru.monica.data.ItemType.NOTE -> Icons.Default.Note to colorScheme.outline
     }
     
@@ -2678,6 +2682,8 @@ private fun TrashItemCard(
         takagi.ru.monica.data.ItemType.TOTP -> stringResource(R.string.item_type_authenticator)
         takagi.ru.monica.data.ItemType.BANK_CARD -> stringResource(R.string.item_type_bank_card)
         takagi.ru.monica.data.ItemType.DOCUMENT -> stringResource(R.string.item_type_document)
+        takagi.ru.monica.data.ItemType.BILLING_ADDRESS -> stringResource(R.string.billing_address)
+        takagi.ru.monica.data.ItemType.PAYMENT_ACCOUNT -> stringResource(R.string.payment_account)
         takagi.ru.monica.data.ItemType.NOTE -> stringResource(R.string.timeline_item_note)
     }
     
@@ -2899,6 +2905,8 @@ private fun TrashItemActionSheet(
         takagi.ru.monica.data.ItemType.TOTP -> Icons.Default.History to colorScheme.secondary
         takagi.ru.monica.data.ItemType.BANK_CARD -> Icons.Default.CreditCard to colorScheme.tertiary
         takagi.ru.monica.data.ItemType.DOCUMENT -> Icons.Default.Description to colorScheme.error
+        takagi.ru.monica.data.ItemType.BILLING_ADDRESS -> Icons.Default.Home to colorScheme.secondary
+        takagi.ru.monica.data.ItemType.PAYMENT_ACCOUNT -> Icons.Default.AccountBalanceWallet to colorScheme.tertiary
         takagi.ru.monica.data.ItemType.NOTE -> Icons.Default.Note to colorScheme.outline
     }
     
@@ -2907,6 +2915,8 @@ private fun TrashItemActionSheet(
         takagi.ru.monica.data.ItemType.TOTP -> stringResource(R.string.item_type_authenticator)
         takagi.ru.monica.data.ItemType.BANK_CARD -> stringResource(R.string.item_type_bank_card)
         takagi.ru.monica.data.ItemType.DOCUMENT -> stringResource(R.string.item_type_document)
+        takagi.ru.monica.data.ItemType.BILLING_ADDRESS -> stringResource(R.string.billing_address)
+        takagi.ru.monica.data.ItemType.PAYMENT_ACCOUNT -> stringResource(R.string.payment_account)
         takagi.ru.monica.data.ItemType.NOTE -> stringResource(R.string.timeline_item_note)
     }
     

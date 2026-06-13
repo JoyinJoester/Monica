@@ -998,6 +998,8 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         ItemType.TOTP -> BitwardenPendingOperation.ITEM_TYPE_TOTP
         ItemType.BANK_CARD -> BitwardenPendingOperation.ITEM_TYPE_CARD
         ItemType.DOCUMENT -> BitwardenPendingOperation.ITEM_TYPE_DOCUMENT
+        ItemType.BILLING_ADDRESS -> BitwardenPendingOperation.ITEM_TYPE_BILLING_ADDRESS
+        ItemType.PAYMENT_ACCOUNT -> BitwardenPendingOperation.ITEM_TYPE_PAYMENT_ACCOUNT
         ItemType.NOTE -> BitwardenPendingOperation.ITEM_TYPE_NOTE
     }
 
@@ -1006,6 +1008,8 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         ItemType.TOTP -> OperationLogItemType.TOTP
         ItemType.BANK_CARD -> OperationLogItemType.BANK_CARD
         ItemType.DOCUMENT -> OperationLogItemType.DOCUMENT
+        ItemType.BILLING_ADDRESS -> OperationLogItemType.BILLING_ADDRESS
+        ItemType.PAYMENT_ACCOUNT -> OperationLogItemType.PAYMENT_ACCOUNT
         ItemType.NOTE -> OperationLogItemType.NOTE
     }
 

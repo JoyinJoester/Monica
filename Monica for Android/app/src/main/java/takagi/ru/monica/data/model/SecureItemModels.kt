@@ -121,6 +121,109 @@ fun BillingAddress.formatForDisplay(): String {
     return lines.joinToString("\n")
 }
 
+@Serializable
+data class BillingAddressData(
+    val fullName: String = "",
+    val company: String = "",
+    val streetAddress: String = "",
+    val apartment: String = "",
+    val city: String = "",
+    val stateProvince: String = "",
+    val postalCode: String = "",
+    val country: String = "",
+    val phone: String = "",
+    val email: String = "",
+    val isDefault: Boolean = false,
+    val customFields: List<SecureCustomField> = emptyList()
+)
+
+fun BillingAddressData.isEmpty(): Boolean {
+    return fullName.isBlank() &&
+        company.isBlank() &&
+        streetAddress.isBlank() &&
+        apartment.isBlank() &&
+        city.isBlank() &&
+        stateProvince.isBlank() &&
+        postalCode.isBlank() &&
+        country.isBlank() &&
+        phone.isBlank() &&
+        email.isBlank() &&
+        customFields.none { it.isValid() }
+}
+
+fun BillingAddressData.toBillingAddress(): BillingAddress =
+    BillingAddress(
+        streetAddress = streetAddress,
+        apartment = apartment,
+        city = city,
+        stateProvince = stateProvince,
+        postalCode = postalCode,
+        country = country
+    )
+
+fun BillingAddressData.formatForDisplay(): String {
+    val identity = listOf(fullName, company)
+        .filter { it.isNotBlank() }
+        .joinToString(" / ")
+    val address = toBillingAddress().formatForDisplay()
+    return listOf(identity, address, phone, email)
+        .filter { it.isNotBlank() }
+        .joinToString("\n")
+}
+
+@Serializable
+enum class PaymentAccountType {
+    DIGITAL_WALLET,
+    BANK_ACCOUNT,
+    PAYMENT_APP,
+    BUY_NOW_PAY_LATER,
+    CRYPTO_WALLET,
+    OTHER
+}
+
+@Serializable
+data class PaymentAccountData(
+    val paymentType: PaymentAccountType = PaymentAccountType.DIGITAL_WALLET,
+    val provider: String = "",
+    val accountName: String = "",
+    val accountHolderName: String = "",
+    val email: String = "",
+    val phone: String = "",
+    val username: String = "",
+    val accountId: String = "",
+    val maskedAccountNumber: String = "",
+    val linkedCardLast4: String = "",
+    val routingNumber: String = "",
+    val iban: String = "",
+    val swiftBic: String = "",
+    val billingAddress: String = "",
+    val website: String = "",
+    val currency: String = "",
+    val notes: String = "",
+    val isDefault: Boolean = false,
+    val customFields: List<SecureCustomField> = emptyList()
+)
+
+fun PaymentAccountData.isEmpty(): Boolean {
+    return provider.isBlank() &&
+        accountName.isBlank() &&
+        accountHolderName.isBlank() &&
+        email.isBlank() &&
+        phone.isBlank() &&
+        username.isBlank() &&
+        accountId.isBlank() &&
+        maskedAccountNumber.isBlank() &&
+        linkedCardLast4.isBlank() &&
+        routingNumber.isBlank() &&
+        iban.isBlank() &&
+        swiftBic.isBlank() &&
+        billingAddress.isBlank() &&
+        website.isBlank() &&
+        currency.isBlank() &&
+        notes.isBlank() &&
+        customFields.none { it.isValid() }
+}
+
 enum class CardType {
     CREDIT,      // 信用卡
     DEBIT,       // 借记卡

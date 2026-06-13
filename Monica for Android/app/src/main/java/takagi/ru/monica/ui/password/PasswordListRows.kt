@@ -2,10 +2,12 @@ package takagi.ru.monica.ui
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +18,8 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordSwipeSelectionMode
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.ui.cardwallet.CardBrandIcon
+import takagi.ru.monica.ui.password.PasswordAggregateWalletItemType
 import takagi.ru.monica.ui.password.PasswordGroupListItemUi
 import takagi.ru.monica.ui.password.PasswordListAggregateConfig
 import takagi.ru.monica.ui.password.PasswordListCardBadge
@@ -165,10 +169,14 @@ internal fun LazyListScope.passwordPageListRows(
 
             PasswordPageContentType.CARD_WALLET ->
                 card.secureItemId?.let { itemId ->
-                    if (card.isDocument) {
-                        aggregateConfig?.onOpenDocument?.invoke(itemId)
-                    } else {
-                        aggregateConfig?.onOpenBankCard?.invoke(itemId)
+                    when (card.walletItemType) {
+                        PasswordAggregateWalletItemType.BANK_CARD ->
+                            aggregateConfig?.onOpenBankCard?.invoke(itemId)
+                        PasswordAggregateWalletItemType.DOCUMENT ->
+                            aggregateConfig?.onOpenDocument?.invoke(itemId)
+                        PasswordAggregateWalletItemType.BILLING_ADDRESS ->
+                            aggregateConfig?.onOpenBillingAddress?.invoke(itemId)
+                        null -> Unit
                     }
                 }
 
@@ -207,10 +215,14 @@ internal fun LazyListScope.passwordPageListRows(
 
             PasswordPageContentType.CARD_WALLET ->
                 card.secureItemId?.let { id ->
-                    if (card.isDocument) {
-                        aggregateUiState.documentViewModel?.toggleFavorite(id)
-                    } else {
-                        aggregateUiState.bankCardViewModel?.toggleFavorite(id)
+                    when (card.walletItemType) {
+                        PasswordAggregateWalletItemType.BANK_CARD ->
+                            aggregateUiState.bankCardViewModel?.toggleFavorite(id)
+                        PasswordAggregateWalletItemType.DOCUMENT ->
+                            aggregateUiState.documentViewModel?.toggleFavorite(id)
+                        PasswordAggregateWalletItemType.BILLING_ADDRESS ->
+                            aggregateUiState.billingAddressViewModel?.toggleFavorite(id)
+                        null -> Unit
                     }
                 }
 
@@ -454,6 +466,15 @@ internal fun LazyListScope.passwordPageListRows(
                     decryptAuthenticatorKey = decryptAuthenticatorKey,
                     iconCardsEnabled = aggregateUiState.cardStyle.iconCardsEnabled,
                     enableSharedBounds = false,
+                    leadingIconOverride = card.bankCardBrand?.let { brand ->
+                        {
+                            CardBrandIcon(
+                                brand = brand,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(width = 52.dp, height = 34.dp)
+                            )
+                        }
+                    },
                     badge = PasswordListCardBadge(
                         text = item.badgeText,
                         color = item.badgeColor

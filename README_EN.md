@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[中文](README.md) | **English** | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | [Русский](README_RU.md) | [黑羽川](readme_Nya.md)
+[中文](README.md) | **English** | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | [Русский](README_RU.md) | [黑羽川](README_Nya.md)
 
 <img src="image/themepng.png" alt="Monica App Icon" width="500" />
 
@@ -186,4 +186,5 @@ Monica is released under [GNU General Public License v3.0](LICENSE).
 ## Third-Party Icon Attribution
 
 - This project locally bundles icon assets from the [Stratum Auth app](https://github.com/stratumauth/app) (version [v1.4.0](https://github.com/stratumauth/app/releases/tag/v1.4.0), directories [icons](https://github.com/stratumauth/app/tree/v1.4.0/icons) / [extraicons](https://github.com/stratumauth/app/tree/v1.4.0/extraicons), GPL-3.0).
+- Bank card/payment icon source: local directory [SVG Credit Card & Payment Icons](svg-credit-card-payment-icons-main) (Apache-2.0).
 - Brand names and logos remain the property of their respective owners.

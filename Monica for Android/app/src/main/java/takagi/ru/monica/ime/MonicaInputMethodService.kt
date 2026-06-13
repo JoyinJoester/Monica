@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.text.InputType
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -18,6 +19,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,6 +38,7 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.isLocalPasswordOwnership
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
@@ -98,6 +101,7 @@ class MonicaInputMethodService : InputMethodService() {
                     unlocked = true,
                     activePanel = targetPanel,
                     isAutofillPanelVisible = targetPanel != MonicaImePanel.KEYBOARD,
+                    isAutofillLoading = targetPanel == MonicaImePanel.PASSWORDS,
                     errorMessage = null
                 )
             }
@@ -109,6 +113,7 @@ class MonicaInputMethodService : InputMethodService() {
                     unlocked = false,
                     activePanel = targetPanel,
                     isAutofillPanelVisible = targetPanel != MonicaImePanel.KEYBOARD,
+                    isAutofillLoading = false,
                     errorMessage = errorMessage ?: getString(takagi.ru.monica.R.string.ime_unlock_required)
                 )
             }
@@ -227,6 +232,9 @@ class MonicaInputMethodService : InputMethodService() {
                 activePackageName = effectivePackageName,
                 activePanel = if (preserveAutofillPanel) previousState.activePanel else MonicaImePanel.KEYBOARD,
                 isAutofillPanelVisible = preserveAutofillPanel,
+                isAutofillLoading = preserveAutofillPanel &&
+                    previousState.activePanel == MonicaImePanel.PASSWORDS &&
+                    shouldRefreshForCurrentView,
                 query = if (preserveAutofillPanel) previousState.query else "",
                 selectedDatabaseScope = if (preserveAutofillPanel) {
                     previousState.selectedDatabaseScope
@@ -326,8 +334,28 @@ class MonicaInputMethodService : InputMethodService() {
 
     private fun requestRefreshVaultEntries(force: Boolean = false) {
         refreshJob?.cancel()
+        val currentState = uiState.value
+        if (
+            currentState.unlocked &&
+            currentState.activePanel == MonicaImePanel.PASSWORDS &&
+            currentState.isAutofillPanelVisible
+        ) {
+            uiState.update { it.copy(isAutofillLoading = true) }
+        }
         refreshJob = serviceScope.launch {
-            refreshVaultEntries(force = force)
+            try {
+                refreshVaultEntries(force = force)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("MonicaIME", "Failed to refresh IME autofill entries", e)
+                uiState.update {
+                    it.copy(
+                        isAutofillLoading = false,
+                        errorMessage = e.message
+                    )
+                }
+            }
         }
     }
 
@@ -385,6 +413,7 @@ class MonicaInputMethodService : InputMethodService() {
                 it.copy(
                     activePanel = MonicaImePanel.KEYBOARD,
                     isAutofillPanelVisible = false,
+                    isAutofillLoading = false,
                     query = "",
                     selectedDatabaseScope = MonicaImeDatabaseScope.All,
                     errorMessage = null
@@ -398,6 +427,7 @@ class MonicaInputMethodService : InputMethodService() {
                 it.copy(
                     activePanel = MonicaImePanel.GENERATOR,
                     isAutofillPanelVisible = true,
+                    isAutofillLoading = false,
                     query = "",
                     selectedDatabaseScope = MonicaImeDatabaseScope.All,
                     errorMessage = null
@@ -421,6 +451,7 @@ class MonicaInputMethodService : InputMethodService() {
                         authenticatorEntries = emptyList(),
                         cardWalletEntries = emptyList(),
                         databaseOptions = emptyList(),
+                        isAutofillLoading = false,
                         selectedDatabaseScope = MonicaImeDatabaseScope.All,
                         errorMessage = getString(takagi.ru.monica.R.string.ime_unlock_required)
                     )
@@ -433,6 +464,7 @@ class MonicaInputMethodService : InputMethodService() {
                 it.copy(
                     activePanel = panel,
                     isAutofillPanelVisible = true,
+                    isAutofillLoading = panel == MonicaImePanel.PASSWORDS,
                     errorMessage = null,
                     query = if (panel == MonicaImePanel.PASSWORDS) "" else it.query,
                     selectedDatabaseScope = it.selectedDatabaseScope
@@ -452,7 +484,8 @@ class MonicaInputMethodService : InputMethodService() {
                     entries = emptyList(),
                     authenticatorEntries = emptyList(),
                     cardWalletEntries = emptyList(),
-                    autoLockMinutes = settings.autoLockMinutes
+                    autoLockMinutes = settings.autoLockMinutes,
+                    isAutofillLoading = false
                 )
             }
             return
@@ -467,19 +500,24 @@ class MonicaInputMethodService : InputMethodService() {
         }
         val localLabel = getString(takagi.ru.monica.R.string.filter_monica)
         val keepassLabel = getString(takagi.ru.monica.R.string.filter_keepass)
+        val mdbxLabel = "MDBX"
         val bitwardenLabel = getString(takagi.ru.monica.R.string.filter_bitwarden)
         val allDatabasesLabel = getString(takagi.ru.monica.R.string.password_picker_all_databases)
         val snapshot = withContext(Dispatchers.IO) {
             val keepassDatabases = database.localKeePassDatabaseDao().getAllDatabasesSync()
+            val mdbxDatabases = database.localMdbxDatabaseDao().getAllDatabasesSnapshot()
             val bitwardenVaults = database.bitwardenVaultDao().getAllVaults()
             val keepassLookup = keepassDatabases.associateBy { it.id }
+            val mdbxLookup = mdbxDatabases.associateBy { it.id }
             val bitwardenLookup = bitwardenVaults.associateBy { it.id }
             val databaseOptions = buildDatabaseOptions(
                 localLabel = localLabel,
                 keepassLabel = keepassLabel,
+                mdbxLabel = mdbxLabel,
                 bitwardenLabel = bitwardenLabel,
                 allDatabasesLabel = allDatabasesLabel,
                 keepassDatabases = keepassDatabases,
+                mdbxDatabases = mdbxDatabases,
                 bitwardenVaults = bitwardenVaults
             )
             val selectedScope = currentState.selectedDatabaseScope
@@ -492,9 +530,11 @@ class MonicaInputMethodService : InputMethodService() {
                 .mapNotNull { entry ->
                     entry.toImeEntryOrNull(
                         keepassLookup = keepassLookup,
+                        mdbxLookup = mdbxLookup,
                         bitwardenLookup = bitwardenLookup,
                         localLabel = localLabel,
                         keepassLabel = keepassLabel,
+                        mdbxLabel = mdbxLabel,
                         bitwardenLabel = bitwardenLabel
                     )
                 }
@@ -518,9 +558,11 @@ class MonicaInputMethodService : InputMethodService() {
                 secureItems = database.secureItemDao().getActiveItemsByTypeSync(ItemType.TOTP),
                 passwordEntries = passwordEntries,
                 keepassLookup = keepassLookup,
+                mdbxLookup = mdbxLookup,
                 bitwardenLookup = bitwardenLookup,
                 localLabel = localLabel,
                 keepassLabel = keepassLabel,
+                mdbxLabel = mdbxLabel,
                 bitwardenLabel = bitwardenLabel,
                 query = query,
                 selectedScope = selectedScope
@@ -530,9 +572,11 @@ class MonicaInputMethodService : InputMethodService() {
                 secureItems = database.secureItemDao().getActiveItemsByTypeSync(ItemType.BANK_CARD) +
                     database.secureItemDao().getActiveItemsByTypeSync(ItemType.DOCUMENT),
                 keepassLookup = keepassLookup,
+                mdbxLookup = mdbxLookup,
                 bitwardenLookup = bitwardenLookup,
                 localLabel = localLabel,
                 keepassLabel = keepassLabel,
+                mdbxLabel = mdbxLabel,
                 bitwardenLabel = bitwardenLabel,
                 query = query,
                 selectedScope = selectedScope
@@ -558,6 +602,7 @@ class MonicaInputMethodService : InputMethodService() {
                 databaseOptions = snapshot.databaseOptions,
                 selectedDatabaseScope = snapshot.selectedScope,
                 autoLockMinutes = settings.autoLockMinutes,
+                isAutofillLoading = false,
                 errorMessage = null
             )
         }
@@ -576,6 +621,7 @@ class MonicaInputMethodService : InputMethodService() {
                     authenticatorEntries = emptyList(),
                     cardWalletEntries = emptyList(),
                     databaseOptions = emptyList(),
+                    isAutofillLoading = false,
                     selectedDatabaseScope = MonicaImeDatabaseScope.All,
                     errorMessage = if (panelStillVisible) {
                         getString(takagi.ru.monica.R.string.ime_unlock_required)
@@ -589,11 +635,12 @@ class MonicaInputMethodService : InputMethodService() {
     }
 
     private fun entryMatchesPackage(entry: MonicaImePasswordEntry, activePackage: String): Boolean {
-        if (activePackage.isBlank()) return false
-        val packageHint = activePackage.substringAfterLast('.')
-        return entry.packageName.equals(activePackage, ignoreCase = true) ||
-            entry.website.contains(packageHint, ignoreCase = true) ||
-            entry.title.contains(packageHint, ignoreCase = true)
+        return imeEntryMatchesPackage(
+            entryPackageName = entry.packageName,
+            website = entry.website,
+            title = entry.title,
+            activePackageName = activePackage
+        )
     }
 
     private fun entryMatchesScope(
@@ -602,8 +649,13 @@ class MonicaInputMethodService : InputMethodService() {
     ): Boolean {
         return when (scope) {
             MonicaImeDatabaseScope.All -> true
-            MonicaImeDatabaseScope.Local -> isLocalPasswordOwnership(entry.keepassDatabaseId, entry.bitwardenVaultId)
+            MonicaImeDatabaseScope.Local -> isLocalPasswordOwnership(
+                entry.keepassDatabaseId,
+                entry.bitwardenVaultId,
+                entry.mdbxDatabaseId
+            )
             is MonicaImeDatabaseScope.KeePass -> entry.keepassDatabaseId == scope.databaseId
+            is MonicaImeDatabaseScope.Mdbx -> entry.mdbxDatabaseId == scope.databaseId
             is MonicaImeDatabaseScope.Bitwarden -> entry.bitwardenVaultId == scope.vaultId
         }
     }
@@ -614,8 +666,13 @@ class MonicaInputMethodService : InputMethodService() {
     ): Boolean {
         return when (scope) {
             MonicaImeDatabaseScope.All -> true
-            MonicaImeDatabaseScope.Local -> isLocalPasswordOwnership(entry.keepassDatabaseId, entry.bitwardenVaultId)
+            MonicaImeDatabaseScope.Local -> isLocalPasswordOwnership(
+                entry.keepassDatabaseId,
+                entry.bitwardenVaultId,
+                entry.mdbxDatabaseId
+            )
             is MonicaImeDatabaseScope.KeePass -> entry.keepassDatabaseId == scope.databaseId
+            is MonicaImeDatabaseScope.Mdbx -> entry.mdbxDatabaseId == scope.databaseId
             is MonicaImeDatabaseScope.Bitwarden -> entry.bitwardenVaultId == scope.vaultId
         }
     }
@@ -626,8 +683,13 @@ class MonicaInputMethodService : InputMethodService() {
     ): Boolean {
         return when (scope) {
             MonicaImeDatabaseScope.All -> true
-            MonicaImeDatabaseScope.Local -> isLocalPasswordOwnership(entry.keepassDatabaseId, entry.bitwardenVaultId)
+            MonicaImeDatabaseScope.Local -> isLocalPasswordOwnership(
+                entry.keepassDatabaseId,
+                entry.bitwardenVaultId,
+                entry.mdbxDatabaseId
+            )
             is MonicaImeDatabaseScope.KeePass -> entry.keepassDatabaseId == scope.databaseId
+            is MonicaImeDatabaseScope.Mdbx -> entry.mdbxDatabaseId == scope.databaseId
             is MonicaImeDatabaseScope.Bitwarden -> entry.bitwardenVaultId == scope.vaultId
         }
     }
@@ -679,9 +741,11 @@ class MonicaInputMethodService : InputMethodService() {
         secureItems: List<SecureItem>,
         passwordEntries: List<PasswordEntry>,
         keepassLookup: Map<Long, LocalKeePassDatabase>,
+        mdbxLookup: Map<Long, LocalMdbxDatabase>,
         bitwardenLookup: Map<Long, BitwardenVault>,
         localLabel: String,
         keepassLabel: String,
+        mdbxLabel: String,
         bitwardenLabel: String,
         query: String,
         selectedScope: MonicaImeDatabaseScope
@@ -689,9 +753,11 @@ class MonicaInputMethodService : InputMethodService() {
         val storedEntries = secureItems.mapNotNull { item ->
             item.toImeAuthenticatorEntryOrNull(
                 keepassLookup = keepassLookup,
+                mdbxLookup = mdbxLookup,
                 bitwardenLookup = bitwardenLookup,
                 localLabel = localLabel,
                 keepassLabel = keepassLabel,
+                mdbxLabel = mdbxLabel,
                 bitwardenLabel = bitwardenLabel
             )
         }
@@ -703,9 +769,11 @@ class MonicaInputMethodService : InputMethodService() {
         val virtualEntries = passwordEntries.mapNotNull { password ->
             password.toVirtualImeAuthenticatorEntryOrNull(
                 keepassLookup = keepassLookup,
+                mdbxLookup = mdbxLookup,
                 bitwardenLookup = bitwardenLookup,
                 localLabel = localLabel,
                 keepassLabel = keepassLabel,
+                mdbxLabel = mdbxLabel,
                 bitwardenLabel = bitwardenLabel
             )?.takeUnless { entry ->
                 listOf(entry.issuer, entry.accountName, entry.title)
@@ -726,9 +794,11 @@ class MonicaInputMethodService : InputMethodService() {
     private fun buildCardWalletEntries(
         secureItems: List<SecureItem>,
         keepassLookup: Map<Long, LocalKeePassDatabase>,
+        mdbxLookup: Map<Long, LocalMdbxDatabase>,
         bitwardenLookup: Map<Long, BitwardenVault>,
         localLabel: String,
         keepassLabel: String,
+        mdbxLabel: String,
         bitwardenLabel: String,
         query: String,
         selectedScope: MonicaImeDatabaseScope
@@ -737,9 +807,11 @@ class MonicaInputMethodService : InputMethodService() {
             .mapNotNull { item ->
                 item.toImeCardWalletEntryOrNull(
                     keepassLookup = keepassLookup,
+                    mdbxLookup = mdbxLookup,
                     bitwardenLookup = bitwardenLookup,
                     localLabel = localLabel,
                     keepassLabel = keepassLabel,
+                    mdbxLabel = mdbxLabel,
                     bitwardenLabel = bitwardenLabel
                 )
             }
@@ -754,9 +826,11 @@ class MonicaInputMethodService : InputMethodService() {
 
     private fun SecureItem.toImeAuthenticatorEntryOrNull(
         keepassLookup: Map<Long, LocalKeePassDatabase>,
+        mdbxLookup: Map<Long, LocalMdbxDatabase>,
         bitwardenLookup: Map<Long, BitwardenVault>,
         localLabel: String,
         keepassLabel: String,
+        mdbxLabel: String,
         bitwardenLabel: String
     ): MonicaImeAuthenticatorEntry? {
         if (itemType != ItemType.TOTP) return null
@@ -788,12 +862,15 @@ class MonicaInputMethodService : InputMethodService() {
             sourceLabel = resolveSourceLabel(
                 item = this,
                 keepassLookup = keepassLookup,
+                mdbxLookup = mdbxLookup,
                 bitwardenLookup = bitwardenLookup,
                 localLabel = localLabel,
                 keepassLabel = keepassLabel,
+                mdbxLabel = mdbxLabel,
                 bitwardenLabel = bitwardenLabel
             ),
             keepassDatabaseId = keepassDatabaseId,
+            mdbxDatabaseId = mdbxDatabaseId,
             bitwardenVaultId = bitwardenVaultId
         )
     }
@@ -806,15 +883,18 @@ class MonicaInputMethodService : InputMethodService() {
 
     private fun PasswordEntry.toVirtualImeAuthenticatorEntryOrNull(
         keepassLookup: Map<Long, LocalKeePassDatabase>,
+        mdbxLookup: Map<Long, LocalMdbxDatabase>,
         bitwardenLookup: Map<Long, BitwardenVault>,
         localLabel: String,
         keepassLabel: String,
+        mdbxLabel: String,
         bitwardenLabel: String
     ): MonicaImeAuthenticatorEntry? {
+        val resolvedUsername = resolveFillableField(username).orEmpty()
         val parsed = TotpDataResolver.fromAuthenticatorKey(
             rawKey = decryptStoredSensitiveValue(authenticatorKey),
             fallbackIssuer = title,
-            fallbackAccountName = username
+            fallbackAccountName = resolvedUsername
         ) ?: return null
         val resolved = parsed.resolveReadableTotpData() ?: return null
         val code = TotpGenerator.generateOtp(resolved)
@@ -838,12 +918,15 @@ class MonicaInputMethodService : InputMethodService() {
             sourceLabel = resolveSourceLabel(
                 entry = this,
                 keepassLookup = keepassLookup,
+                mdbxLookup = mdbxLookup,
                 bitwardenLookup = bitwardenLookup,
                 localLabel = localLabel,
                 keepassLabel = keepassLabel,
+                mdbxLabel = mdbxLabel,
                 bitwardenLabel = bitwardenLabel
             ),
             keepassDatabaseId = keepassDatabaseId,
+            mdbxDatabaseId = mdbxDatabaseId,
             bitwardenVaultId = bitwardenVaultId
         )
     }
@@ -857,24 +940,30 @@ class MonicaInputMethodService : InputMethodService() {
 
     private fun SecureItem.toImeCardWalletEntryOrNull(
         keepassLookup: Map<Long, LocalKeePassDatabase>,
+        mdbxLookup: Map<Long, LocalMdbxDatabase>,
         bitwardenLookup: Map<Long, BitwardenVault>,
         localLabel: String,
         keepassLabel: String,
+        mdbxLabel: String,
         bitwardenLabel: String
     ): MonicaImeCardWalletEntry? {
         return when (itemType) {
             ItemType.BANK_CARD -> toImeBankCardEntryOrNull(
                 keepassLookup = keepassLookup,
+                mdbxLookup = mdbxLookup,
                 bitwardenLookup = bitwardenLookup,
                 localLabel = localLabel,
                 keepassLabel = keepassLabel,
+                mdbxLabel = mdbxLabel,
                 bitwardenLabel = bitwardenLabel
             )
             ItemType.DOCUMENT -> toImeDocumentEntryOrNull(
                 keepassLookup = keepassLookup,
+                mdbxLookup = mdbxLookup,
                 bitwardenLookup = bitwardenLookup,
                 localLabel = localLabel,
                 keepassLabel = keepassLabel,
+                mdbxLabel = mdbxLabel,
                 bitwardenLabel = bitwardenLabel
             )
             else -> null
@@ -883,9 +972,11 @@ class MonicaInputMethodService : InputMethodService() {
 
     private fun SecureItem.toImeBankCardEntryOrNull(
         keepassLookup: Map<Long, LocalKeePassDatabase>,
+        mdbxLookup: Map<Long, LocalMdbxDatabase>,
         bitwardenLookup: Map<Long, BitwardenVault>,
         localLabel: String,
         keepassLabel: String,
+        mdbxLabel: String,
         bitwardenLabel: String
     ): MonicaImeCardWalletEntry? {
         val data = CardWalletDataCodec.parseBankCardData(
@@ -921,22 +1012,27 @@ class MonicaInputMethodService : InputMethodService() {
             sourceLabel = resolveSourceLabel(
                 item = this,
                 keepassLookup = keepassLookup,
+                mdbxLookup = mdbxLookup,
                 bitwardenLookup = bitwardenLookup,
                 localLabel = localLabel,
                 keepassLabel = keepassLabel,
+                mdbxLabel = mdbxLabel,
                 bitwardenLabel = bitwardenLabel
             ),
             fields = fields,
             keepassDatabaseId = keepassDatabaseId,
+            mdbxDatabaseId = mdbxDatabaseId,
             bitwardenVaultId = bitwardenVaultId
         )
     }
 
     private fun SecureItem.toImeDocumentEntryOrNull(
         keepassLookup: Map<Long, LocalKeePassDatabase>,
+        mdbxLookup: Map<Long, LocalMdbxDatabase>,
         bitwardenLookup: Map<Long, BitwardenVault>,
         localLabel: String,
         keepassLabel: String,
+        mdbxLabel: String,
         bitwardenLabel: String
     ): MonicaImeCardWalletEntry? {
         val data = CardWalletDataCodec.parseDocumentData(
@@ -963,31 +1059,33 @@ class MonicaInputMethodService : InputMethodService() {
             sourceLabel = resolveSourceLabel(
                 item = this,
                 keepassLookup = keepassLookup,
+                mdbxLookup = mdbxLookup,
                 bitwardenLookup = bitwardenLookup,
                 localLabel = localLabel,
                 keepassLabel = keepassLabel,
+                mdbxLabel = mdbxLabel,
                 bitwardenLabel = bitwardenLabel
             ),
             fields = fields,
             keepassDatabaseId = keepassDatabaseId,
+            mdbxDatabaseId = mdbxDatabaseId,
             bitwardenVaultId = bitwardenVaultId
         )
     }
 
     private fun PasswordEntry.toImeEntryOrNull(
         keepassLookup: Map<Long, LocalKeePassDatabase>,
+        mdbxLookup: Map<Long, LocalMdbxDatabase>,
         bitwardenLookup: Map<Long, BitwardenVault>,
         localLabel: String,
         keepassLabel: String,
+        mdbxLabel: String,
         bitwardenLabel: String
     ): ImeRefreshResult? {
-        val decryptedPassword = AutofillSecretResolver.decryptPasswordOrNull(
-            securityManager = securityManager,
-            encryptedOrPlain = password,
-            logTag = "MonicaIme"
-        )
+        val decryptedUsername = resolveFillableField(username)
+        val decryptedPassword = resolveFillableField(password)
 
-        if (username.isBlank() && decryptedPassword.isNullOrBlank()) {
+        if (decryptedUsername.isNullOrBlank() && decryptedPassword.isNullOrBlank()) {
             return null
         }
 
@@ -1006,7 +1104,7 @@ class MonicaInputMethodService : InputMethodService() {
             value = MonicaImePasswordEntry(
                 id = id,
                 title = title,
-                username = username,
+                username = decryptedUsername.orEmpty(),
                 website = website,
                 packageName = appPackageName,
                 password = decryptedPassword.orEmpty(),
@@ -1015,12 +1113,15 @@ class MonicaInputMethodService : InputMethodService() {
                 sourceLabel = resolveSourceLabel(
                     entry = this,
                     keepassLookup = keepassLookup,
+                    mdbxLookup = mdbxLookup,
                     bitwardenLookup = bitwardenLookup,
                     localLabel = localLabel,
                     keepassLabel = keepassLabel,
+                    mdbxLabel = mdbxLabel,
                     bitwardenLabel = bitwardenLabel
                 ),
                 keepassDatabaseId = keepassDatabaseId,
+                mdbxDatabaseId = mdbxDatabaseId,
                 bitwardenVaultId = bitwardenVaultId
             )
         )
@@ -1029,9 +1130,11 @@ class MonicaInputMethodService : InputMethodService() {
     private fun resolveSourceLabel(
         entry: PasswordEntry,
         keepassLookup: Map<Long, LocalKeePassDatabase>,
+        mdbxLookup: Map<Long, LocalMdbxDatabase>,
         bitwardenLookup: Map<Long, BitwardenVault>,
         localLabel: String,
         keepassLabel: String,
+        mdbxLabel: String,
         bitwardenLabel: String
     ): String {
         return when {
@@ -1045,6 +1148,10 @@ class MonicaInputMethodService : InputMethodService() {
                 val databaseName = keepassLookup[entry.keepassDatabaseId]?.name
                 listOf(keepassLabel, databaseName).filterNotNull().joinToString(" · ")
             }
+            entry.mdbxDatabaseId != null -> {
+                val databaseName = mdbxLookup[entry.mdbxDatabaseId]?.name
+                listOf(mdbxLabel, databaseName).filterNotNull().joinToString(" · ")
+            }
             else -> localLabel
         }
     }
@@ -1052,9 +1159,11 @@ class MonicaInputMethodService : InputMethodService() {
     private fun resolveSourceLabel(
         item: SecureItem,
         keepassLookup: Map<Long, LocalKeePassDatabase>,
+        mdbxLookup: Map<Long, LocalMdbxDatabase>,
         bitwardenLookup: Map<Long, BitwardenVault>,
         localLabel: String,
         keepassLabel: String,
+        mdbxLabel: String,
         bitwardenLabel: String
     ): String {
         return when {
@@ -1068,11 +1177,23 @@ class MonicaInputMethodService : InputMethodService() {
                 val databaseName = keepassLookup[item.keepassDatabaseId]?.name
                 listOf(keepassLabel, databaseName).filterNotNull().joinToString(" · ")
             }
+            item.mdbxDatabaseId != null -> {
+                val databaseName = mdbxLookup[item.mdbxDatabaseId]?.name
+                listOf(mdbxLabel, databaseName).filterNotNull().joinToString(" · ")
+            }
             else -> localLabel
         }
     }
 
     private fun resolveSecretValue(value: String): String? {
+        return AutofillSecretResolver.decryptPasswordOrNull(
+            securityManager = securityManager,
+            encryptedOrPlain = value,
+            logTag = "MonicaIme"
+        )
+    }
+
+    private fun resolveFillableField(value: String): String? {
         return AutofillSecretResolver.decryptPasswordOrNull(
             securityManager = securityManager,
             encryptedOrPlain = value,
@@ -1114,9 +1235,11 @@ class MonicaInputMethodService : InputMethodService() {
     private fun buildDatabaseOptions(
         localLabel: String,
         keepassLabel: String,
+        mdbxLabel: String,
         bitwardenLabel: String,
         allDatabasesLabel: String,
         keepassDatabases: List<LocalKeePassDatabase>,
+        mdbxDatabases: List<LocalMdbxDatabase>,
         bitwardenVaults: List<BitwardenVault>
     ): List<MonicaImeDatabaseOption> {
         return buildList {
@@ -1133,6 +1256,20 @@ class MonicaInputMethodService : InputMethodService() {
                         MonicaImeDatabaseOption(
                             scope = MonicaImeDatabaseScope.KeePass(database.id),
                             label = "$keepassLabel · ${database.name}"
+                        )
+                    )
+                }
+            mdbxDatabases
+                .sortedWith(
+                    compareByDescending<LocalMdbxDatabase> { it.isDefault }
+                        .thenBy { it.sortOrder }
+                        .thenBy { it.name.lowercase() }
+                )
+                .forEach { database ->
+                    add(
+                        MonicaImeDatabaseOption(
+                            scope = MonicaImeDatabaseScope.Mdbx(database.id),
+                            label = "$mdbxLabel · ${database.name}"
                         )
                     )
                 }

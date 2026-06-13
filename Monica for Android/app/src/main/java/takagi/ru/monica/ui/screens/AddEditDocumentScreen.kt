@@ -85,7 +85,7 @@ fun AddEditDocumentScreen(
     val coroutineScope = rememberCoroutineScope()
     val database = remember { PasswordDatabase.getDatabase(context) }
     val securityManager = remember { SecurityManager(context) }
-    val bitwardenSyncViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
+    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     val localKeePassViewModel: LocalKeePassViewModel = viewModel {
         LocalKeePassViewModel(
             context.applicationContext as android.app.Application,
@@ -553,7 +553,7 @@ fun AddEditDocumentScreen(
                 )
             )
         }
-        syncVaultIds.forEach(bitwardenSyncViewModel::requestLocalMutationSync)
+        syncVaultIds.forEach(bitwardenRepository::requestLocalMutationSync)
         onNavigateBack()
     }
     val toggleFavoriteAction: () -> Unit = {

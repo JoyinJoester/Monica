@@ -33,6 +33,8 @@ data class BackupReport(
             appendLine("  验证器: ${successItems.totp}/${totalItems.totp}")
             appendLine("  银行卡: ${successItems.bankCards}/${totalItems.bankCards}")
             appendLine("  证件: ${successItems.documents}/${totalItems.documents}")
+            appendLine("  账单地址: ${successItems.billingAddresses}/${totalItems.billingAddresses}")
+            appendLine("  支付方式: ${successItems.paymentAccounts}/${totalItems.paymentAccounts}")
             appendLine("  图片: ${successItems.images}/${totalItems.images}")
             
             if (failedItems.isNotEmpty()) {
@@ -87,6 +89,8 @@ data class RestoreReport(
             appendLine("  验证器: ${restoredSuccessfully.totp}/${backupContains.totp}")
             appendLine("  银行卡: ${restoredSuccessfully.bankCards}/${backupContains.bankCards}")
             appendLine("  证件: ${restoredSuccessfully.documents}/${backupContains.documents}")
+            appendLine("  账单地址: ${restoredSuccessfully.billingAddresses}/${backupContains.billingAddresses}")
+            appendLine("  支付方式: ${restoredSuccessfully.paymentAccounts}/${backupContains.paymentAccounts}")
             appendLine("  图片: ${restoredSuccessfully.images}/${backupContains.images}")
             
             if (failedItems.isNotEmpty()) {
@@ -117,11 +121,13 @@ data class ItemCounts(
     val totp: Int = 0,
     val bankCards: Int = 0,
     val documents: Int = 0,
+    val billingAddresses: Int = 0,
+    val paymentAccounts: Int = 0,
     val images: Int = 0,
     val generatorHistory: Int = 0
 ) {
     fun getTotalCount(): Int {
-        return passwords + notes + totp + bankCards + documents
+        return passwords + notes + totp + bankCards + documents + billingAddresses + paymentAccounts
     }
 }
 

@@ -60,6 +60,8 @@ enum class OperationLogItemType {
     PASSKEY,
     BANK_CARD,
     DOCUMENT,
+    BILLING_ADDRESS,
+    PAYMENT_ACCOUNT,
     NOTE,
     CATEGORY,
     KEEPASS_DATABASE,

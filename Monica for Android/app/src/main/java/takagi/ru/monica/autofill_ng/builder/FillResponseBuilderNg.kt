@@ -155,7 +155,7 @@ class FillResponseBuilderNg(
         val hasInlinePresentation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             partition.inlinePresentationSpec != null
         val callbackTargets = buildLoginCallbackTargets(request.partition.views)
-        val authPendingIntent = if (hasInlinePresentation || requireAuthentication || forceAuthDatasetWrapper) {
+        val inlinePendingIntent = if (hasInlinePresentation) {
             createCipherAuthPendingIntent(
                 request = request,
                 partition = partition,
@@ -166,16 +166,10 @@ class FillResponseBuilderNg(
             null
         }
 
-        val useAuthDatasetWrapper = authPendingIntent != null &&
-            (requireAuthentication || forceAuthDatasetWrapper)
         val fields = linkedMapOf<AutofillId, AutofillDatasetBuilder.FieldData?>()
         partition.filledItems.forEach { filledItem ->
             fields[filledItem.autofillId] = AutofillDatasetBuilder.FieldData(
-                value = if (useAuthDatasetWrapper) {
-                    AutofillValue.forText(MANUAL_PLACEHOLDER_VALUE)
-                } else {
-                    filledItem.value
-                },
+                value = filledItem.value,
                 presentation = menuPresentation
             )
         }
@@ -191,7 +185,7 @@ class FillResponseBuilderNg(
                     spec = spec,
                     specs = request.inlinePresentationSpecs,
                     index = index,
-                    pendingIntent = authPendingIntent ?: return@create null,
+                    pendingIntent = inlinePendingIntent ?: return@create null,
                     title = partition.autofillCipher.name,
                     subtitle = partition.autofillCipher.subtitle,
                     icon = AutofillDatasetBuilder.InlinePresentationBuilder.createAppIcon(
@@ -203,10 +197,6 @@ class FillResponseBuilderNg(
             } else {
                 null
             }
-        }
-
-        if (useAuthDatasetWrapper) {
-            datasetBuilder.setAuthentication(authPendingIntent.intentSender)
         }
 
         return datasetBuilder.build()

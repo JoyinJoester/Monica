@@ -2,7 +2,14 @@ package takagi.ru.monica.notes.domain
 
 import android.content.Context
 
-class NoteDraftStore(context: Context) {
+interface NoteDraftStorage {
+    fun saveDraft(noteId: Long, title: String, content: String, tagsText: String)
+    fun loadDraft(noteId: Long): NoteDraftStore.NoteDraft?
+    fun clearDraft(noteId: Long)
+    fun hasDraft(noteId: Long): Boolean
+}
+
+class NoteDraftStore(context: Context) : NoteDraftStorage {
 
     companion object {
         @Volatile
@@ -27,7 +34,7 @@ class NoteDraftStore(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences("note_drafts", Context.MODE_PRIVATE)
 
-    fun saveDraft(noteId: Long, title: String, content: String, tagsText: String) {
+    override fun saveDraft(noteId: Long, title: String, content: String, tagsText: String) {
         if (title.isBlank() && content.isBlank() && tagsText.isBlank()) {
             clearDraft(noteId)
             return
@@ -40,7 +47,7 @@ class NoteDraftStore(context: Context) {
             .apply()
     }
 
-    fun loadDraft(noteId: Long): NoteDraft? {
+    override fun loadDraft(noteId: Long): NoteDraft? {
         if (!prefs.contains(key(noteId, "content"))) return null
         val content = prefs.getString(key(noteId, "content"), null) ?: return null
         val title = prefs.getString(key(noteId, "title"), "") ?: ""
@@ -48,7 +55,7 @@ class NoteDraftStore(context: Context) {
         return NoteDraft(title = title, content = content, tagsText = tags)
     }
 
-    fun clearDraft(noteId: Long) {
+    override fun clearDraft(noteId: Long) {
         prefs.edit()
             .remove(key(noteId, "title"))
             .remove(key(noteId, "content"))
@@ -57,7 +64,7 @@ class NoteDraftStore(context: Context) {
             .apply()
     }
 
-    fun hasDraft(noteId: Long): Boolean {
+    override fun hasDraft(noteId: Long): Boolean {
         return prefs.contains(key(noteId, "content"))
     }
 

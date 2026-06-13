@@ -10,6 +10,9 @@ import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.BillingAddressData
+import takagi.ru.monica.data.model.CardBrand
+import takagi.ru.monica.data.model.CardBrandDetector
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.OtpType
@@ -18,6 +21,7 @@ import takagi.ru.monica.data.model.displayFullName
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.BillingAddressViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
@@ -31,14 +35,22 @@ data class PasswordListAggregateConfig(
     val totpViewModel: TotpViewModel,
     val bankCardViewModel: BankCardViewModel,
     val documentViewModel: DocumentViewModel,
+    val billingAddressViewModel: BillingAddressViewModel,
     val noteViewModel: NoteViewModel,
     val passkeyViewModel: PasskeyViewModel,
     val onOpenTotp: (Long) -> Unit,
     val onOpenBankCard: (Long) -> Unit,
     val onOpenDocument: (Long) -> Unit,
+    val onOpenBillingAddress: (Long) -> Unit,
     val onOpenNote: (Long?) -> Unit,
     val onOpenPasskey: (Long) -> Unit
 )
+
+internal enum class PasswordAggregateWalletItemType {
+    BANK_CARD,
+    DOCUMENT,
+    BILLING_ADDRESS
+}
 
 internal data class PasswordAggregateListItemUi(
     val key: String,
@@ -49,7 +61,8 @@ internal data class PasswordAggregateListItemUi(
     val sortTime: Long,
     val secureItemId: Long? = null,
     val passkeyRecordId: Long? = null,
-    val isDocument: Boolean = false
+    val walletItemType: PasswordAggregateWalletItemType? = null,
+    val bankCardBrand: CardBrand? = null
 )
 
 internal data class PasswordAggregateCardStyle(
@@ -67,6 +80,7 @@ internal fun buildPasswordAggregateItems(
     selectedContentTypes: Set<PasswordPageContentType>,
     bankCards: List<SecureItem>,
     documents: List<SecureItem>,
+    billingAddresses: List<SecureItem>,
     notes: List<SecureItem>,
     totpItems: List<SecureItem>,
     passkeys: List<PasskeyEntry>,
@@ -78,6 +92,9 @@ internal fun buildPasswordAggregateItems(
     parseDocumentData: (SecureItem) -> DocumentData? = {
         CardWalletDataCodec.parseDocumentData(it.itemData)
     },
+    parseBillingAddressData: (SecureItem) -> BillingAddressData? = {
+        CardWalletDataCodec.parseBillingAddressData(it.itemData)
+    },
     parseTotpData: (SecureItem) -> TotpData? = {
         TotpDataResolver.parseStoredItemData(it.itemData, fallbackIssuer = it.title)
     }
@@ -88,10 +105,12 @@ internal fun buildPasswordAggregateItems(
         selectedContentTypes,
         bankCards,
         documents,
+        billingAddresses,
         searchQuery,
         categoryFilter,
         parseBankCardData,
-        parseDocumentData
+        parseDocumentData,
+        parseBillingAddressData
     )
     appendNoteItems(items, selectedContentTypes, notes, searchQuery, categoryFilter)
     appendAuthenticatorItems(items, selectedContentTypes, totpItems, searchQuery, categoryFilter, parseTotpData)
@@ -103,6 +122,7 @@ internal fun resolveNonEmptyAggregateContentTypes(
     configuredTypes: List<PasswordPageContentType>,
     bankCards: List<SecureItem>,
     documents: List<SecureItem>,
+    billingAddresses: List<SecureItem>,
     notes: List<SecureItem>,
     totpItems: List<SecureItem>,
     passkeys: List<PasskeyEntry>,
@@ -116,7 +136,8 @@ internal fun resolveNonEmptyAggregateContentTypes(
             PasswordPageContentType.PASSWORD -> true
             PasswordPageContentType.CARD_WALLET ->
                 bankCards.any { it.matchesAggregateCategory(categoryFilter) } ||
-                    documents.any { it.matchesAggregateCategory(categoryFilter) }
+                    documents.any { it.matchesAggregateCategory(categoryFilter) } ||
+                    billingAddresses.any { it.matchesAggregateCategory(categoryFilter) }
             PasswordPageContentType.NOTE ->
                 notes.any { it.matchesAggregateCategory(categoryFilter) }
             PasswordPageContentType.AUTHENTICATOR ->
@@ -207,17 +228,31 @@ private fun appendCardItems(
     selectedContentTypes: Set<PasswordPageContentType>,
     bankCards: List<SecureItem>,
     documents: List<SecureItem>,
+    billingAddresses: List<SecureItem>,
     searchQuery: String,
     categoryFilter: CategoryFilter,
     parseBankCardData: (SecureItem) -> BankCardData?,
-    parseDocumentData: (SecureItem) -> DocumentData?
+    parseDocumentData: (SecureItem) -> DocumentData?,
+    parseBillingAddressData: (SecureItem) -> BillingAddressData?
 ) {
     if (!selectedContentTypes.contains(PasswordPageContentType.CARD_WALLET)) return
 
     bankCards
-        .filter { it.matchesAggregateCategory(categoryFilter) && it.matchesAggregateQuery(searchQuery) }
+        .filter { it.matchesAggregateCategory(categoryFilter) }
         .forEach { item ->
             val data = parseBankCardData(item)
+            if (!item.matchesAggregateQuery(
+                    searchQuery,
+                    data?.bankName,
+                    data?.cardholderName,
+                    data?.brand,
+                    data?.nickname,
+                    data?.cardNumber?.filter(Char::isDigit)?.takeLast(4)
+                )
+            ) {
+                return@forEach
+            }
+            val brand = data?.resolveCardBrand(item) ?: CardBrand.UNKNOWN
             items += PasswordAggregateListItemUi(
                 key = "bank:${item.id}",
                 entry = item.toAggregatePasswordEntry(
@@ -228,14 +263,25 @@ private fun appendCardItems(
                 badgeText = "card",
                 badgeColor = Color(0xFF43A047),
                 sortTime = item.updatedAt.time,
-                secureItemId = item.id
+                secureItemId = item.id,
+                walletItemType = PasswordAggregateWalletItemType.BANK_CARD,
+                bankCardBrand = brand
             )
         }
 
     documents
-        .filter { it.matchesAggregateCategory(categoryFilter) && it.matchesAggregateQuery(searchQuery) }
+        .filter { it.matchesAggregateCategory(categoryFilter) }
         .forEach { item ->
             val data = parseDocumentData(item)
+            if (!item.matchesAggregateQuery(
+                    searchQuery,
+                    data?.displayFullName(),
+                    data?.documentNumber,
+                    data?.issuedBy
+                )
+            ) {
+                return@forEach
+            }
             items += PasswordAggregateListItemUi(
                 key = "document:${item.id}",
                 entry = item.toAggregatePasswordEntry(
@@ -247,10 +293,69 @@ private fun appendCardItems(
                 badgeColor = Color(0xFF43A047),
                 sortTime = item.updatedAt.time,
                 secureItemId = item.id,
-                isDocument = true
+                walletItemType = PasswordAggregateWalletItemType.DOCUMENT
+            )
+        }
+
+    billingAddresses
+        .filter { it.matchesAggregateCategory(categoryFilter) }
+        .forEach { item ->
+            val data = parseBillingAddressData(item)
+            if (!item.matchesAggregateQuery(
+                    searchQuery,
+                    data?.fullName,
+                    data?.company,
+                    data?.streetAddress,
+                    data?.apartment,
+                    data?.city,
+                    data?.stateProvince,
+                    data?.postalCode,
+                    data?.country,
+                    data?.phone,
+                    data?.email
+                )
+            ) {
+                return@forEach
+            }
+            items += PasswordAggregateListItemUi(
+                key = "billing:${item.id}",
+                entry = item.toAggregatePasswordEntry(
+                    subtitlePrimary = data?.billingAddressPrimary().orEmpty(),
+                    subtitleSecondary = data?.billingAddressSecondary().orEmpty()
+                ),
+                type = PasswordPageContentType.CARD_WALLET,
+                badgeText = "address",
+                badgeColor = Color(0xFF43A047),
+                sortTime = item.updatedAt.time,
+                secureItemId = item.id,
+                walletItemType = PasswordAggregateWalletItemType.BILLING_ADDRESS
             )
         }
 }
+
+private fun BankCardData.resolveCardBrand(item: SecureItem): CardBrand =
+    CardBrandDetector.detectStoredCard(
+        number = cardNumber,
+        storedBrand = listOf(brand, item.title, nickname, bankName)
+            .filter(String::isNotBlank)
+            .joinToString(" ")
+    )
+
+private fun BillingAddressData.billingAddressPrimary(): String =
+    listOf(fullName, company)
+        .firstOrNull { it.isNotBlank() }
+        .orEmpty()
+
+private fun BillingAddressData.billingAddressSecondary(): String =
+    listOf(
+        listOf(streetAddress, apartment).filter(String::isNotBlank).joinToString(" "),
+        listOf(city, stateProvince, postalCode).filter(String::isNotBlank).joinToString(" "),
+        country,
+        email,
+        phone
+    )
+        .firstOrNull { it.isNotBlank() }
+        .orEmpty()
 
 private fun appendNoteItems(
     items: MutableList<PasswordAggregateListItemUi>,

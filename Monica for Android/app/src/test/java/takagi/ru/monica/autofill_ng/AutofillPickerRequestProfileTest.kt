@@ -19,6 +19,7 @@ class AutofillPickerRequestProfileTest {
         assertTrue(profile.wantsPasswords)
         assertTrue(profile.wantsBankCards)
         assertFalse(profile.wantsDocuments)
+        assertFalse(profile.wantsBillingAddresses)
     }
 
     @Test
@@ -34,6 +35,7 @@ class AutofillPickerRequestProfileTest {
         assertFalse(profile.wantsPasswords)
         assertTrue(profile.wantsBankCards)
         assertTrue(profile.wantsDocuments)
+        assertTrue(profile.wantsBillingAddresses)
     }
 
     @Test
@@ -49,6 +51,7 @@ class AutofillPickerRequestProfileTest {
         assertFalse(profile.wantsPasswords)
         assertTrue(profile.wantsBankCards)
         assertTrue(profile.wantsDocuments)
+        assertFalse(profile.wantsBillingAddresses)
     }
 
     @Test
@@ -63,5 +66,6 @@ class AutofillPickerRequestProfileTest {
         assertTrue(profile.wantsPasswords)
         assertFalse(profile.wantsBankCards)
         assertFalse(profile.wantsDocuments)
+        assertFalse(profile.wantsBillingAddresses)
     }
 }

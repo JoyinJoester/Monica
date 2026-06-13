@@ -27,10 +27,12 @@ import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.ui.password.PasswordAggregateListItemUi
+import takagi.ru.monica.ui.password.PasswordAggregateWalletItemType
 
 internal data class PasswordBatchAggregateSelection(
     val bankCards: List<SecureItem> = emptyList(),
     val documents: List<SecureItem> = emptyList(),
+    val billingAddresses: List<SecureItem> = emptyList(),
     val notes: List<SecureItem> = emptyList(),
     val totpItems: List<SecureItem> = emptyList(),
     val passkeys: List<PasskeyEntry> = emptyList()
@@ -38,6 +40,7 @@ internal data class PasswordBatchAggregateSelection(
     val hasKeePassOwned: Boolean
         get() = bankCards.any { it.isKeePassOwned() } ||
             documents.any { it.isKeePassOwned() } ||
+            billingAddresses.any { it.isKeePassOwned() } ||
             notes.any { it.isKeePassOwned() } ||
             totpItems.any { it.isKeePassOwned() } ||
             passkeys.any { it.isKeePassOwned() }
@@ -45,6 +48,7 @@ internal data class PasswordBatchAggregateSelection(
     val hasItems: Boolean
         get() = bankCards.isNotEmpty() ||
             documents.isNotEmpty() ||
+            billingAddresses.isNotEmpty() ||
             notes.isNotEmpty() ||
             totpItems.isNotEmpty() ||
             passkeys.isNotEmpty()
@@ -65,10 +69,22 @@ internal fun PasswordListAggregateUiState.resolveBatchAggregateSelection(
     }
 
     val bankCardIds = selectedSupplementaryItems
-        .filter { it.type == PasswordPageContentType.CARD_WALLET && !it.isDocument }
+        .filter {
+            it.type == PasswordPageContentType.CARD_WALLET &&
+                it.walletItemType == PasswordAggregateWalletItemType.BANK_CARD
+        }
         .mapNotNullTo(linkedSetOf()) { it.secureItemId }
     val documentIds = selectedSupplementaryItems
-        .filter { it.type == PasswordPageContentType.CARD_WALLET && it.isDocument }
+        .filter {
+            it.type == PasswordPageContentType.CARD_WALLET &&
+                it.walletItemType == PasswordAggregateWalletItemType.DOCUMENT
+        }
+        .mapNotNullTo(linkedSetOf()) { it.secureItemId }
+    val billingAddressIds = selectedSupplementaryItems
+        .filter {
+            it.type == PasswordPageContentType.CARD_WALLET &&
+                it.walletItemType == PasswordAggregateWalletItemType.BILLING_ADDRESS
+        }
         .mapNotNullTo(linkedSetOf()) { it.secureItemId }
     val noteIds = selectedSupplementaryItems
         .filter { it.type == PasswordPageContentType.NOTE }
@@ -83,6 +99,7 @@ internal fun PasswordListAggregateUiState.resolveBatchAggregateSelection(
     return PasswordBatchAggregateSelection(
         bankCards = bankCards.filter { it.id in bankCardIds },
         documents = documents.filter { it.id in documentIds },
+        billingAddresses = billingAddresses.filter { it.id in billingAddressIds },
         notes = notes.filter { it.id in noteIds },
         totpItems = totpItems.filter { it.id in totpIds },
         passkeys = passkeys.filter { it.id in passkeyIds }
@@ -180,6 +197,7 @@ internal suspend fun executeMixedPasswordBatchMove(
     val totalCount = selectedEntries.size +
         aggregateSelection.bankCards.size +
         aggregateSelection.documents.size +
+        aggregateSelection.billingAddresses.size +
         aggregateSelection.notes.size +
         aggregateSelection.totpItems.size +
         aggregateSelection.passkeys.size
@@ -409,6 +427,34 @@ internal suspend fun executeMixedPasswordBatchMove(
             successCount++
             reportProgress()
         }
+
+        aggregateSelection.billingAddresses.forEach { item ->
+            val billingAddressViewModel = aggregateUiState.billingAddressViewModel
+            if (billingAddressViewModel == null) {
+                failedCount++
+                reportProgress()
+                return@forEach
+            }
+            val createdId = when {
+                isMonicaLocalTarget ->
+                    billingAddressViewModel.copyAddressToMonicaLocal(item, targetCategoryId)
+                targetMdbxDatabaseId != null ->
+                    billingAddressViewModel.copyAddressToStorage(
+                        item = item,
+                        categoryId = targetCategoryId,
+                        mdbxDatabaseId = targetMdbxDatabaseId,
+                        mdbxFolderId = targetMdbxFolderId
+                    )
+                else -> null
+            }
+            if (createdId != null) {
+                successCount++
+            } else {
+                failedCount++
+            }
+            reportProgress()
+        }
+
     } else {
         val oldStates = selectedEntries.map(::toLocationState)
         val newStates = selectedEntries.map { toMovedLocationState(it, target) }
@@ -744,6 +790,27 @@ internal suspend fun executeMixedPasswordBatchMove(
                 successCount++
                 reportProgress()
             }
+        }
+
+        aggregateSelection.billingAddresses.forEach { item ->
+            val billingAddressViewModel = aggregateUiState.billingAddressViewModel
+            if (billingAddressViewModel == null) {
+                failedCount++
+                reportProgress()
+                return@forEach
+            }
+            val moved = when {
+                isMonicaLocalTarget || targetMdbxDatabaseId != null ->
+                    billingAddressViewModel.moveAddressToStorage(
+                        id = item.id,
+                        categoryId = targetCategoryId,
+                        mdbxDatabaseId = targetMdbxDatabaseId,
+                        mdbxFolderId = targetMdbxFolderId
+                    )
+                else -> false
+            }
+            if (moved) successCount++ else failedCount++
+            reportProgress()
         }
 
         if (!isMonicaLocalTarget) {

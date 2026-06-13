@@ -3,6 +3,7 @@ package takagi.ru.monica.autofill_ng
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.BillingAddress
+import takagi.ru.monica.data.model.BillingAddressData
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.displayFullName
@@ -12,6 +13,7 @@ internal data class AutofillPickerRequestProfile(
     val wantsPasswords: Boolean,
     val wantsBankCards: Boolean,
     val wantsDocuments: Boolean,
+    val wantsBillingAddresses: Boolean,
 )
 
 internal fun buildAutofillPickerRequestProfile(hints: List<String>?): AutofillPickerRequestProfile {
@@ -21,21 +23,25 @@ internal fun buildAutofillPickerRequestProfile(hints: List<String>?): AutofillPi
     val documentHintCount = normalizedHints.count(::isDocumentAutofillHint)
     val bankCardKeyHintCount = normalizedHints.count(::isBankCardKeyAutofillHint)
     val documentKeyHintCount = normalizedHints.count(::isDocumentKeyAutofillHint)
+    val billingAddressKeyHintCount = normalizedHints.count(::isBillingAddressKeyAutofillHint)
 
     val hasLoginHints = loginHintCount > 0
     val hasBankCardHints = bankCardHintCount > 0
     val hasDocumentHints = documentHintCount > 0
+    val hasBillingAddressHints = billingAddressKeyHintCount > 0
     val wantsBankCards = hasBankCardHints &&
         (bankCardKeyHintCount > 0 || bankCardHintCount >= documentHintCount)
     val wantsDocuments = hasDocumentHints &&
         (documentKeyHintCount > 0 || documentHintCount >= bankCardHintCount)
-    val wantsStructuredItems = wantsBankCards || wantsDocuments
+    val wantsBillingAddresses = hasBillingAddressHints
+    val wantsStructuredItems = wantsBankCards || wantsDocuments || wantsBillingAddresses
     val wantsPasswords = hasLoginHints || !wantsStructuredItems
 
     return AutofillPickerRequestProfile(
         wantsPasswords = wantsPasswords,
         wantsBankCards = wantsBankCards,
         wantsDocuments = wantsDocuments,
+        wantsBillingAddresses = wantsBillingAddresses,
     )
 }
 
@@ -67,6 +73,27 @@ internal fun isDocumentKeyAutofillHint(rawHint: String?): Boolean {
         hint.contains("license") ||
         hint.contains("street_address") ||
         hint.contains("address_line")
+}
+
+internal fun isBillingAddressKeyAutofillHint(rawHint: String?): Boolean {
+    val hint = normalizeAutofillHint(rawHint)
+    if (hint.isBlank()) return false
+    return hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_ADDRESS.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_CODE.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_CITY.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_REGION.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_COUNTRY.name.lowercase() ||
+        hint.contains("billing_address") ||
+        hint.contains("street_address") ||
+        hint.contains("address_line") ||
+        hint.contains("postal_address") ||
+        hint.contains("postal") ||
+        hint.contains("zip") ||
+        hint.contains("city") ||
+        hint.contains("state") ||
+        hint.contains("province") ||
+        hint.contains("region") ||
+        hint.contains("country")
 }
 
 internal fun isLoginAutofillHint(rawHint: String?): Boolean {
@@ -218,6 +245,33 @@ internal fun mapDocumentAutofillValue(rawHint: String?, data: DocumentData): Str
     }?.takeIf { it.isNotBlank() }
 }
 
+internal fun mapBillingAddressAutofillValue(rawHint: String?, data: BillingAddressData): String? {
+    val hint = normalizeAutofillHint(rawHint)
+    return when {
+        hint == EnhancedAutofillStructureParserV2.FieldHint.PERSON_NAME.name.lowercase() -> data.fullName
+        hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name.lowercase() -> data.email
+        hint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name.lowercase() -> data.phone
+        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_ADDRESS.name.lowercase() -> data.toAutofillAddress()
+        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_CODE.name.lowercase() -> data.postalCode
+        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_CITY.name.lowercase() -> data.city
+        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_REGION.name.lowercase() -> data.stateProvince
+        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_COUNTRY.name.lowercase() -> data.country
+        hint == EnhancedAutofillStructureParserV2.FieldHint.COMPANY_NAME.name.lowercase() -> data.company
+        hint.contains("given_name") || hint.contains("first_name") -> data.fullName.split(' ').firstOrNull().orEmpty()
+        hint.contains("family_name") || hint.contains("last_name") || hint.contains("surname") -> data.fullName.split(' ').lastOrNull().orEmpty()
+        hint.contains("full_name") || hint.contains("person_name") || hint.contains("name") -> data.fullName
+        hint.contains("email") -> data.email
+        hint.contains("phone") || hint.contains("mobile") || hint.contains("tel") -> data.phone
+        hint.contains("company") || hint.contains("organization") -> data.company
+        hint.contains("street_address") || hint.contains("address_line") || hint.contains("postal_address") -> data.toAutofillAddress()
+        hint.contains("postal") || hint.contains("zip") -> data.postalCode
+        hint.contains("city") -> data.city
+        hint.contains("state") || hint.contains("province") || hint.contains("region") -> data.stateProvince
+        hint.contains("country") -> data.country
+        else -> null
+    }?.takeIf { it.isNotBlank() }
+}
+
 internal fun parseBankCardCandidate(
     item: SecureItem,
     decryptIfNeeded: ((String) -> String)? = null
@@ -234,6 +288,17 @@ internal fun parseDocumentCandidate(
     decryptIfNeeded: ((String) -> String)? = null
 ): Pair<SecureItem, DocumentData>? {
     val data = CardWalletDataCodec.parseDocumentData(
+        raw = item.itemData,
+        decryptIfNeeded = decryptIfNeeded
+    ) ?: return null
+    return item to data
+}
+
+internal fun parseBillingAddressCandidate(
+    item: SecureItem,
+    decryptIfNeeded: ((String) -> String)? = null
+): Pair<SecureItem, BillingAddressData>? {
+    val data = CardWalletDataCodec.parseBillingAddressData(
         raw = item.itemData,
         decryptIfNeeded = decryptIfNeeded
     ) ?: return null
@@ -277,6 +342,24 @@ internal fun DocumentData.matchesAutofillSearch(query: String): Boolean {
     ).any { it.contains(normalized, ignoreCase = true) }
 }
 
+internal fun BillingAddressData.matchesAutofillSearch(query: String): Boolean {
+    val normalized = query.trim().lowercase()
+    if (normalized.isBlank()) return true
+    return listOf(
+        fullName,
+        company,
+        streetAddress,
+        apartment,
+        city,
+        stateProvince,
+        postalCode,
+        country,
+        phone,
+        email,
+        toAutofillAddress(),
+    ).any { it.contains(normalized, ignoreCase = true) }
+}
+
 internal fun maskBankCardNumber(cardNumber: String): String {
     val compact = cardNumber.filter(Char::isDigit)
     if (compact.isBlank()) return cardNumber
@@ -290,6 +373,20 @@ internal fun maskDocumentNumber(documentNumber: String): String {
         repeat(trimmed.length - 4) { append('•') }
         append(trimmed.takeLast(4))
     }
+}
+
+internal fun billingAddressDisplayTitle(item: SecureItem, data: BillingAddressData): String {
+    return item.title.ifBlank {
+        data.fullName.ifBlank { data.company.ifBlank { "Billing Address" } }
+    }
+}
+
+internal fun billingAddressDisplaySubtitle(data: BillingAddressData): String {
+    return listOfNotNull(
+        data.fullName.takeIf { it.isNotBlank() },
+        data.company.takeIf { it.isNotBlank() },
+        data.toAutofillAddress().takeIf { it.isNotBlank() },
+    ).joinToString(" · ")
 }
 
 internal fun documentDisplayTitle(item: SecureItem, data: DocumentData): String {
@@ -393,4 +490,15 @@ private fun DocumentData.toAutofillAddress(): String {
 
 private fun BillingAddress.toAutofillAddress(): String {
     return formatForDisplay().replace("\n", ", ").trim()
+}
+
+private fun BillingAddressData.toAutofillAddress(): String {
+    return listOf(
+        streetAddress,
+        apartment,
+        city,
+        stateProvince,
+        postalCode,
+        country,
+    ).filter { it.isNotBlank() }.joinToString(", ")
 }

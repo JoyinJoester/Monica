@@ -209,6 +209,8 @@ data class BitwardenPendingOperation(
         const val ITEM_TYPE_CARD = "CARD"           // SecureItem BANK_CARD -> Card
         const val ITEM_TYPE_NOTE = "NOTE"           // SecureItem NOTE -> SecureNote
         const val ITEM_TYPE_DOCUMENT = "DOCUMENT"   // SecureItem DOCUMENT -> Identity
+        const val ITEM_TYPE_BILLING_ADDRESS = "BILLING_ADDRESS" // Local-only billing address
+        const val ITEM_TYPE_PAYMENT_ACCOUNT = "PAYMENT_ACCOUNT" // Local-only payment method
         const val ITEM_TYPE_PASSKEY = "PASSKEY"     // PasskeyEntry -> Login (metadata only)
         
         // 状态

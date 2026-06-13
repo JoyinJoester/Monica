@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.Dp
 import takagi.ru.monica.ui.common.layout.DetailPane
 import takagi.ru.monica.ui.common.layout.ListPane
 import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.BillingAddressViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 
 @Composable
@@ -21,7 +22,9 @@ internal fun CardWalletPane(
     saveableStateHolder: SaveableStateHolder,
     bankCardViewModel: BankCardViewModel,
     documentViewModel: DocumentViewModel,
+    billingAddressViewModel: BillingAddressViewModel,
     passwordViewModel: takagi.ru.monica.viewmodel.PasswordViewModel,
+    bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel? = null,
     contentState: CardWalletContentState,
     isAddingBankCardInline: Boolean,
     inlineBankCardEditorId: Long?,
@@ -29,12 +32,18 @@ internal fun CardWalletPane(
     isAddingDocumentInline: Boolean,
     inlineDocumentEditorId: Long?,
     onInlineDocumentEditorBack: () -> Unit,
+    isAddingBillingAddressInline: Boolean,
+    inlineBillingAddressEditorId: Long?,
+    onInlineBillingAddressEditorBack: () -> Unit,
     selectedBankCardId: Long?,
     onClearSelectedBankCard: () -> Unit,
     onEditBankCard: (Long) -> Unit,
     selectedDocumentId: Long?,
     onClearSelectedDocument: () -> Unit,
     onEditDocument: (Long) -> Unit,
+    selectedBillingAddressId: Long?,
+    onClearSelectedBillingAddress: () -> Unit,
+    onEditBillingAddress: (Long) -> Unit,
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
@@ -50,7 +59,9 @@ internal fun CardWalletPane(
             saveableStateHolder = saveableStateHolder,
             bankCardViewModel = bankCardViewModel,
             documentViewModel = documentViewModel,
+            billingAddressViewModel = billingAddressViewModel,
             passwordViewModel = passwordViewModel,
+            bitwardenViewModel = bitwardenViewModel,
             state = contentState,
             showStandaloneSettingsEntry = showStandaloneSettingsEntry,
             onOpenStandaloneSettings = onOpenStandaloneSettings
@@ -78,18 +89,25 @@ internal fun CardWalletPane(
                 CardWalletDetailPaneContent(
                     bankCardViewModel = bankCardViewModel,
                     documentViewModel = documentViewModel,
+                    billingAddressViewModel = billingAddressViewModel,
                     isAddingBankCardInline = isAddingBankCardInline,
                     inlineBankCardEditorId = inlineBankCardEditorId,
                     onInlineBankCardEditorBack = onInlineBankCardEditorBack,
                     isAddingDocumentInline = isAddingDocumentInline,
                     inlineDocumentEditorId = inlineDocumentEditorId,
                     onInlineDocumentEditorBack = onInlineDocumentEditorBack,
+                    isAddingBillingAddressInline = isAddingBillingAddressInline,
+                    inlineBillingAddressEditorId = inlineBillingAddressEditorId,
+                    onInlineBillingAddressEditorBack = onInlineBillingAddressEditorBack,
                     selectedBankCardId = selectedBankCardId,
                     onClearSelectedBankCard = onClearSelectedBankCard,
                     onEditBankCard = onEditBankCard,
                     selectedDocumentId = selectedDocumentId,
                     onClearSelectedDocument = onClearSelectedDocument,
                     onEditDocument = onEditDocument,
+                    selectedBillingAddressId = selectedBillingAddressId,
+                    onClearSelectedBillingAddress = onClearSelectedBillingAddress,
+                    onEditBillingAddress = onEditBillingAddress,
                     initialCategoryId = initialCategoryId,
                     initialKeePassDatabaseId = initialKeePassDatabaseId,
                     initialKeePassGroupPath = initialKeePassGroupPath,

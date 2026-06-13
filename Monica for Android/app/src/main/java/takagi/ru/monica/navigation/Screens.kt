@@ -115,6 +115,15 @@ sealed class Screen(val route: String) {
             }
         }
     }
+    object AddEditBillingAddress : Screen("add_edit_billing_address/{addressId}") {
+        fun createRoute(addressId: Long? = null): String {
+            return if (addressId != null) {
+                "add_edit_billing_address/$addressId"
+            } else {
+                "add_edit_billing_address/-1"
+            }
+        }
+    }
     object WalletAdd : Screen("wallet_add/{initialType}") {
         fun createRoute(initialType: String = "BANK_CARDS"): String {
             return "wallet_add/$initialType"
@@ -123,6 +132,11 @@ sealed class Screen(val route: String) {
     object DocumentDetail : Screen("document_detail/{documentId}") {
         fun createRoute(documentId: Long): String {
             return "document_detail/$documentId"
+        }
+    }
+    object BillingAddressDetail : Screen("billing_address_detail/{addressId}") {
+        fun createRoute(addressId: Long): String {
+            return "billing_address_detail/$addressId"
         }
     }
     object PasswordDetail : Screen("password_detail/{passwordId}") {

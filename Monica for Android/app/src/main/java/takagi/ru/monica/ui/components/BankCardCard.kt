@@ -17,11 +17,13 @@ import androidx.compose.ui.unit.sp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.CardBrandDetector
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.model.isEmpty
 import takagi.ru.monica.bitwarden.sync.SyncStatus
+import takagi.ru.monica.ui.cardwallet.CardBrandIcon
 
 /**
  * 银行卡卡片组件
@@ -49,6 +51,23 @@ fun BankCardCard(
         CardWalletDataCodec.parseBillingAddress(resolvedCardData.billingAddress)
     }
     val hasBillingAddress = remember(billingAddress) { !billingAddress.isEmpty() }
+    val cardBrand = remember(
+        resolvedCardData.cardNumber,
+        resolvedCardData.brand,
+        resolvedCardData.nickname,
+        resolvedCardData.bankName,
+        item.title
+    ) {
+        CardBrandDetector.detectStoredCard(
+            number = resolvedCardData.cardNumber,
+            storedBrand = listOf(
+                resolvedCardData.brand,
+                item.title,
+                resolvedCardData.nickname,
+                resolvedCardData.bankName
+            ).joinToString(" ")
+        )
+    }
     
     // 获取对应容器的文字颜色
     val contentColor = when (resolvedCardData.cardType) {
@@ -244,55 +263,32 @@ fun BankCardCard(
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            // 卡号（脱敏）
-            Row(
+            Text(
+                text = maskCardNumber(resolvedCardData.cardNumber),
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = maskCardNumber(resolvedCardData.cardNumber),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp,
-                    color = contentColor
-                )
-                
-                // 卡类型图标
-                Icon(
-                    when (resolvedCardData.cardType) {
-                        CardType.CREDIT -> Icons.Default.CreditCard
-                        CardType.DEBIT -> Icons.Default.AccountBalance
-                        CardType.PREPAID -> Icons.Default.CardGiftcard
-                    },
-                    contentDescription = resolvedCardData.cardType.name,
-                    modifier = Modifier.size(32.dp),
-                    tint = contentColor
-                )
-            }
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+                color = contentColor
+            )
             
             Spacer(modifier = Modifier.height(12.dp))
             
-            // 持卡人和有效期
+            // 卡组织、持卡人和有效期
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
             ) {
-                if (resolvedCardData.cardholderName.isNotBlank()) {
-                    Column {
-                        Text(
-                            text = stringResource(R.string.cardholder_label),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = contentColor.copy(alpha = 0.7f),
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = resolvedCardData.cardholderName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = contentColor
-                        )
-                    }
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.BottomStart
+                ) {
+                    CardBrandIcon(
+                        brand = cardBrand,
+                        tint = contentColor,
+                        modifier = Modifier.size(width = 52.dp, height = 34.dp)
+                    )
                 }
                 
                 if (resolvedCardData.expiryMonth.isNotBlank() && resolvedCardData.expiryYear.isNotBlank()) {

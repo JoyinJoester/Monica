@@ -3,6 +3,7 @@ package takagi.ru.monica.ui.password
 import androidx.compose.ui.graphics.Color
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordPageContentType
+import takagi.ru.monica.data.model.CardBrand
 
 internal sealed interface PasswordPageListItemUi {
     val key: String
@@ -17,7 +18,8 @@ internal data class PasswordPageCardItemUi(
     val passwordId: Long? = null,
     val secureItemId: Long? = null,
     val passkeyRecordId: Long? = null,
-    val isDocument: Boolean = false
+    val walletItemType: PasswordAggregateWalletItemType? = null,
+    val bankCardBrand: CardBrand? = null
 ) {
     val supportsFavorite: Boolean = type != PasswordPageContentType.PASSKEY
     val sortTime: Long = entry.updatedAt.time
@@ -124,7 +126,8 @@ internal fun PasswordAggregateListItemUi.toPasswordPageCardItemUi(): PasswordPag
         badgeColor = badgeColor,
         secureItemId = secureItemId,
         passkeyRecordId = passkeyRecordId,
-        isDocument = isDocument
+        walletItemType = walletItemType,
+        bankCardBrand = bankCardBrand
     )
 }
 
@@ -168,6 +171,7 @@ internal fun PasswordPageCardItemUi.toSelectedSupplementaryItemOrNull(): Passwor
         sortTime = sortTime,
         secureItemId = secureItemId,
         passkeyRecordId = passkeyRecordId,
-        isDocument = isDocument
+        walletItemType = walletItemType,
+        bankCardBrand = bankCardBrand
     )
 }

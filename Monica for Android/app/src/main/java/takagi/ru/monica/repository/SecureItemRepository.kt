@@ -45,6 +45,8 @@ class SecureItemRepository(
         ItemType.TOTP -> "totp"
         ItemType.BANK_CARD -> "card"
         ItemType.DOCUMENT -> "document-ref"
+        ItemType.BILLING_ADDRESS -> "billing-address"
+        ItemType.PAYMENT_ACCOUNT -> "payment-account"
         ItemType.PASSWORD -> "password"
     }
 

@@ -17,28 +17,38 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
+import takagi.ru.monica.ui.screens.AddEditBillingAddressScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.BankCardDetailScreen
+import takagi.ru.monica.ui.screens.BillingAddressDetailScreen
 import takagi.ru.monica.ui.screens.DocumentDetailScreen
 import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.BillingAddressViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 
 @Composable
 internal fun CardWalletDetailPaneContent(
     bankCardViewModel: BankCardViewModel,
     documentViewModel: DocumentViewModel,
+    billingAddressViewModel: BillingAddressViewModel,
     isAddingBankCardInline: Boolean,
     inlineBankCardEditorId: Long?,
     onInlineBankCardEditorBack: () -> Unit,
     isAddingDocumentInline: Boolean,
     inlineDocumentEditorId: Long?,
     onInlineDocumentEditorBack: () -> Unit,
+    isAddingBillingAddressInline: Boolean,
+    inlineBillingAddressEditorId: Long?,
+    onInlineBillingAddressEditorBack: () -> Unit,
     selectedBankCardId: Long?,
     onClearSelectedBankCard: () -> Unit,
     onEditBankCard: (Long) -> Unit,
     selectedDocumentId: Long?,
     onClearSelectedDocument: () -> Unit,
     onEditDocument: (Long) -> Unit,
+    selectedBillingAddressId: Long?,
+    onClearSelectedBillingAddress: () -> Unit,
+    onEditBillingAddress: (Long) -> Unit,
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
@@ -52,16 +62,22 @@ internal fun CardWalletDetailPaneContent(
         inlineBankCardEditorId,
         isAddingDocumentInline,
         inlineDocumentEditorId,
+        isAddingBillingAddressInline,
+        inlineBillingAddressEditorId,
         selectedBankCardId,
-        selectedDocumentId
+        selectedDocumentId,
+        selectedBillingAddressId
     ) {
         when {
             isAddingBankCardInline -> CardWalletDetailContent.BankCardAdd
             inlineBankCardEditorId != null -> CardWalletDetailContent.BankCardEdit(inlineBankCardEditorId)
             isAddingDocumentInline -> CardWalletDetailContent.DocumentAdd
             inlineDocumentEditorId != null -> CardWalletDetailContent.DocumentEdit(inlineDocumentEditorId)
+            isAddingBillingAddressInline -> CardWalletDetailContent.BillingAddressAdd
+            inlineBillingAddressEditorId != null -> CardWalletDetailContent.BillingAddressEdit(inlineBillingAddressEditorId)
             selectedBankCardId != null -> CardWalletDetailContent.BankCardDetail(selectedBankCardId)
             selectedDocumentId != null -> CardWalletDetailContent.DocumentDetail(selectedDocumentId)
+            selectedBillingAddressId != null -> CardWalletDetailContent.BillingAddressDetail(selectedBillingAddressId)
             else -> CardWalletDetailContent.Empty
         }
     }
@@ -114,6 +130,19 @@ internal fun CardWalletDetailPaneContent(
                     modifier = Modifier.fillMaxSize()
                 )
             }
+            CardWalletDetailContent.BillingAddressAdd,
+            is CardWalletDetailContent.BillingAddressEdit -> {
+                val editorId = (content as? CardWalletDetailContent.BillingAddressEdit)?.addressId
+                AddEditBillingAddressScreen(
+                    viewModel = billingAddressViewModel,
+                    addressId = editorId,
+                    initialCategoryId = initialCategoryId,
+                    initialMdbxDatabaseId = initialMdbxDatabaseId,
+                    initialMdbxFolderId = initialMdbxFolderId,
+                    onNavigateBack = onInlineBillingAddressEditorBack,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             is CardWalletDetailContent.BankCardDetail -> {
                 BankCardDetailScreen(
                     viewModel = bankCardViewModel,
@@ -129,6 +158,15 @@ internal fun CardWalletDetailPaneContent(
                     documentId = content.documentId,
                     onNavigateBack = onClearSelectedDocument,
                     onEditDocument = onEditDocument,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            is CardWalletDetailContent.BillingAddressDetail -> {
+                BillingAddressDetailScreen(
+                    viewModel = billingAddressViewModel,
+                    addressId = content.addressId,
+                    onNavigateBack = onClearSelectedBillingAddress,
+                    onEditAddress = onEditBillingAddress,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -156,4 +194,7 @@ private sealed interface CardWalletDetailContent {
     data object DocumentAdd : CardWalletDetailContent
     data class DocumentEdit(val documentId: Long) : CardWalletDetailContent
     data class DocumentDetail(val documentId: Long) : CardWalletDetailContent
+    data object BillingAddressAdd : CardWalletDetailContent
+    data class BillingAddressEdit(val addressId: Long) : CardWalletDetailContent
+    data class BillingAddressDetail(val addressId: Long) : CardWalletDetailContent
 }

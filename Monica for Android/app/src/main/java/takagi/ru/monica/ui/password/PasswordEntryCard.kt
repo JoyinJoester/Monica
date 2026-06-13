@@ -57,6 +57,7 @@ fun PasswordEntryCard(
     totpTimeOffsetSeconds: Int = 0,
     smoothAuthenticatorProgress: Boolean = true,
     decryptAuthenticatorKey: ((String) -> String)? = null,
+    leadingIconOverride: (@Composable () -> Unit)? = null,
     enableSharedBounds: Boolean = true
 ) {
     val displayTitle = entry.title.ifBlank { stringResource(R.string.untitled) }
@@ -105,84 +106,89 @@ fun PasswordEntryCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (iconCardsEnabled) {
-                    val simpleIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE) {
-                        takagi.ru.monica.ui.icons.rememberSimpleIconBitmap(
-                            slug = entry.customIconValue,
+                    if (leadingIconOverride != null) {
+                        leadingIconOverride()
+                        Spacer(modifier = Modifier.width(16.dp))
+                    } else {
+                        val simpleIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE) {
+                            takagi.ru.monica.ui.icons.rememberSimpleIconBitmap(
+                                slug = entry.customIconValue,
+                                tintColor = MaterialTheme.colorScheme.primary,
+                                enabled = true
+                            )
+                        } else null
+                        val uploadedIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED) {
+                            takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon(entry.customIconValue)
+                        } else null
+                        val primaryAppPackageName = entry.primaryLinkedAppPackageName()
+                        val appIcon = if (primaryAppPackageName.isNotBlank()) {
+                            takagi.ru.monica.autofill_ng.ui.rememberAppIcon(primaryAppPackageName)
+                        } else null
+                        val autoMatchedSimpleIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
+                            website = entry.website,
+                            title = entry.title,
+                            appPackageName = primaryAppPackageName,
                             tintColor = MaterialTheme.colorScheme.primary,
-                            enabled = true
+                            enabled = entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
                         )
-                    } else null
-                    val uploadedIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED) {
-                        takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon(entry.customIconValue)
-                    } else null
-                    val primaryAppPackageName = entry.primaryLinkedAppPackageName()
-                    val appIcon = if (primaryAppPackageName.isNotBlank()) {
-                        takagi.ru.monica.autofill_ng.ui.rememberAppIcon(primaryAppPackageName)
-                    } else null
-                    val autoMatchedSimpleIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
-                        website = entry.website,
-                        title = entry.title,
-                        appPackageName = primaryAppPackageName,
-                        tintColor = MaterialTheme.colorScheme.primary,
-                        enabled = entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
-                    )
 
-                    val favicon = if (entry.website.isNotBlank()) {
-                        takagi.ru.monica.autofill_ng.ui.rememberFavicon(
-                            url = entry.website,
-                            enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
-                        )
-                    } else null
+                        val favicon = if (entry.website.isNotBlank()) {
+                            takagi.ru.monica.autofill_ng.ui.rememberFavicon(
+                                url = entry.website,
+                                enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
+                            )
+                        } else null
 
-                    if (simpleIcon != null) {
-                        Image(
-                            bitmap = simpleIcon,
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.size(40.dp).padding(2.dp)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                    } else if (uploadedIcon != null) {
-                        Image(
-                            bitmap = uploadedIcon,
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.size(40.dp).padding(2.dp)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                    } else if (autoMatchedSimpleIcon.bitmap != null) {
-                        Image(
-                            bitmap = autoMatchedSimpleIcon.bitmap,
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.size(40.dp).padding(2.dp)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                    } else if (favicon != null) {
-                        Image(
-                            bitmap = favicon,
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.size(40.dp).padding(2.dp)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                    } else if (appIcon != null) {
-                        Image(
-                            bitmap = appIcon,
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.size(40.dp).padding(2.dp)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                    } else if (shouldShowFallbackSlot(unmatchedIconHandlingStrategy)) {
-                        UnmatchedIconFallback(
-                            strategy = unmatchedIconHandlingStrategy,
-                            primaryText = entry.website,
-                            secondaryText = entry.title,
-                            defaultIcon = Icons.Default.Key,
-                            iconSize = 40.dp
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
+                        if (simpleIcon != null) {
+                            Image(
+                                bitmap = simpleIcon,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.size(40.dp).padding(2.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                        } else if (uploadedIcon != null) {
+                            Image(
+                                bitmap = uploadedIcon,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.size(40.dp).padding(2.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                        } else if (autoMatchedSimpleIcon.bitmap != null) {
+                            Image(
+                                bitmap = autoMatchedSimpleIcon.bitmap,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.size(40.dp).padding(2.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                        } else if (favicon != null) {
+                            Image(
+                                bitmap = favicon,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.size(40.dp).padding(2.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                        } else if (appIcon != null) {
+                            Image(
+                                bitmap = appIcon,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.size(40.dp).padding(2.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                        } else if (shouldShowFallbackSlot(unmatchedIconHandlingStrategy)) {
+                            UnmatchedIconFallback(
+                                strategy = unmatchedIconHandlingStrategy,
+                                primaryText = entry.website,
+                                secondaryText = entry.title,
+                                defaultIcon = Icons.Default.Key,
+                                iconSize = 40.dp
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                        }
                     }
                 }
 

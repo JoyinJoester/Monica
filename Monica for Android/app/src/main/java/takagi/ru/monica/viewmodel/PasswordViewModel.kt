@@ -3547,24 +3547,25 @@ class PasswordViewModel(
         passwords: List<String>,
         targets: List<StorageTarget>,
         customFields: List<CustomFieldDraft> = emptyList(),
+        onCompleteWithIds: (firstPasswordId: Long?, savedPasswordIds: List<Long>) -> Unit = { _, _ -> },
         onComplete: (firstPasswordId: Long?) -> Unit = {}
     ) {
         viewModelScope.launch {
             val requestedTargetKeys = targets.distinctBy(StorageTarget::stableKey)
                 .map(StorageTarget::stableKey)
-            val firstId = try {
+            val saveResult = try {
                 withContext(Dispatchers.IO) {
                     val distinctTargets = targets.distinctBy(StorageTarget::stableKey)
                     if (distinctTargets.isEmpty()) {
                         Log.w("PasswordViewModel", "savePasswordsAcrossTargets blocked because target list is empty")
-                        return@withContext null
+                        return@withContext PasswordSaveAcrossTargetsResult(null, emptyList())
                     }
                     if (!canWriteKeePassTargets(distinctTargets)) {
                         Log.w(
                             "PasswordViewModel",
                             "savePasswordsAcrossTargets blocked because a KeePass target is unavailable targets=$requestedTargetKeys"
                         )
-                        return@withContext null
+                        return@withContext PasswordSaveAcrossTargetsResult(null, emptyList())
                     }
 
                 val currentEntry = originalIds.firstOrNull()?.let { repository.getPasswordEntryById(it) }
@@ -3626,8 +3627,9 @@ class PasswordViewModel(
                             "PasswordViewModel",
                             "savePasswordsAcrossTargets failed current target=${currentTarget.stableKey} originalIds=$originalIds targets=$requestedTargetKeys"
                         )
-                        return@withContext null
+                        return@withContext PasswordSaveAcrossTargetsResult(null, emptyList())
                     }
+                    val savedTargetFirstIds = mutableListOf(initialId)
 
                 distinctTargets
                     .filter { target ->
@@ -3655,6 +3657,8 @@ class PasswordViewModel(
                                 "PasswordViewModel",
                                 "savePasswordsAcrossTargets skipped failed target=${target.stableKey}"
                             )
+                        } else {
+                            savedTargetFirstIds += createdId
                         }
                     }
 
@@ -3675,7 +3679,10 @@ class PasswordViewModel(
                     )
                 }
 
-                    initialId
+                    PasswordSaveAcrossTargetsResult(
+                        firstPasswordId = initialId,
+                        savedPasswordIds = savedTargetFirstIds.distinct()
+                    )
                 }
             } catch (e: Exception) {
                 Log.e(
@@ -3683,12 +3690,18 @@ class PasswordViewModel(
                     "savePasswordsAcrossTargets crashed originalIds=$originalIds targets=$requestedTargetKeys error=${e::class.java.simpleName}: ${e.message}",
                     e
                 )
-                null
+                PasswordSaveAcrossTargetsResult(null, emptyList())
             }
 
-            onComplete(firstId)
+            onComplete(saveResult.firstPasswordId)
+            onCompleteWithIds(saveResult.firstPasswordId, saveResult.savedPasswordIds)
         }
     }
+
+    private data class PasswordSaveAcrossTargetsResult(
+        val firstPasswordId: Long?,
+        val savedPasswordIds: List<Long>
+    )
 
     private suspend fun canWriteKeePassTargets(targets: List<StorageTarget>): Boolean {
         val dao = localKeePassDatabaseDao ?: return true

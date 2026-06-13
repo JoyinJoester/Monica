@@ -2206,7 +2206,7 @@ class MdbxViewModel(
             entries.filterNot { it.deleted }.forEach { stored ->
                 val payload = payloadByEntryId[stored.entryId] ?: return@forEach
                 when (stored.entryType) {
-                    "note", "totp", "card", "document-ref" -> {
+                    "note", "totp", "card", "document-ref", "billing-address", "payment-account" -> {
                         activeSecureItemEntryIds += stored.entryId
                         importSecureItem(
                             databaseId = databaseId,
@@ -2301,7 +2301,7 @@ class MdbxViewModel(
         )
     }
 
-    private val mdbxSecureItemEntryTypes = setOf("note", "totp", "card", "document-ref")
+    private val mdbxSecureItemEntryTypes = setOf("note", "totp", "card", "document-ref", "billing-address", "payment-account")
 
     private fun summarizeDiagValues(values: Iterable<Any?>, limit: Int = 20): String {
         val list = values.map { it?.toString() ?: "-" }
@@ -2578,6 +2578,8 @@ class MdbxViewModel(
             ItemType.TOTP -> "totp"
             ItemType.BANK_CARD -> "card"
             ItemType.DOCUMENT -> "document-ref"
+            ItemType.BILLING_ADDRESS -> "billing-address"
+            ItemType.PAYMENT_ACCOUNT -> "payment-account"
             ItemType.PASSWORD -> "password"
         }
         return id.takeIf { it > 0 }?.let { "$prefix:$it" }
@@ -2723,6 +2725,8 @@ class MdbxViewModel(
             "totp" -> ItemType.TOTP
             "card" -> ItemType.BANK_CARD
             "document-ref" -> ItemType.DOCUMENT
+            "billing-address" -> ItemType.BILLING_ADDRESS
+            "payment-account" -> ItemType.PAYMENT_ACCOUNT
             else -> return null
         }
         val itemData = if (itemType == ItemType.TOTP) {
@@ -2789,7 +2793,9 @@ class MdbxViewModel(
         if (
             itemType != ItemType.TOTP &&
             itemType != ItemType.BANK_CARD &&
-            itemType != ItemType.DOCUMENT
+            itemType != ItemType.DOCUMENT &&
+            itemType != ItemType.BILLING_ADDRESS &&
+            itemType != ItemType.PAYMENT_ACCOUNT
         ) {
             return value
         }

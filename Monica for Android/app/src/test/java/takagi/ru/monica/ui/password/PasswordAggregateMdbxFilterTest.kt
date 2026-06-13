@@ -21,6 +21,7 @@ class PasswordAggregateMdbxFilterTest {
             selectedContentTypes = setOf(PasswordPageContentType.PASSKEY),
             bankCards = emptyList(),
             documents = emptyList(),
+            billingAddresses = emptyList(),
             notes = emptyList(),
             totpItems = emptyList(),
             passkeys = passkeys,

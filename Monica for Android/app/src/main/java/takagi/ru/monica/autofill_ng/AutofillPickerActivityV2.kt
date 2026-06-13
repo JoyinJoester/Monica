@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Password
@@ -108,13 +109,16 @@ import takagi.ru.monica.ui.theme.MonicaTheme
 import androidx.compose.foundation.isSystemInDarkTheme
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.BillingAddressData
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.displayFullName
+import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.ui.components.PasswordVerificationContent
 import takagi.ru.monica.ui.PasswordListInitialLoadingIndicator
 import takagi.ru.monica.ui.base.BaseMonicaActivity
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
+import takagi.ru.monica.ui.screens.AddEditBillingAddressScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordInitialDraft
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
@@ -125,6 +129,7 @@ import takagi.ru.monica.util.PasswordGenerator
 import takagi.ru.monica.utils.AppLauncherIconManager
 import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.BillingAddressViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
@@ -451,6 +456,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     },
                     onAutofillBankCard = ::handleBankCardAutofill,
                     onAutofillDocument = ::handleDocumentAutofill,
+                    onAutofillBillingAddress = ::handleBillingAddressAutofill,
                     onFillGeneratedPassword = ::handleGeneratedPasswordFill,
                     onCopy = ::copyToClipboard,
                     onClose = {
@@ -1258,6 +1264,78 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         finish()
     }
 
+    private fun handleBillingAddressAutofill(item: SecureItem) {
+        val (_, data) = parseBillingAddressCandidate(
+            item,
+            decryptIfNeeded = SecurityManager(applicationContext)::decryptDataIfMonicaCiphertext
+        ) ?: run {
+            setResult(Activity.RESULT_CANCELED)
+            finish()
+            return
+        }
+
+        if (isManualMode) {
+            val manualValue = data.formatForDisplay()
+            if (manualValue.isNotBlank()) {
+                copyToClipboard(getString(R.string.billing_address), manualValue, false)
+            }
+            finish()
+            return
+        }
+
+        val autofillIds = args.autofillIds
+        if (autofillIds.isNullOrEmpty()) {
+            setResult(Activity.RESULT_CANCELED)
+            finish()
+            return
+        }
+
+        val filledValues = linkedMapOf<AutofillId, String>()
+        val hints = args.autofillHints
+        var filledCount = 0
+        autofillIds.forEachIndexed { index, autofillId ->
+            val value = mapBillingAddressAutofillValue(hints?.getOrNull(index), data)
+            if (!value.isNullOrBlank()) {
+                filledValues[autofillId] = value
+                filledCount++
+            }
+        }
+
+        if (filledCount == 0 && autofillIds.size == 1) {
+            val fallbackValue = data.toAutofillAddressForPicker().ifBlank { data.fullName }
+            if (fallbackValue.isNotBlank()) {
+                filledValues[autofillIds.first()] = fallbackValue
+                filledCount = 1
+            }
+        }
+
+        if (filledCount == 0) {
+            setResult(Activity.RESULT_CANCELED)
+            finish()
+            return
+        }
+
+        val dataset = buildResultDataset(
+            title = billingAddressDisplayTitle(item, data),
+            subtitle = billingAddressDisplaySubtitle(data),
+            filledValues = filledValues,
+        )
+        val authResult: Parcelable = if (args.responseAuthMode) {
+            FillResponse.Builder().addDataset(dataset).build()
+        } else {
+            dataset
+        }
+        val resultIntent = Intent().apply {
+            putExtra(AutofillManager.EXTRA_AUTHENTICATION_RESULT, authResult)
+        }
+        AutofillLogger.i(
+            "PICKER",
+            "Returning billing address autofill: itemId=${item.id}, filled=$filledCount, hints=${hints?.joinToString(",") ?: "none"}"
+        )
+        setResult(Activity.RESULT_OK, resultIntent)
+        finish()
+    }
+
     private fun isOtpHint(normalizedHint: String): Boolean {
         if (normalizedHint.isBlank()) return false
         return normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.OTP_CODE.name.lowercase() ||
@@ -1557,7 +1635,8 @@ private data class AutofillPickerLoadedData(
     val suggestedPasswords: List<PasswordEntry>,
     val allPasswords: List<PasswordEntry>,
     val allBankCards: List<SecureItem>,
-    val allDocuments: List<SecureItem>
+    val allDocuments: List<SecureItem>,
+    val allBillingAddresses: List<SecureItem>
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1578,6 +1657,7 @@ private fun AutofillPickerContent(
     onAutofill: (PasswordEntry, Boolean) -> Unit,
     onAutofillBankCard: (SecureItem) -> Unit,
     onAutofillDocument: (SecureItem) -> Unit,
+    onAutofillBillingAddress: (SecureItem) -> Unit,
     onFillGeneratedPassword: (String) -> Unit,
     onCopy: (String, String, Boolean) -> Unit,
     onClose: () -> Unit,
@@ -1593,6 +1673,7 @@ private fun AutofillPickerContent(
     var searchedPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
     var allBankCards by remember { mutableStateOf<List<SecureItem>>(emptyList()) }
     var allDocuments by remember { mutableStateOf<List<SecureItem>>(emptyList()) }
+    var allBillingAddresses by remember { mutableStateOf<List<SecureItem>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchLoading by remember { mutableStateOf(false) }
     var showMarkAsNonAutofillDialog by remember { mutableStateOf(false) }
@@ -1631,6 +1712,7 @@ private fun AutofillPickerContent(
     }
     val initialContentType = remember(requestProfile) {
         when {
+            requestProfile.wantsBillingAddresses -> AutofillPickerContentType.BILLING_ADDRESS
             requestProfile.wantsBankCards -> AutofillPickerContentType.PAYMENT
             requestProfile.wantsDocuments -> AutofillPickerContentType.DOCUMENT
             else -> AutofillPickerContentType.ACCOUNT
@@ -1646,17 +1728,22 @@ private fun AutofillPickerContent(
     val documentHintCount = remember(args.autofillHints) {
         args.autofillHints.orEmpty().count(::isDocumentAutofillHint)
     }
+    val billingAddressHintCount = remember(args.autofillHints) {
+        args.autofillHints.orEmpty().count(::isBillingAddressKeyAutofillHint)
+    }
     val addTargets = remember {
         listOf(
             AutofillAddTarget.PASSWORD,
             AutofillAddTarget.BANK_CARD,
             AutofillAddTarget.DOCUMENT,
+            AutofillAddTarget.BILLING_ADDRESS,
         )
     }
     val defaultAddTarget = when (selectedContentType) {
         AutofillPickerContentType.ACCOUNT -> AutofillAddTarget.PASSWORD
         AutofillPickerContentType.PAYMENT -> AutofillAddTarget.BANK_CARD
         AutofillPickerContentType.DOCUMENT -> AutofillAddTarget.DOCUMENT
+        AutofillPickerContentType.BILLING_ADDRESS -> AutofillAddTarget.BILLING_ADDRESS
     }
     var pendingAddTarget by rememberSaveable { mutableStateOf<AutofillAddTarget?>(null) }
     val appDb = remember(context) { PasswordDatabase.getDatabase(context.applicationContext) }
@@ -1679,6 +1766,7 @@ private fun AutofillPickerContent(
     val detectedAutofillTypeLabel = when {
         requestProfile.wantsBankCards && !requestProfile.wantsPasswords -> stringResource(R.string.item_type_bank_card)
         requestProfile.wantsDocuments && !requestProfile.wantsPasswords -> stringResource(R.string.item_type_document)
+        requestProfile.wantsBillingAddresses && !requestProfile.wantsPasswords -> stringResource(R.string.billing_address)
         else -> stringResource(R.string.item_type_password)
     }
     val canDirectFillBankCard = !isManualMode &&
@@ -1687,6 +1775,9 @@ private fun AutofillPickerContent(
     val canDirectFillDocument = !isManualMode &&
         !args.autofillIds.isNullOrEmpty() &&
         requestProfile.wantsDocuments
+    val canDirectFillBillingAddress = !isManualMode &&
+        !args.autofillIds.isNullOrEmpty() &&
+        requestProfile.wantsBillingAddresses
 
     val handlePasswordAction: (PasswordItemAction) -> Unit = { action ->
         when (action) {
@@ -1869,13 +1960,15 @@ private fun AutofillPickerContent(
                     },
                     allPasswords = repository.getAllPasswordEntries().first(),
                     allBankCards = secureItemRepository.getActiveItemsByType(ItemType.BANK_CARD).first(),
-                    allDocuments = secureItemRepository.getActiveItemsByType(ItemType.DOCUMENT).first()
+                    allDocuments = secureItemRepository.getActiveItemsByType(ItemType.DOCUMENT).first(),
+                    allBillingAddresses = secureItemRepository.getActiveItemsByType(ItemType.BILLING_ADDRESS).first()
                 )
             }
             suggestedPasswords = loadedData.suggestedPasswords
             allPasswords = loadedData.allPasswords
             allBankCards = loadedData.allBankCards
             allDocuments = loadedData.allDocuments
+            allBillingAddresses = loadedData.allBillingAddresses
             AutofillLogger.i(
                 "PICKER_UI",
                 "Picker data load complete",
@@ -1885,6 +1978,7 @@ private fun AutofillPickerContent(
                     "allLoaded" to allPasswords.size,
                     "bankCardsLoaded" to allBankCards.size,
                     "documentsLoaded" to allDocuments.size,
+                    "billingAddressesLoaded" to allBillingAddresses.size,
                     "elapsedMs" to (System.currentTimeMillis() - start)
                 )
             )
@@ -1935,11 +2029,12 @@ private fun AutofillPickerContent(
     val folderNameById = remember(selectedVaultFolders) {
         selectedVaultFolders.associate { it.bitwardenFolderId to it.name }
     }
-    val keepassGroupsForSelectedDb = remember(allPasswords, allBankCards, allDocuments, selectedKeePassDatabaseId) {
+    val keepassGroupsForSelectedDb = remember(allPasswords, allBankCards, allDocuments, allBillingAddresses, selectedKeePassDatabaseId) {
         sequenceOf(
             allPasswords.asSequence().map { Triple(it.keepassDatabaseId, it.keepassGroupPath, Unit) },
             allBankCards.asSequence().map { Triple(it.keepassDatabaseId, it.keepassGroupPath, Unit) },
-            allDocuments.asSequence().map { Triple(it.keepassDatabaseId, it.keepassGroupPath, Unit) }
+            allDocuments.asSequence().map { Triple(it.keepassDatabaseId, it.keepassGroupPath, Unit) },
+            allBillingAddresses.asSequence().map { Triple(it.keepassDatabaseId, it.keepassGroupPath, Unit) }
         )
             .flatten()
             .filter { it.first == selectedKeePassDatabaseId }
@@ -1948,22 +2043,26 @@ private fun AutofillPickerContent(
             .sorted()
             .toList()
     }
-    val hasUncategorizedKeepassEntries = remember(allPasswords, allBankCards, allDocuments, selectedKeePassDatabaseId) {
+    val hasUncategorizedKeepassEntries = remember(allPasswords, allBankCards, allDocuments, allBillingAddresses, selectedKeePassDatabaseId) {
         allPasswords.any { entry ->
             entry.keepassDatabaseId == selectedKeePassDatabaseId && entry.keepassGroupPath.isNullOrBlank()
         } || allBankCards.any { entry ->
             entry.keepassDatabaseId == selectedKeePassDatabaseId && entry.keepassGroupPath.isNullOrBlank()
         } || allDocuments.any { entry ->
             entry.keepassDatabaseId == selectedKeePassDatabaseId && entry.keepassGroupPath.isNullOrBlank()
+        } || allBillingAddresses.any { entry ->
+            entry.keepassDatabaseId == selectedKeePassDatabaseId && entry.keepassGroupPath.isNullOrBlank()
         }
     }
-    val hasUncategorizedBitwardenEntries = remember(allPasswords, allBankCards, allDocuments, selectedVaultId) {
+    val hasUncategorizedBitwardenEntries = remember(allPasswords, allBankCards, allDocuments, allBillingAddresses, selectedVaultId) {
         selectedVaultId != null && (
             allPasswords.any { entry ->
                 entry.bitwardenVaultId == selectedVaultId && entry.bitwardenFolderId.isNullOrBlank()
             } || allBankCards.any { entry ->
                 entry.bitwardenVaultId == selectedVaultId && entry.bitwardenFolderId.isNullOrBlank()
             } || allDocuments.any { entry ->
+                entry.bitwardenVaultId == selectedVaultId && entry.bitwardenFolderId.isNullOrBlank()
+            } || allBillingAddresses.any { entry ->
                 entry.bitwardenVaultId == selectedVaultId && entry.bitwardenFolderId.isNullOrBlank()
             }
         )
@@ -1980,6 +2079,14 @@ private fun AutofillPickerContent(
     val parsedDocuments = remember(allDocuments, securityManager) {
         allDocuments.mapNotNull { item ->
             parseDocumentCandidate(
+                item,
+                decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+            )
+        }
+    }
+    val parsedBillingAddresses = remember(allBillingAddresses, securityManager) {
+        allBillingAddresses.mapNotNull { item ->
+            parseBillingAddressCandidate(
                 item,
                 decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
             )
@@ -2070,6 +2177,28 @@ private fun AutofillPickerContent(
     ) {
         derivedStateOf {
             parsedDocuments.filter { (item, data) ->
+                item.matchesAutofillSourceFilter(
+                    sourceFilter = sourceFilter,
+                    selectedKeePassDatabaseId = selectedKeePassDatabaseId,
+                    selectedKeePassGroupPath = selectedKeePassGroupPath,
+                    selectedVaultId = selectedVaultId,
+                    selectedFolderId = selectedFolderId
+                ) && (searchQuery.isBlank() || data.matchesAutofillSearch(searchQuery))
+            }
+        }
+    }
+
+    val filteredBillingAddresses by remember(
+        parsedBillingAddresses,
+        sourceFilter,
+        selectedKeePassDatabaseId,
+        selectedKeePassGroupPath,
+        selectedVaultId,
+        selectedFolderId,
+        searchQuery
+    ) {
+        derivedStateOf {
+            parsedBillingAddresses.filter { (item, data) ->
                 item.matchesAutofillSourceFilter(
                     sourceFilter = sourceFilter,
                     selectedKeePassDatabaseId = selectedKeePassDatabaseId,
@@ -2177,12 +2306,14 @@ private fun AutofillPickerContent(
         allPasswords.size,
         allBankCards.size,
         allDocuments.size,
+        allBillingAddresses.size,
         suggestedPasswords.size,
         filteredPasswords.size,
         visibleSuggestedPasswords.size,
         suggestedHiddenByCurrentFilter,
         filteredBankCards.size,
-        filteredDocuments.size
+        filteredDocuments.size,
+        filteredBillingAddresses.size
     ) {
         AutofillLogger.d(
             "PICKER_UI",
@@ -2195,12 +2326,14 @@ private fun AutofillPickerContent(
                 "allCount" to allPasswords.size,
                 "bankCardCount" to allBankCards.size,
                 "documentCount" to allDocuments.size,
+                "billingAddressCount" to allBillingAddresses.size,
                 "suggestedCount" to suggestedPasswords.size,
                 "filteredCount" to filteredPasswords.size,
                 "visibleSuggestedCount" to visibleSuggestedPasswords.size,
                 "suggestedHiddenByCurrentFilter" to suggestedHiddenByCurrentFilter,
                 "filteredBankCards" to filteredBankCards.size,
                 "filteredDocuments" to filteredDocuments.size,
+                "filteredBillingAddresses" to filteredBillingAddresses.size,
                 "selectedKeePassDb" to (selectedKeePassDatabaseId ?: -1L),
                 "selectedKeePassGroupSet" to (selectedKeePassGroupPath != null),
                 "selectedVaultId" to (selectedVaultId ?: -1L),
@@ -2283,6 +2416,22 @@ private fun AutofillPickerContent(
             }
         }
     )
+    val autofillBillingAddressViewModel: BillingAddressViewModel = viewModel(
+        factory = remember(secureItemRepository, securityManager) {
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    if (modelClass.isAssignableFrom(BillingAddressViewModel::class.java)) {
+                        return BillingAddressViewModel(
+                            repository = secureItemRepository,
+                            securityManager = securityManager,
+                        ) as T
+                    }
+                    throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+                }
+            }
+        }
+    )
     val addMenuActions = remember(addTargets, generatedPasswordOptions) {
         buildList {
             add(
@@ -2317,6 +2466,11 @@ private fun AutofillPickerContent(
                         labelRes = R.string.item_type_bank_card,
                         onClick = { pendingAddTarget = AutofillAddTarget.BANK_CARD; currentScreen = "add" }
                     )
+                    AutofillAddTarget.BILLING_ADDRESS -> AutofillFabMenuAction(
+                        icon = Icons.Default.Home,
+                        labelRes = R.string.add_billing_address,
+                        onClick = { pendingAddTarget = AutofillAddTarget.BILLING_ADDRESS; currentScreen = "add" }
+                    )
                 }
             })
         }
@@ -2333,6 +2487,13 @@ private fun AutofillPickerContent(
             onAutofillDocument(item)
         } else {
             structuredCopyDialog = StructuredAutofillCopyDialogState.Document(item, data)
+        }
+    }
+    val handleBillingAddressClick: (SecureItem, BillingAddressData) -> Unit = { item, data ->
+        if (canDirectFillBillingAddress) {
+            onAutofillBillingAddress(item)
+        } else {
+            structuredCopyDialog = StructuredAutofillCopyDialogState.BillingAddress(item, data)
         }
     }
     val navigateBackToList: () -> Unit = {
@@ -2567,6 +2728,7 @@ private fun AutofillPickerContent(
                             passwordCount = filteredPasswords.size,
                             bankCardCount = filteredBankCards.size,
                             documentCount = filteredDocuments.size,
+                            billingAddressCount = filteredBillingAddresses.size,
                             onSelectType = { selectedContentType = it },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2788,6 +2950,47 @@ private fun AutofillPickerContent(
                                         }
                                     }
                                 }
+                                AutofillPickerContentType.BILLING_ADDRESS -> {
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .weight(1f)
+                                    ) {
+                                        if (filteredBillingAddresses.isNotEmpty()) {
+                                            item(key = "billing_addresses_header") {
+                                                Text(
+                                                    text = stringResource(R.string.billing_address),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                                )
+                                            }
+                                            items(
+                                                items = filteredBillingAddresses,
+                                                key = { (item, _) -> "billing_address_${item.id}" }
+                                            ) { (item, data) ->
+                                                AutofillStructuredItemCard(
+                                                    title = billingAddressDisplayTitle(item, data),
+                                                    subtitle = billingAddressDisplaySubtitle(data),
+                                                    billingAddress = data.toAutofillAddressForPicker(),
+                                                    onClick = { handleBillingAddressClick(item, data) }
+                                                )
+                                            }
+                                        } else {
+                                            item {
+                                                EmptyPasswordState(
+                                                    modifier = Modifier
+                                                        .fillParentMaxSize()
+                                                        .padding(top = 32.dp)
+                                                )
+                                            }
+                                        }
+
+                                        item {
+                                            Spacer(modifier = Modifier.height(80.dp))
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -2872,6 +3075,13 @@ private fun AutofillPickerContent(
                         onNavigateBack = navigateBackToList
                     )
                 }
+                AutofillAddTarget.BILLING_ADDRESS -> {
+                    AddEditBillingAddressScreen(
+                        viewModel = autofillBillingAddressViewModel,
+                        addressId = null,
+                        onNavigateBack = navigateBackToList
+                    )
+                }
             }
         }
         }
@@ -2948,7 +3158,8 @@ private enum class AutofillStorageSourceFilter {
 private enum class AutofillPickerContentType {
     ACCOUNT,
     PAYMENT,
-    DOCUMENT
+    DOCUMENT,
+    BILLING_ADDRESS
 }
 
 @Composable
@@ -2957,6 +3168,7 @@ private fun AutofillPickerContentTypeTabs(
     passwordCount: Int,
     bankCardCount: Int,
     documentCount: Int,
+    billingAddressCount: Int,
     onSelectType: (AutofillPickerContentType) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2984,6 +3196,13 @@ private fun AutofillPickerContentTypeTabs(
             label = stringResource(R.string.item_type_document),
             count = documentCount,
             onClick = { onSelectType(AutofillPickerContentType.DOCUMENT) }
+        )
+        AutofillPickerContentTypeChip(
+            selected = selectedType == AutofillPickerContentType.BILLING_ADDRESS,
+            icon = Icons.Default.Home,
+            label = stringResource(R.string.billing_address),
+            count = billingAddressCount,
+            onClick = { onSelectType(AutofillPickerContentType.BILLING_ADDRESS) }
         )
     }
 }
@@ -3044,6 +3263,11 @@ private sealed interface StructuredAutofillCopyDialogState {
         val item: SecureItem,
         val data: DocumentData,
     ) : StructuredAutofillCopyDialogState
+
+    data class BillingAddress(
+        val item: SecureItem,
+        val data: BillingAddressData,
+    ) : StructuredAutofillCopyDialogState
 }
 
 private data class StructuredCopyAction(
@@ -3063,18 +3287,22 @@ private fun StructuredAutofillCopyDialog(
     val targetTypeLabel = when (state) {
         is StructuredAutofillCopyDialogState.BankCard -> stringResource(R.string.item_type_bank_card)
         is StructuredAutofillCopyDialogState.Document -> stringResource(R.string.item_type_document)
+        is StructuredAutofillCopyDialogState.BillingAddress -> stringResource(R.string.billing_address)
     }
     val title = when (state) {
         is StructuredAutofillCopyDialogState.BankCard -> bankCardDisplayTitle(state.item, state.data)
         is StructuredAutofillCopyDialogState.Document -> documentDisplayTitle(state.item, state.data)
+        is StructuredAutofillCopyDialogState.BillingAddress -> billingAddressDisplayTitle(state.item, state.data)
     }
     val subtitle = when (state) {
         is StructuredAutofillCopyDialogState.BankCard -> bankCardDisplaySubtitle(state.data)
         is StructuredAutofillCopyDialogState.Document -> documentDisplaySubtitle(state.data)
+        is StructuredAutofillCopyDialogState.BillingAddress -> billingAddressDisplaySubtitle(state.data)
     }
     val actions = when (state) {
         is StructuredAutofillCopyDialogState.BankCard -> bankCardCopyActions(state.data)
         is StructuredAutofillCopyDialogState.Document -> documentCopyActions(state.data)
+        is StructuredAutofillCopyDialogState.BillingAddress -> billingAddressCopyActions(state.data)
     }
 
     AlertDialog(
@@ -3206,6 +3434,23 @@ private fun documentCopyActions(data: DocumentData): List<StructuredCopyAction> 
         addCopyAction(stringResource(R.string.nationality), data.nationality)
         addCopyAction(stringResource(R.string.document_company_label), data.company)
         addCopyAction(stringResource(R.string.autofill_username), data.username)
+    }
+}
+
+@Composable
+private fun billingAddressCopyActions(data: BillingAddressData): List<StructuredCopyAction> {
+    return buildList {
+        addCopyAction(stringResource(R.string.billing_address), data.formatForDisplay())
+        addCopyAction(stringResource(R.string.full_name), data.fullName)
+        addCopyAction(stringResource(R.string.document_company_label), data.company)
+        addCopyAction(stringResource(R.string.street_address), data.streetAddress)
+        addCopyAction(stringResource(R.string.apartment), data.apartment)
+        addCopyAction(stringResource(R.string.city), data.city)
+        addCopyAction(stringResource(R.string.state_province), data.stateProvince)
+        addCopyAction(stringResource(R.string.postal_code), data.postalCode)
+        addCopyAction(stringResource(R.string.country), data.country)
+        addCopyAction(stringResource(R.string.phone), data.phone)
+        addCopyAction(stringResource(R.string.email), data.email)
     }
 }
 
@@ -3652,7 +3897,8 @@ private fun AutofillFabMenu(
 private enum class AutofillAddTarget {
     PASSWORD,
     DOCUMENT,
-    BANK_CARD
+    BANK_CARD,
+    BILLING_ADDRESS
 }
 
 private fun resolveAutofillAddTargets(
@@ -3660,11 +3906,13 @@ private fun resolveAutofillAddTargets(
     loginHintCount: Int,
     bankCardHintCount: Int,
     documentHintCount: Int,
+    billingAddressHintCount: Int,
 ): List<AutofillAddTarget> {
     val requestedTargets = buildList {
         if (requestProfile.wantsPasswords) add(AutofillAddTarget.PASSWORD to loginHintCount)
         if (requestProfile.wantsDocuments) add(AutofillAddTarget.DOCUMENT to documentHintCount)
         if (requestProfile.wantsBankCards) add(AutofillAddTarget.BANK_CARD to bankCardHintCount)
+        if (requestProfile.wantsBillingAddresses) add(AutofillAddTarget.BILLING_ADDRESS to billingAddressHintCount)
     }
     if (requestedTargets.isEmpty()) return emptyList()
 
@@ -3672,6 +3920,7 @@ private fun resolveAutofillAddTargets(
         AutofillAddTarget.PASSWORD -> 3
         AutofillAddTarget.DOCUMENT -> 2
         AutofillAddTarget.BANK_CARD -> 1
+        AutofillAddTarget.BILLING_ADDRESS -> 2
     }
 
     return requestedTargets.sortedWith(
@@ -3715,6 +3964,17 @@ private fun SecureItem.matchesAutofillSourceFilter(
                 }
         }
     }
+}
+
+private fun BillingAddressData.toAutofillAddressForPicker(): String {
+    return listOf(
+        streetAddress,
+        apartment,
+        city,
+        stateProvince,
+        postalCode,
+        country,
+    ).filter { it.isNotBlank() }.joinToString(", ")
 }
 
 private fun AutofillStorageSourceFilter.labelResId(): Int = when (this) {

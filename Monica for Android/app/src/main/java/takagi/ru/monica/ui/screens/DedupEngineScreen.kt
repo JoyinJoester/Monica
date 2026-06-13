@@ -644,6 +644,8 @@ private fun ItemType.label(): String {
         ItemType.TOTP -> "验证器"
         ItemType.BANK_CARD -> "银行卡"
         ItemType.DOCUMENT -> "证件"
+        ItemType.BILLING_ADDRESS -> "账单地址"
+        ItemType.PAYMENT_ACCOUNT -> "支付方式"
         ItemType.NOTE -> "笔记"
     }
 }

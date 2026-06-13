@@ -998,7 +998,9 @@ class WebDavHelper(
         if (
             item.itemType != ItemType.TOTP &&
             item.itemType != ItemType.BANK_CARD &&
-            item.itemType != ItemType.DOCUMENT
+            item.itemType != ItemType.DOCUMENT &&
+            item.itemType != ItemType.BILLING_ADDRESS &&
+            item.itemType != ItemType.PAYMENT_ACCOUNT
         ) return item
         return item.copy(
             itemData = portableSensitiveBackupValue(
@@ -1107,6 +1109,8 @@ class WebDavHelper(
                         ItemType.TOTP -> preferences.includeAuthenticators
                         ItemType.DOCUMENT -> preferences.includeDocuments
                         ItemType.BANK_CARD -> preferences.includeBankCards
+                        ItemType.BILLING_ADDRESS -> preferences.includeBankCards || preferences.includeDocuments
+                        ItemType.PAYMENT_ACCOUNT -> preferences.includeBankCards || preferences.includeDocuments
                         ItemType.NOTE -> preferences.includeNotes
                         else -> true
                     }
@@ -1133,7 +1137,12 @@ class WebDavHelper(
 
                 // 分类过滤后的项目
                 val totpItems = filteredSecureItems.filter { it.itemType == ItemType.TOTP }
-                val cardsDocsItems = filteredSecureItems.filter { it.itemType == ItemType.BANK_CARD || it.itemType == ItemType.DOCUMENT }
+                val cardWalletItems = filteredSecureItems.filter {
+                    it.itemType == ItemType.BANK_CARD ||
+                        it.itemType == ItemType.DOCUMENT ||
+                        it.itemType == ItemType.BILLING_ADDRESS ||
+                        it.itemType == ItemType.PAYMENT_ACCOUNT
+                }
                 val noteItems = filteredSecureItems.filter { it.itemType == ItemType.NOTE }
 
                 val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
@@ -1334,10 +1343,10 @@ class WebDavHelper(
                     }
                 }
 
-                // 6. 导出 Cards & Docs（新格式：folders/<category>/{bank_cards|documents}/*.json）
-                if (cardsDocsItems.isNotEmpty()) {
+                // 6. 导出卡包资料（新格式：folders/<category>/{bank_cards|documents|billing_addresses|payment_accounts}/*.json）
+                if (cardWalletItems.isNotEmpty()) {
                     val json = Json { prettyPrint = false }
-                    cardsDocsItems.forEach { item ->
+                    cardWalletItems.forEach { item ->
                         try {
                             val categoryName = item.categoryId?.let { id -> categoryMap[id]?.name }
                             val backup = CardWalletBackupEntry(
@@ -1360,12 +1369,16 @@ class WebDavHelper(
                             val targetDir = when (item.itemType) {
                                 ItemType.BANK_CARD -> File(foldersRootDir, "$folderKey/bank_cards")
                                 ItemType.DOCUMENT -> File(foldersRootDir, "$folderKey/documents")
+                                ItemType.BILLING_ADDRESS -> File(foldersRootDir, "$folderKey/billing_addresses")
+                                ItemType.PAYMENT_ACCOUNT -> File(foldersRootDir, "$folderKey/payment_accounts")
                                 else -> null
                             } ?: return@forEach
                             if (!targetDir.exists()) targetDir.mkdirs()
                             val filePrefix = when (item.itemType) {
                                 ItemType.BANK_CARD -> "bank_card"
                                 ItemType.DOCUMENT -> "document"
+                                ItemType.BILLING_ADDRESS -> "billing_address"
+                                ItemType.PAYMENT_ACCOUNT -> "payment_account"
                                 else -> "secure_item"
                             }
                             val fileName = "${filePrefix}_${item.id}_${item.createdAt.time}.json"
@@ -1378,7 +1391,13 @@ class WebDavHelper(
                             failedItems.add(
                                 FailedItem(
                                     id = item.id,
-                                    type = if (item.itemType == ItemType.BANK_CARD) "卡片" else "证件",
+                                    type = when (item.itemType) {
+                                        ItemType.BANK_CARD -> "卡片"
+                                        ItemType.DOCUMENT -> "证件"
+                                        ItemType.BILLING_ADDRESS -> "账单地址"
+                                        ItemType.PAYMENT_ACCOUNT -> "支付方式"
+                                        else -> "安全项"
+                                    },
                                     title = item.title,
                                     reason = "序列化失败: ${e.message}"
                                 )
@@ -2199,16 +2218,20 @@ class WebDavHelper(
                     passwords = backupPasswordCandidates.size,
                     notes = noteItems.size,
                     totp = totpItems.size,
-                    bankCards = cardsDocsItems.count { it.itemType == ItemType.BANK_CARD },
-                    documents = cardsDocsItems.count { it.itemType == ItemType.DOCUMENT },
+                    bankCards = cardWalletItems.count { it.itemType == ItemType.BANK_CARD },
+                    documents = cardWalletItems.count { it.itemType == ItemType.DOCUMENT },
+                    billingAddresses = cardWalletItems.count { it.itemType == ItemType.BILLING_ADDRESS },
+                    paymentAccounts = cardWalletItems.count { it.itemType == ItemType.PAYMENT_ACCOUNT },
                     images = totalImageCount
                 )
                 val successCounts = ItemCounts(
                     passwords = successPasswordCount,
                     notes = successNoteCount,
                     totp = totpItems.size,
-                    bankCards = cardsDocsItems.count { it.itemType == ItemType.BANK_CARD },
-                    documents = cardsDocsItems.count { it.itemType == ItemType.DOCUMENT },
+                    bankCards = cardWalletItems.count { it.itemType == ItemType.BANK_CARD },
+                    documents = cardWalletItems.count { it.itemType == ItemType.DOCUMENT },
+                    billingAddresses = cardWalletItems.count { it.itemType == ItemType.BILLING_ADDRESS },
+                    paymentAccounts = cardWalletItems.count { it.itemType == ItemType.PAYMENT_ACCOUNT },
                     images = successImageCount
                 )
                 val report = BackupReport(
@@ -2321,6 +2344,12 @@ class WebDavHelper(
                     }
                     if (backedUpCounts.documents > 0) {
                         uploadDetails.add(FieldChange("证件", "", "${backedUpCounts.documents}项"))
+                    }
+                    if (backedUpCounts.billingAddresses > 0) {
+                        uploadDetails.add(FieldChange("账单地址", "", "${backedUpCounts.billingAddresses}项"))
+                    }
+                    if (backedUpCounts.paymentAccounts > 0) {
+                        uploadDetails.add(FieldChange("支付方式", "", "${backedUpCounts.paymentAccounts}项"))
                     }
                     OperationLogger.logWebDavUpload(
                         isAutomatic = !isManualTrigger,
@@ -2501,6 +2530,8 @@ class WebDavHelper(
             database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.TOTP)
             database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.BANK_CARD)
             database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.DOCUMENT)
+            database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.BILLING_ADDRESS)
+            database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.PAYMENT_ACCOUNT)
             database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.NOTE)
             database.passkeyDao().deleteAllLocalPasskeys()
             android.util.Log.d("WebDavHelper", "Monica local data cleared successfully for overwrite restore")
@@ -2532,12 +2563,16 @@ class WebDavHelper(
             var backupTotpCount = 0 // 目前没有统计CSV中的TOTP，可以在CSV导入时统计，这里先保留变量
             var backupCardCount = 0
             var backupDocCount = 0
+            var backupBillingAddressCount = 0
+            var backupPaymentAccountCount = 0
             var backupImageCount = 0
             var backupPasskeyCount = 0
             var restoredPasswordCount = 0
             var restoredNoteCount = 0
             var restoredCardCount = 0
             var restoredDocCount = 0
+            var restoredBillingAddressCount = 0
+            var restoredPaymentAccountCount = 0
             var restoredImageCount = 0
             var restoredPasskeyCount = 0
             var detectedMonicaConfigEntries = emptyList<String>()
@@ -2591,6 +2626,8 @@ class WebDavHelper(
                 val totpWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
                 val bankCardsWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
                 val documentsWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
+                val billingAddressesWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
+                val paymentAccountsWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
                 val passkeysWithMetadata = mutableListOf<Pair<PasskeyEntry, String?>>()
                 val passwords = mutableListOf<PasswordEntry>()
                 val secureItems = mutableListOf<DataExportImportManager.ExportItem>()
@@ -2712,6 +2749,36 @@ class WebDavHelper(
                                         failedItems.add(FailedItem(
                                             id = 0,
                                             type = "证件",
+                                            title = entryName,
+                                            reason = "JSON解析失败"
+                                        ))
+                                    }
+                                }
+                                normalizedEntryName.contains("/billing_addresses/") || normalizedEntryName.startsWith("billing_addresses/") -> {
+                                    backupBillingAddressCount++
+                                    val billingAddressItem = restoreCardWalletItemFromJson(tempFile, ItemType.BILLING_ADDRESS)
+                                    if (billingAddressItem != null) {
+                                        billingAddressesWithMetadata.add(billingAddressItem)
+                                        restoredBillingAddressCount++
+                                    } else {
+                                        failedItems.add(FailedItem(
+                                            id = 0,
+                                            type = "账单地址",
+                                            title = entryName,
+                                            reason = "JSON解析失败"
+                                        ))
+                                    }
+                                }
+                                normalizedEntryName.contains("/payment_accounts/") || normalizedEntryName.startsWith("payment_accounts/") -> {
+                                    backupPaymentAccountCount++
+                                    val paymentAccountItem = restoreCardWalletItemFromJson(tempFile, ItemType.PAYMENT_ACCOUNT)
+                                    if (paymentAccountItem != null) {
+                                        paymentAccountsWithMetadata.add(paymentAccountItem)
+                                        restoredPaymentAccountCount++
+                                    } else {
+                                        failedItems.add(FailedItem(
+                                            id = 0,
+                                            type = "支付方式",
                                             title = entryName,
                                             reason = "JSON解析失败"
                                         ))
@@ -3617,6 +3684,8 @@ class WebDavHelper(
                     totpWithMetadata.isNotEmpty() ||
                     bankCardsWithMetadata.isNotEmpty() ||
                     documentsWithMetadata.isNotEmpty() ||
+                    billingAddressesWithMetadata.isNotEmpty() ||
+                    paymentAccountsWithMetadata.isNotEmpty() ||
                     passkeysWithMetadata.isNotEmpty()
                 ) {
                     val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
@@ -3632,6 +3701,8 @@ class WebDavHelper(
                         totpWithMetadata.mapNotNull { it.second } +
                         bankCardsWithMetadata.mapNotNull { it.second } +
                         documentsWithMetadata.mapNotNull { it.second } +
+                        billingAddressesWithMetadata.mapNotNull { it.second } +
+                        paymentAccountsWithMetadata.mapNotNull { it.second } +
                         passkeysWithMetadata.mapNotNull { it.second })
                         .distinct()
                         .filter { it.isNotBlank() && !categoryByName.containsKey(it) }
@@ -3682,6 +3753,16 @@ class WebDavHelper(
                         secureItems.add(entry.copy(categoryId = categoryId))
                     }
 
+                    billingAddressesWithMetadata.forEach { (entry, categoryName) ->
+                        val categoryId = categoryName?.let { categoryByName[it]?.id }
+                        secureItems.add(entry.copy(categoryId = categoryId))
+                    }
+
+                    paymentAccountsWithMetadata.forEach { (entry, categoryName) ->
+                        val categoryId = categoryName?.let { categoryByName[it]?.id }
+                        secureItems.add(entry.copy(categoryId = categoryId))
+                    }
+
                     // 将通行密钥与分类关联
                     passkeysWithMetadata.forEach { (entry, categoryName) ->
                         val categoryId = categoryName?.let { categoryByName[it]?.id }
@@ -3705,6 +3786,12 @@ class WebDavHelper(
                 }
                 if (documentsWithMetadata.isNotEmpty() && secureItems.none { it.itemType == ItemType.DOCUMENT.name }) {
                     secureItems.addAll(documentsWithMetadata.map { it.first })
+                }
+                if (billingAddressesWithMetadata.isNotEmpty() && secureItems.none { it.itemType == ItemType.BILLING_ADDRESS.name }) {
+                    secureItems.addAll(billingAddressesWithMetadata.map { it.first })
+                }
+                if (paymentAccountsWithMetadata.isNotEmpty() && secureItems.none { it.itemType == ItemType.PAYMENT_ACCOUNT.name }) {
+                    secureItems.addAll(paymentAccountsWithMetadata.map { it.first })
                 }
                 if (passkeysWithMetadata.isNotEmpty() && passkeys.isEmpty()) {
                     passkeys.addAll(passkeysWithMetadata.map { it.first })
@@ -3785,6 +3872,8 @@ class WebDavHelper(
                 val totpItems = normalizedSecureItems.count { it.itemType == "TOTP" }
                 val cardItems = normalizedSecureItems.count { it.itemType == "BANK_CARD" }
                 val docItems = normalizedSecureItems.count { it.itemType == "DOCUMENT" }
+                val billingAddressItems = normalizedSecureItems.count { it.itemType == "BILLING_ADDRESS" }
+                val paymentAccountItems = normalizedSecureItems.count { it.itemType == "PAYMENT_ACCOUNT" }
                 
                 val backupCounts = ItemCounts(
                     passwords = backupPasswordCount,
@@ -3792,6 +3881,8 @@ class WebDavHelper(
                     totp = totpItems,
                     bankCards = if (backupCardCount > 0) backupCardCount else cardItems,
                     documents = if (backupDocCount > 0) backupDocCount else docItems,
+                    billingAddresses = if (backupBillingAddressCount > 0) backupBillingAddressCount else billingAddressItems,
+                    paymentAccounts = if (backupPaymentAccountCount > 0) backupPaymentAccountCount else paymentAccountItems,
                     images = backupImageCount
                 )
                 
@@ -3801,6 +3892,8 @@ class WebDavHelper(
                     totp = totpItems,
                     bankCards = if (restoredCardCount > 0) restoredCardCount else cardItems,
                     documents = if (restoredDocCount > 0) restoredDocCount else docItems,
+                    billingAddresses = if (restoredBillingAddressCount > 0) restoredBillingAddressCount else billingAddressItems,
+                    paymentAccounts = if (restoredPaymentAccountCount > 0) restoredPaymentAccountCount else paymentAccountItems,
                     images = restoredImageCount
                 )
 
@@ -3979,6 +4072,28 @@ class WebDavHelper(
                     }
                     if (docItems.size > 10) {
                         newItemNames.add(FieldChange("证件", "", "...还有${docItems.size - 10}项"))
+                    }
+                }
+
+                val billingAddressItems = secureItems.filter { it.itemType == "BILLING_ADDRESS" }
+                if (billingAddressItems.isNotEmpty()) {
+                    downloadDetails.add(FieldChange("账单地址", "", "${billingAddressItems.size}项"))
+                    billingAddressItems.take(10).forEach { item ->
+                        newItemNames.add(FieldChange("账单地址", "", item.title))
+                    }
+                    if (billingAddressItems.size > 10) {
+                        newItemNames.add(FieldChange("账单地址", "", "...还有${billingAddressItems.size - 10}项"))
+                    }
+                }
+
+                val paymentAccountItems = secureItems.filter { it.itemType == "PAYMENT_ACCOUNT" }
+                if (paymentAccountItems.isNotEmpty()) {
+                    downloadDetails.add(FieldChange("支付方式", "", "${paymentAccountItems.size}项"))
+                    paymentAccountItems.take(10).forEach { item ->
+                        newItemNames.add(FieldChange("支付方式", "", item.title))
+                    }
+                    if (paymentAccountItems.size > 10) {
+                        newItemNames.add(FieldChange("支付方式", "", "...还有${paymentAccountItems.size - 10}项"))
                     }
                 }
                 

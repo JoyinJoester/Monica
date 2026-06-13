@@ -659,9 +659,9 @@ class BiometricUnlockRegressionGuardTest {
         )
         assertTrue(
             "Page-visible auto sync triggers should wait for a short stable visibility window so fast bottom-tab switches cancel them.",
-            cardWalletScreenSource.contains("delay(1_200L)") &&
+                cardWalletScreenSource.contains("delay(1_200L)") &&
                 cardWalletScreenSource.contains("SyncTaskRunner.request(") &&
-                cardWalletScreenSource.contains("bitwardenViewModel.requestPageEnterAutoSync(vaultId)") &&
+                cardWalletScreenSource.contains("bitwardenViewModel?.requestPageEnterAutoSync(vaultId)") &&
                 passkeyListScreenSource.contains("delay(1_200L)") &&
                 passkeyListScreenSource.contains("viewModel.refreshKeePassPasskeys(trigger = \"PASSKEY_PAGE_ENTER\")") &&
                 sendScreenSource.contains("delay(1_200L)") &&
@@ -693,8 +693,11 @@ class BiometricUnlockRegressionGuardTest {
                 documentCardSource.contains("documentData: DocumentData? = null") &&
                 cardWalletScreenSource.contains("val parsedCards by bankCardViewModel.parsedCards.collectAsState") &&
                 cardWalletScreenSource.contains("val parsedDocuments by documentViewModel.parsedDocuments.collectAsState") &&
-                cardWalletScreenSource.contains("cardData = cardDataById[item.id]") &&
-                cardWalletScreenSource.contains("documentData = documentDataById[item.id]")
+                cardWalletScreenSource.contains("val parsedBillingAddresses by billingAddressViewModel.parsedBillingAddresses.collectAsState") &&
+                cardWalletScreenSource.contains("parsedCards.map { it.item.toBankCardWalletListItem(it.cardData) }") &&
+                cardWalletScreenSource.contains("parsedDocuments.map { it.item.toDocumentWalletListItem(it.documentData) }") &&
+                cardWalletScreenSource.contains("cardData = walletItem.bankCardData") &&
+                cardWalletScreenSource.contains("documentData = walletItem.documentData")
         )
         assertFalse(
             "Card composables must not construct SecurityManager; field decrypt belongs in ViewModel/repository state pipelines.",

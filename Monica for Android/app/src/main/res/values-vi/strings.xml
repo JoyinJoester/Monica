@@ -287,6 +287,10 @@
     
     <!-- TOTP List -->
     <string name="search_authenticator">Tìm kiếm xác thực</string>
+    <string name="bind_authenticator">Liên kết xác thực</string>
+    <string name="bound_authenticator_change">Đổi xác thực</string>
+    <string name="select_authenticator_to_bind">Chọn xác thực để liên kết</string>
+    <string name="selected_authenticator_format">Đã chọn: %1$s</string>
     <string name="clear">Xóa</string>
     <string name="no_authenticators_title">Chưa có xác thực</string>
     <string name="no_authenticators_description">Nhấn nút + ở góc dưới bên phải để thêm xác thực</string>
@@ -586,7 +590,7 @@
     <string name="settings_import_data_description">Khôi phục từ file sao lưu</string>
     <string name="settings_version_info">Thông tin phiên bản</string>
     <string name="version_info_full_version_label">Phiên bản đầy đủ</string>
-    <string name="settings_version_number">V1.0.289</string>
+    <string name="settings_version_number">V1.0.290</string>
     <string name="settings_support_author">Ủng hộ tác giả</string>
     <string name="settings_support_author_description">Cảm ơn sự ủng hộ của bạn</string>
     <string name="settings_privacy_policy">Chính sách bảo mật</string>

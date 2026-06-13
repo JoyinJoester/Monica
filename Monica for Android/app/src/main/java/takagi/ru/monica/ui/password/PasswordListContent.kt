@@ -203,6 +203,7 @@ import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.password.PasswordAggregateCardStyle
 import takagi.ru.monica.ui.password.PasswordAggregateListItemUi
+import takagi.ru.monica.ui.password.PasswordAggregateWalletItemType
 import takagi.ru.monica.ui.password.PasswordListCardBadge
 import takagi.ru.monica.ui.password.PasswordGroupListItemUi
 import takagi.ru.monica.ui.password.PasswordListAggregateConfig
@@ -1816,10 +1817,14 @@ fun PasswordListContent(
 
                     PasswordPageContentType.CARD_WALLET -> {
                         item.secureItemId?.let { id ->
-                            if (item.isDocument) {
-                                aggregateUiState.documentViewModel?.deleteDocument(id)
-                            } else {
-                                aggregateUiState.bankCardViewModel?.deleteCard(id)
+                            when (item.walletItemType) {
+                                PasswordAggregateWalletItemType.BANK_CARD ->
+                                    aggregateUiState.bankCardViewModel?.deleteCard(id)
+                                PasswordAggregateWalletItemType.DOCUMENT ->
+                                    aggregateUiState.documentViewModel?.deleteDocument(id)
+                                PasswordAggregateWalletItemType.BILLING_ADDRESS ->
+                                    aggregateUiState.billingAddressViewModel?.deleteAddress(id)
+                                null -> Unit
                             }
                         }
                     }

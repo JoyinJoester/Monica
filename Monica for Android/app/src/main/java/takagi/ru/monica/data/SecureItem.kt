@@ -101,5 +101,7 @@ enum class ItemType {
     TOTP,        // 验证器
     BANK_CARD,   // 银行卡
     DOCUMENT,    // 证件
+    BILLING_ADDRESS, // 账单地址
+    PAYMENT_ACCOUNT, // 支付方式
     NOTE         // 笔记
 }

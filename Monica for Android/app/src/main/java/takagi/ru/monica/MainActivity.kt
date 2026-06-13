@@ -92,6 +92,7 @@ import takagi.ru.monica.security.lock.MainAppAccessState
 import takagi.ru.monica.security.lock.MainAppLockPolicy
 import takagi.ru.monica.ui.SimpleMainScreen
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
+import takagi.ru.monica.ui.screens.AddEditBillingAddressScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.ui.screens.AddEditSendScreen
@@ -100,6 +101,7 @@ import takagi.ru.monica.ui.screens.AutofillBlockedFieldsScreen
 import takagi.ru.monica.ui.screens.AutofillSaveBlockedTargetsScreen
 import takagi.ru.monica.ui.screens.AutofillSettingsV2Screen
 import takagi.ru.monica.ui.screens.BankCardDetailScreen
+import takagi.ru.monica.ui.screens.BillingAddressDetailScreen
 import takagi.ru.monica.ui.screens.BottomNavSettingsScreen
 import takagi.ru.monica.ui.screens.ChangePasswordScreen
 import takagi.ru.monica.ui.screens.DocumentDetailScreen
@@ -132,6 +134,7 @@ import takagi.ru.monica.ui.screens.KeePassKdbxViewModel
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.LocaleHelper
 import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.BillingAddressViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.DedupEngineViewModel
 import takagi.ru.monica.viewmodel.GeneratorViewModel
@@ -504,6 +507,12 @@ fun MonicaApp(
             securityManager
         )
     }
+    val billingAddressViewModel: BillingAddressViewModel = viewModel {
+        BillingAddressViewModel(
+            secureItemRepository,
+            securityManager
+        )
+    }
     val passwordHistoryManager = remember { PasswordHistoryManager(navController.context) }
     val generatorPreferencesManager = remember { takagi.ru.monica.data.GeneratorPreferencesManager(navController.context) }
     val settingsViewModel: SettingsViewModel = viewModel {
@@ -648,6 +657,7 @@ fun MonicaApp(
                     totpViewModel = totpViewModel,
                     bankCardViewModel = bankCardViewModel,
                     documentViewModel = documentViewModel,
+                    billingAddressViewModel = billingAddressViewModel,
                     settingsViewModel = settingsViewModel,
                     generatorViewModel = generatorViewModel,
                     noteViewModel = noteViewModel,
@@ -680,6 +690,7 @@ fun MonicaContent(
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
+    billingAddressViewModel: BillingAddressViewModel,
     settingsViewModel: SettingsViewModel,
     generatorViewModel: GeneratorViewModel,
     noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel,
@@ -958,6 +969,7 @@ fun MonicaContent(
                 totpViewModel = totpViewModel,
                 bankCardViewModel = bankCardViewModel,
                 documentViewModel = documentViewModel,
+                billingAddressViewModel = billingAddressViewModel,
                 generatorViewModel = generatorViewModel,
                 noteViewModel = noteViewModel,
                 bitwardenViewModel = bitwardenViewModel,
@@ -1008,6 +1020,9 @@ fun MonicaContent(
                 },
                 onNavigateToAddDocument = { documentId ->
                     navController.navigate(Screen.AddEditDocument.createRoute(documentId))
+                },
+                onNavigateToAddBillingAddress = { addressId ->
+                    navController.navigate(Screen.AddEditBillingAddress.createRoute(addressId))
                 },
                 onNavigateToWalletAdd = { initialType ->
                     navController.navigate(Screen.WalletAdd.createRoute(initialType.name))
@@ -1101,6 +1116,9 @@ fun MonicaContent(
                 },
                 onNavigateToDocumentDetail = { documentId ->
                     navController.navigate(Screen.DocumentDetail.createRoute(documentId))
+                },
+                onNavigateToBillingAddressDetail = { addressId ->
+                    navController.navigate(Screen.BillingAddressDetail.createRoute(addressId))
                 },
                 onNavigateToChangePassword = {
                     navController.navigate(Screen.ChangePassword.route)
@@ -1755,6 +1773,7 @@ fun MonicaContent(
                 },
                 bankCardViewModel = bankCardViewModel,
                 documentViewModel = documentViewModel,
+                billingAddressViewModel = billingAddressViewModel,
                 stateHolder = walletAddStateHolder,
                 initialCategoryId = pendingStorageDefaults?.categoryId,
                 initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
@@ -1826,6 +1845,35 @@ fun MonicaContent(
                 initialMdbxFolderId = pendingStorageDefaults?.mdbxFolderId,
                 initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                 initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(
+            route = Screen.AddEditBillingAddress.route,
+            enterTransition = { easyNotesScreenEnter() },
+            exitTransition = { easyNotesScreenExit() },
+            popEnterTransition = { easyNotesScreenEnter() },
+            popExitTransition = { easyNotesScreenExit() }
+        ) { backStackEntry ->
+            val addressId = backStackEntry.arguments?.getString("addressId")?.toLongOrNull() ?: -1L
+            val pendingStorageDefaults = remember(backStackEntry, addressId) {
+                if (addressId > 0) {
+                    navController.previousBackStackEntry?.savedStateHandle?.clearPendingAddStorageDefaults()
+                    null
+                } else {
+                    navController.previousBackStackEntry?.savedStateHandle?.consumePendingAddStorageDefaults()
+                }
+            }
+
+            AddEditBillingAddressScreen(
+                viewModel = billingAddressViewModel,
+                addressId = if (addressId > 0) addressId else null,
+                initialCategoryId = pendingStorageDefaults?.categoryId,
+                initialMdbxDatabaseId = pendingStorageDefaults?.mdbxDatabaseId,
+                initialMdbxFolderId = pendingStorageDefaults?.mdbxFolderId,
                 onNavigateBack = {
                     navController.popBackStack()
                 }
@@ -2005,6 +2053,29 @@ fun MonicaContent(
                     },
                     onEditDocument = { id ->
                         navController.navigate(Screen.AddEditDocument.createRoute(id))
+                    }
+                )
+            }
+        }
+
+        composable(
+            route = Screen.BillingAddressDetail.route,
+            enterTransition = { easyNotesScreenEnter() },
+            exitTransition = { easyNotesScreenExit() },
+            popEnterTransition = { easyNotesScreenEnter() },
+            popExitTransition = { easyNotesScreenExit() }
+        ) { backStackEntry ->
+            val addressId = backStackEntry.arguments?.getString("addressId")?.toLongOrNull() ?: -1L
+
+            if (addressId > 0) {
+                BillingAddressDetailScreen(
+                    viewModel = billingAddressViewModel,
+                    addressId = addressId,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onEditAddress = { id ->
+                        navController.navigate(Screen.AddEditBillingAddress.createRoute(id))
                     }
                 )
             }

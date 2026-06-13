@@ -160,6 +160,7 @@ fun AddEditNoteScreen(
     var masterPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
     var showAddImageDialog by remember { mutableStateOf(false) }
+    var showRestoreNewNoteDraftDialog by rememberSaveable(noteId) { mutableStateOf(false) }
     var pendingImageInsertionCursor by rememberSaveable { mutableStateOf(-1) }
     var pendingCameraImagePath by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingCameraImageUri by rememberSaveable { mutableStateOf<String?>(null) }
@@ -402,9 +403,10 @@ fun AddEditNoteScreen(
         if (!isEditing) {
             hasInitializedReplicaTargets = false
             editorViewModel.resetForNewNote()
-            editorViewModel.restoreDraft(noteId)
+            showRestoreNewNoteDraftDialog = draftStore.hasDraft(noteId)
             return@LaunchedEffect
         }
+        showRestoreNewNoteDraftDialog = false
         val note = viewModel.getNoteById(noteId)
         note?.let {
             editorViewModel.loadForEdit(it)
@@ -414,7 +416,7 @@ fun AddEditNoteScreen(
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, noteId, editorViewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) {
                 editorViewModel.saveDraftImmediate(noteId)
@@ -927,6 +929,37 @@ fun AddEditNoteScreen(
         onDismiss = { showStorageTargetSheet = false },
         onSelectedTargetsChange = ::applySelectedStorageTargets
     )
+
+    if (showRestoreNewNoteDraftDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestoreNewNoteDraftDialog = false },
+            title = { Text(stringResource(R.string.note_draft_restore_title)) },
+            text = { Text(stringResource(R.string.note_draft_restore_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRestoreNewNoteDraftDialog = false
+                        editorViewModel.restoreDraft(noteId)
+                    }
+                ) {
+                    Text(stringResource(R.string.note_draft_restore_action))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRestoreNewNoteDraftDialog = false
+                        editorViewModel.clearDraft(noteId)
+                    }
+                ) {
+                    Text(
+                        text = stringResource(R.string.note_draft_discard_action),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        )
+    }
 
     // Image Detail Dialog
     if (showNoteImageDialog != null) {

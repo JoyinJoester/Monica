@@ -38,9 +38,60 @@ object CardWalletDataCodec {
             }
     }
 
+    fun parseBillingAddressData(
+        raw: String,
+        decryptIfNeeded: ((String) -> String)? = null
+    ): BillingAddressData? {
+        val resolvedRaw = resolveStoredData(raw, decryptIfNeeded)
+        return runCatching { json.decodeFromString<BillingAddressData>(resolvedRaw) }
+            .getOrElse {
+                parseLegacyBillingAddressData(resolvedRaw)
+            }
+    }
+
+    fun parsePaymentAccountData(
+        raw: String,
+        decryptIfNeeded: ((String) -> String)? = null
+    ): PaymentAccountData? {
+        val resolvedRaw = resolveStoredData(raw, decryptIfNeeded)
+        val decoded = runCatching { json.decodeFromString<PaymentAccountData>(resolvedRaw) }.getOrNull()
+        val hasCurrentShape = resolvedRaw.hasAnyJsonKey(
+            "paymentType",
+            "provider",
+            "accountName",
+            "accountHolderName",
+            "maskedAccountNumber",
+            "linkedCardLast4"
+        )
+        val hasLegacyAliases = resolvedRaw.hasAnyJsonKey(
+            "type",
+            "accountType",
+            "service",
+            "brand",
+            "network",
+            "name",
+            "holderName",
+            "fullName",
+            "nameOnAccount",
+            "accountNumber",
+            "swift",
+            "bic"
+        )
+        if (decoded != null && (hasCurrentShape || (!hasLegacyAliases && !decoded.isEmpty()))) {
+            return decoded
+        }
+        return parseLegacyPaymentAccountData(resolvedRaw)
+    }
+
     fun encodeBankCardData(data: BankCardData): String = json.encodeToString(BankCardData.serializer(), data)
 
     fun encodeDocumentData(data: DocumentData): String = json.encodeToString(DocumentData.serializer(), data)
+
+    fun encodeBillingAddressData(data: BillingAddressData): String =
+        json.encodeToString(BillingAddressData.serializer(), data)
+
+    fun encodePaymentAccountData(data: PaymentAccountData): String =
+        json.encodeToString(PaymentAccountData.serializer(), data)
 
     private fun resolveStoredData(
         raw: String,
@@ -163,6 +214,71 @@ object CardWalletDataCodec {
         )
     }
 
+    private fun parseLegacyBillingAddressData(raw: String): BillingAddressData? {
+        val address = runCatching { json.decodeFromString<BillingAddress>(raw) }.getOrNull()
+        if (address != null && !address.isEmpty()) {
+            return BillingAddressData(
+                streetAddress = address.streetAddress,
+                apartment = address.apartment,
+                city = address.city,
+                stateProvince = address.stateProvince,
+                postalCode = address.postalCode,
+                country = address.country
+            )
+        }
+
+        val obj = runCatching { json.parseToJsonElement(raw) as? JsonObject }.getOrNull() ?: return null
+        return BillingAddressData(
+            fullName = obj.string("fullName", "name"),
+            company = obj.string("company", "organization"),
+            streetAddress = obj.string("streetAddress", "address1", "addressLine1"),
+            apartment = obj.string("apartment", "address2", "addressLine2"),
+            city = obj.string("city"),
+            stateProvince = obj.string("stateProvince", "state", "province", "region"),
+            postalCode = obj.string("postalCode", "zip", "zipCode"),
+            country = obj.string("country"),
+            phone = obj.string("phone", "phoneNumber"),
+            email = obj.string("email")
+        ).takeUnless { it.isEmpty() }
+    }
+
+    private fun parseLegacyPaymentAccountData(raw: String): PaymentAccountData? {
+        val obj = runCatching { json.parseToJsonElement(raw) as? JsonObject }.getOrNull() ?: return null
+        val embeddedBillingAddress = obj.string("billingAddress")
+        val billingAddress = embeddedBillingAddress.ifBlank {
+            val address = BillingAddress(
+                streetAddress = obj.string("streetAddress", "address1", "addressLine1"),
+                apartment = obj.string("apartment", "address2", "addressLine2"),
+                city = obj.string("city"),
+                stateProvince = obj.string("stateProvince", "state", "province", "region"),
+                postalCode = obj.string("postalCode", "zip", "zipCode"),
+                country = obj.string("country")
+            )
+            encodeBillingAddress(address)
+        }
+
+        return PaymentAccountData(
+            paymentType = parsePaymentAccountType(obj.string("paymentType", "accountType", "type")),
+            provider = obj.string("provider", "service", "brand", "network"),
+            accountName = obj.string("accountName", "name", "nickname", "title"),
+            accountHolderName = obj.string("accountHolderName", "holderName", "fullName", "nameOnAccount"),
+            email = obj.string("email"),
+            phone = obj.string("phone", "phoneNumber"),
+            username = obj.string("username", "userName", "login"),
+            accountId = obj.string("accountId", "accountIdentifier", "id"),
+            maskedAccountNumber = obj.string("maskedAccountNumber", "maskedNumber", "accountNumber"),
+            linkedCardLast4 = obj.string("linkedCardLast4", "cardLast4", "last4"),
+            routingNumber = obj.string("routingNumber"),
+            iban = obj.string("iban"),
+            swiftBic = obj.string("swiftBic", "swift", "bic"),
+            billingAddress = billingAddress,
+            website = obj.string("website", "url", "uri"),
+            currency = obj.string("currency"),
+            notes = obj.string("notes", "memo"),
+            customFields = parseEmbeddedCustomFields(obj)
+        ).takeUnless { it.isEmpty() }
+    }
+
     private fun parseEmbeddedCustomFields(obj: JsonObject): List<SecureCustomField> {
         return runCatching {
             json.decodeFromString<List<SecureCustomField>>(obj["customFields"].toString())
@@ -181,8 +297,24 @@ object CardWalletDataCodec {
         }
     }
 
+    private fun parsePaymentAccountType(raw: String?): PaymentAccountType {
+        return when (raw?.trim()?.lowercase()?.replace("-", "_")?.replace(" ", "_")) {
+            "bank", "bank_account", "account" -> PaymentAccountType.BANK_ACCOUNT
+            "payment_app", "app", "mobile_payment", "mobile_wallet" -> PaymentAccountType.PAYMENT_APP
+            "bnpl", "buy_now_pay_later", "pay_later" -> PaymentAccountType.BUY_NOW_PAY_LATER
+            "crypto", "crypto_wallet", "wallet_crypto" -> PaymentAccountType.CRYPTO_WALLET
+            "other" -> PaymentAccountType.OTHER
+            else -> PaymentAccountType.DIGITAL_WALLET
+        }
+    }
+
     private fun JsonObject.string(vararg keys: String): String {
         return keys.firstNotNullOfOrNull { key -> this[key].primitiveString() }.orEmpty()
+    }
+
+    private fun String.hasAnyJsonKey(vararg keys: String): Boolean {
+        val obj = runCatching { json.parseToJsonElement(this) as? JsonObject }.getOrNull() ?: return false
+        return keys.any { key -> obj.containsKey(key) }
     }
 
     private fun kotlinx.serialization.json.JsonElement?.primitiveString(): String? {

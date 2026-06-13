@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**中文** | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | [Русский](README_RU.md) | [黑羽川](readme_Nya.md)
+**中文** | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | [Русский](README_RU.md) | [黑羽川](README_Nya.md)
 
 <img src="image/themepng.png" alt="Monica App Icon" width="500" />
 
@@ -188,4 +188,5 @@ Monica 基于 [GNU General Public License v3.0](LICENSE) 开源发布。
 ## 第三方图标标注
 
 - 本项目本地打包了来自 [Stratum Auth app](https://github.com/stratumauth/app) 的图标资源（版本 [v1.4.0](https://github.com/stratumauth/app/releases/tag/v1.4.0)，目录 [icons](https://github.com/stratumauth/app/tree/v1.4.0/icons) / [extraicons](https://github.com/stratumauth/app/tree/v1.4.0/extraicons)，GPL-3.0）。
+- 银行卡/支付卡图标来源：本地目录 [SVG Credit Card & Payment Icons](svg-credit-card-payment-icons-main)（Apache-2.0）。
 - 品牌名称与 Logo 的商标权归各自权利人所有。
