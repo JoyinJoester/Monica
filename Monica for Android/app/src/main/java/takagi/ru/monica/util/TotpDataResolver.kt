@@ -207,6 +207,62 @@ object TotpDataResolver {
         if (!raw.contains("://")) return null
         parseBitwardenSteamUri(raw)?.let { return it }
         return TotpUriParser.parseUri(raw.trim())?.totpData
+            ?: parseOtpAuthUriFallback(raw)
+    }
+
+    private fun parseOtpAuthUriFallback(raw: String): TotpData? {
+        val normalized = raw.trim()
+        if (!normalized.startsWith("otpauth://", ignoreCase = true)) return null
+
+        val withoutScheme = normalized.substringAfter("://", missingDelimiterValue = "")
+        val authority = withoutScheme.substringBefore("/", missingDelimiterValue = "").lowercase()
+        if (authority != "totp" && authority != "hotp" && authority != "yaotp") return null
+
+        val pathAndQuery = withoutScheme.substringAfter("/", missingDelimiterValue = "")
+        val label = decodeUriComponent(pathAndQuery.substringBefore("?", missingDelimiterValue = ""))
+        val query = pathAndQuery.substringAfter("?", missingDelimiterValue = "")
+        val queryParams = query.split("&")
+            .filter { it.isNotBlank() }
+            .mapNotNull { segment ->
+                val key = decodeUriComponent(segment.substringBefore("=")).takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
+                key to decodeUriComponent(segment.substringAfter("=", missingDelimiterValue = ""))
+            }
+            .toMap()
+
+        val secret = queryParams["secret"]?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val queryIssuer = queryParams["issuer"]?.trim().orEmpty()
+        val labelIssuer = label.substringBefore(":", missingDelimiterValue = "").trim()
+        val issuer = queryIssuer.ifBlank { labelIssuer }
+        val accountName = if (label.contains(":")) {
+            label.substringAfter(":").trim()
+        } else {
+            label.trim()
+        }
+        val algorithm = queryParams["algorithm"]?.trim()?.uppercase().orEmpty().ifBlank { DEFAULT_ALGORITHM }
+        val period = queryParams["period"]?.toIntOrNull() ?: DEFAULT_PERIOD
+        val requestedDigits = queryParams["digits"]?.toIntOrNull() ?: DEFAULT_DIGITS
+        val counter = queryParams["counter"]?.toLongOrNull() ?: 0L
+        val encoder = queryParams["encoder"]?.lowercase().orEmpty()
+        val issuerLower = issuer.lowercase()
+        val otpType = when {
+            authority == "hotp" -> OtpType.HOTP
+            authority == "yaotp" -> OtpType.YANDEX
+            encoder == "steam" || issuerLower.contains("steam") -> OtpType.STEAM
+            issuerLower.contains("yandex") -> OtpType.YANDEX
+            else -> OtpType.TOTP
+        }
+
+        return TotpData(
+            secret = secret,
+            issuer = issuer,
+            accountName = accountName,
+            period = period,
+            digits = if (otpType == OtpType.STEAM) 5 else requestedDigits,
+            algorithm = algorithm,
+            otpType = otpType,
+            counter = counter
+        )
     }
 
     private fun parseBitwardenSteamUri(raw: String): TotpData? {
@@ -398,6 +454,10 @@ object TotpDataResolver {
 
     private fun encodeUriComponent(value: String): String =
         URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
+
+    private fun decodeUriComponent(value: String): String =
+        runCatching { URLDecoder.decode(value.replace("+", "%2B"), Charsets.UTF_8.name()) }
+            .getOrDefault(value)
 
     private fun buildTotpLabel(title: String, issuer: String, accountName: String): String {
         val normalizedIssuer = issuer.trim()

@@ -19,6 +19,7 @@ import takagi.ru.monica.data.model.withStorageTargetSelected
 import takagi.ru.monica.data.model.withoutStorageTarget
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.notes.domain.NoteDraftStore
+import takagi.ru.monica.notes.domain.NoteDraftStorage
 import takagi.ru.monica.utils.RememberedStorageTarget
 import java.util.Date
 
@@ -69,22 +70,29 @@ private data class NoteEditDraft(
     val createdAt: Date
 )
 
-class NoteEditorViewModel : ViewModel() {
+class NoteEditorViewModel(
+    private val draftStorageProvider: () -> NoteDraftStorage = { NoteDraftStore.get() }
+) : ViewModel() {
     companion object {
+        private const val NEW_NOTE_ID = -1L
         private const val AUTO_SAVE_DEBOUNCE_MS = 2000L
     }
 
-    private val draftStore by lazy { NoteDraftStore.get() }
+    private val draftStore by lazy { draftStorageProvider() }
     private val _uiState = MutableStateFlow(NoteEditorUiState())
     val uiState: StateFlow<NoteEditorUiState> = _uiState.asStateFlow()
     private var draftSaveJob: Job? = null
-    private var currentNoteId: Long = -1L
+    private var currentNoteId: Long = NEW_NOTE_ID
 
     fun resetForNewNote() {
+        draftSaveJob?.cancel()
+        currentNoteId = NEW_NOTE_ID
         _uiState.value = NoteEditorUiState()
     }
 
     fun loadForEdit(note: SecureItem) {
+        draftSaveJob?.cancel()
+        currentNoteId = note.id
         val draft = note.toNoteEditDraft()
         val hydratedContent = NoteContentCodec.appendInlineImageRefs(
             content = draft.content.trimEnd(),
@@ -136,43 +144,18 @@ class NoteEditorViewModel : ViewModel() {
         val normalizedRememberedKeePassGroupPath = rememberedStorageTarget?.keepassGroupPath?.takeIf { it.isNotBlank() }
         val normalizedRememberedBitwardenFolderId = rememberedStorageTarget?.bitwardenFolderId?.takeIf { it.isNotBlank() }
 
-        val hasExplicitInitialStorage = initialCategoryId != null ||
-            initialKeePassDatabaseId != null ||
-            normalizedInitialKeePassGroupPath != null ||
-            initialMdbxDatabaseId != null ||
-            initialBitwardenVaultId != null ||
-            normalizedInitialBitwardenFolderId != null
-
-        val resolvedCategoryId = if (hasExplicitInitialStorage) {
-            initialCategoryId
-        } else {
+        val resolvedCategoryId =
             initialCategoryId ?: draftStorageTarget.categoryId ?: rememberedStorageTarget?.categoryId
-        }
-        val resolvedKeepassDatabaseId = if (hasExplicitInitialStorage) {
-            initialKeePassDatabaseId
-        } else {
+        val resolvedKeepassDatabaseId =
             initialKeePassDatabaseId ?: draftStorageTarget.keepassDatabaseId ?: rememberedStorageTarget?.keepassDatabaseId
-        }
-        val resolvedKeepassGroupPath = if (hasExplicitInitialStorage) {
-            normalizedInitialKeePassGroupPath
-        } else {
+        val resolvedKeepassGroupPath =
             normalizedInitialKeePassGroupPath ?: normalizedDraftKeePassGroupPath ?: normalizedRememberedKeePassGroupPath
-        }
-        val resolvedMdbxDatabaseId = if (hasExplicitInitialStorage) {
-            initialMdbxDatabaseId
-        } else {
+        val resolvedMdbxDatabaseId =
             initialMdbxDatabaseId ?: draftStorageTarget.mdbxDatabaseId ?: rememberedStorageTarget?.mdbxDatabaseId
-        }
-        val resolvedBitwardenVaultId = if (hasExplicitInitialStorage) {
-            initialBitwardenVaultId
-        } else {
+        val resolvedBitwardenVaultId =
             initialBitwardenVaultId ?: draftStorageTarget.bitwardenVaultId ?: rememberedStorageTarget?.bitwardenVaultId
-        }
-        val resolvedBitwardenFolderId = if (hasExplicitInitialStorage) {
-            normalizedInitialBitwardenFolderId
-        } else {
+        val resolvedBitwardenFolderId =
             normalizedInitialBitwardenFolderId ?: normalizedDraftBitwardenFolderId ?: normalizedRememberedBitwardenFolderId
-        }
 
         val hasResolvedStorage = resolvedCategoryId != null ||
             resolvedKeepassDatabaseId != null ||
@@ -388,7 +371,6 @@ class NoteEditorViewModel : ViewModel() {
         currentNoteId = noteId
         draftSaveJob?.cancel()
         val state = _uiState.value
-        if (state.title.isBlank() && state.contentField.text.isBlank() && state.tagsText.isBlank()) return
         draftStore.saveDraft(noteId, state.title, state.contentField.text, state.tagsText)
     }
 
@@ -438,11 +420,11 @@ class NoteEditorViewModel : ViewModel() {
 
     private fun scheduleDraftSave() {
         draftSaveJob?.cancel()
+        val draftNoteId = currentNoteId
         draftSaveJob = viewModelScope.launch {
             delay(AUTO_SAVE_DEBOUNCE_MS)
             val state = _uiState.value
-            if (state.title.isBlank() && state.contentField.text.isBlank() && state.tagsText.isBlank()) return@launch
-            draftStore.saveDraft(currentNoteId, state.title, state.contentField.text, state.tagsText)
+            draftStore.saveDraft(draftNoteId, state.title, state.contentField.text, state.tagsText)
         }
     }
 

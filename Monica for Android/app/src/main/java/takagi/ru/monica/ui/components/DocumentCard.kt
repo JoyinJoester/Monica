@@ -21,6 +21,7 @@ import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.data.model.displayFullName
 import takagi.ru.monica.bitwarden.sync.SyncStatus
+import takagi.ru.monica.ui.cardwallet.DocumentTypeIcon
 
 /**
  * 证件卡片组件
@@ -125,16 +126,8 @@ fun DocumentCard(
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                     
-                    // 证件类型图标
-                    Icon(
-                        when (resolvedDocumentData.documentType) {
-                            DocumentType.ID_CARD -> Icons.Default.Badge
-                            DocumentType.PASSPORT -> Icons.Default.FlightTakeoff
-                            DocumentType.DRIVER_LICENSE -> Icons.Default.DirectionsCar
-                            DocumentType.SOCIAL_SECURITY -> Icons.Default.HealthAndSafety
-                            DocumentType.OTHER -> Icons.Default.Description
-                        },
-                        contentDescription = resolvedDocumentData.documentType.name,
+                    DocumentTypeIcon(
+                        documentType = resolvedDocumentData.documentType,
                         modifier = Modifier.size(24.dp),
                         tint = contentColor.copy(alpha = 0.6f)
                     )

@@ -22,6 +22,7 @@ import takagi.ru.monica.ui.screens.SendScreen
 import takagi.ru.monica.ui.vaultv2.VaultV2Pane
 import takagi.ru.monica.ui.vaultv2.VaultV2PaneState
 import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.BillingAddressViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.GeneratorViewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
@@ -56,6 +57,7 @@ internal fun CompactDraggableTabContent(
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToBankCardDetail: (Long) -> Unit,
     onNavigateToDocumentDetail: (Long) -> Unit,
+    onNavigateToBillingAddressDetail: (Long) -> Unit,
     onNavigateToPasskeyDetail: (Long) -> Unit,
     onPasswordSelectionModeChange: (
         Boolean,
@@ -84,6 +86,7 @@ internal fun CompactDraggableTabContent(
     cardWalletSaveableStateHolder: androidx.compose.runtime.saveable.SaveableStateHolder,
     bankCardViewModel: BankCardViewModel,
     documentViewModel: DocumentViewModel,
+    billingAddressViewModel: BillingAddressViewModel,
     cardWalletContentState: CardWalletContentState,
     generatorViewModel: GeneratorViewModel,
     generatorRefreshRequestKey: Int,
@@ -242,6 +245,7 @@ internal fun CompactDraggableTabContent(
                     onNavigateToAddTotp = onNavigateToAddTotp,
                     onNavigateToBankCardDetail = onNavigateToBankCardDetail,
                     onNavigateToDocumentDetail = onNavigateToDocumentDetail,
+                    onNavigateToBillingAddressDetail = onNavigateToBillingAddressDetail,
                     onNavigateToAddNote = onNavigateToAddNote,
                     onNavigateToNoteDetail = onNavigateToNoteDetail,
                     onNavigateToPasskeyDetail = onNavigateToPasskeyDetail,
@@ -265,6 +269,7 @@ internal fun CompactDraggableTabContent(
                     bankCardViewModel = bankCardViewModel,
                     noteViewModel = noteViewModel,
                     documentViewModel = documentViewModel,
+                    billingAddressViewModel = billingAddressViewModel,
                     passkeyViewModel = passkeyViewModel,
                     biometricEnabled = appSettings.biometricEnabled,
                     iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
@@ -294,7 +299,9 @@ internal fun CompactDraggableTabContent(
                     saveableStateHolder = cardWalletSaveableStateHolder,
                     bankCardViewModel = bankCardViewModel,
                     documentViewModel = documentViewModel,
+                    billingAddressViewModel = billingAddressViewModel,
                     passwordViewModel = passwordViewModel,
+                    bitwardenViewModel = bitwardenViewModel,
                     state = cardWalletContentState,
                     showStandaloneSettingsEntry = showStandaloneSettingsEntry,
                     onOpenStandaloneSettings = onOpenStandaloneSettings

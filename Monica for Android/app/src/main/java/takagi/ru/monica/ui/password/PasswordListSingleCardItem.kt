@@ -43,6 +43,7 @@ internal fun PasswordListSingleCardItem(
     iconCardsEnabled: Boolean,
     enableSharedBounds: Boolean,
     decryptAuthenticatorKey: ((String) -> String)? = null,
+    leadingIconOverride: (@Composable () -> Unit)? = null,
     badge: PasswordListCardBadge? = null
 ) {
     SwipeActions(
@@ -88,6 +89,7 @@ internal fun PasswordListSingleCardItem(
             totpTimeOffsetSeconds = totpTimeOffsetSeconds,
             smoothAuthenticatorProgress = smoothAuthenticatorProgress,
             decryptAuthenticatorKey = decryptAuthenticatorKey,
+            leadingIconOverride = leadingIconOverride,
             enableSharedBounds = enableSharedBounds
         )
     }

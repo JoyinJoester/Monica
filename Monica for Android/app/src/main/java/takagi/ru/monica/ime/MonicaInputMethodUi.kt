@@ -69,6 +69,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.SpaceBar
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -116,6 +117,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.ui.rememberAppIcon
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.ui.PasswordListInitialLoadingIndicator
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.util.PasswordGenerator
@@ -131,6 +133,7 @@ internal data class MonicaImePasswordEntry(
     val sourceLabel: String,
     val totpCode: String = "",
     val keepassDatabaseId: Long? = null,
+    val mdbxDatabaseId: Long? = null,
     val bitwardenVaultId: Long? = null
 )
 
@@ -144,6 +147,7 @@ internal data class MonicaImeAuthenticatorEntry(
     val isFavorite: Boolean,
     val sourceLabel: String,
     val keepassDatabaseId: Long? = null,
+    val mdbxDatabaseId: Long? = null,
     val bitwardenVaultId: Long? = null
 )
 
@@ -161,6 +165,7 @@ internal data class MonicaImeCardWalletEntry(
     val sourceLabel: String,
     val fields: List<MonicaImeCardWalletField>,
     val keepassDatabaseId: Long? = null,
+    val mdbxDatabaseId: Long? = null,
     val bitwardenVaultId: Long? = null
 )
 
@@ -179,6 +184,7 @@ internal data class MonicaImeUiState(
     val isUppercase: Boolean = false,
     val autoLockMinutes: Int = 5,
     val isAutofillPanelVisible: Boolean = false,
+    val isAutofillLoading: Boolean = false,
     val pendingClearedInput: String? = null
 )
 
@@ -200,6 +206,7 @@ internal sealed interface MonicaImeDatabaseScope {
     data object All : MonicaImeDatabaseScope
     data object Local : MonicaImeDatabaseScope
     data class KeePass(val databaseId: Long) : MonicaImeDatabaseScope
+    data class Mdbx(val databaseId: Long) : MonicaImeDatabaseScope
     data class Bitwarden(val vaultId: Long) : MonicaImeDatabaseScope
 }
 
@@ -700,6 +707,7 @@ private fun generateImePassword(length: Int): String {
     )
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun UnlockedVaultPane(
     modifier: Modifier = Modifier,
@@ -711,6 +719,9 @@ private fun UnlockedVaultPane(
     onInsertTotp: (MonicaImePasswordEntry) -> Unit,
     onSmartFillPassword: (MonicaImePasswordEntry) -> Unit
 ) {
+    val showAutofillLoading = uiState.isAutofillLoading ||
+        (uiState.unlocked && uiState.errorMessage == null && uiState.databaseOptions.isEmpty())
+
     ElevatedCard(
         modifier = modifier
             .fillMaxWidth()
@@ -762,7 +773,11 @@ private fun UnlockedVaultPane(
                             .weight(1f, fill = true),
                         contentAlignment = Alignment.Center
                     ) {
-                        EmptyVaultState(query = uiState.query)
+                        if (showAutofillLoading) {
+                            AutofillLoadingState()
+                        } else {
+                            EmptyVaultState(query = uiState.query)
+                        }
                     }
                 }
             } else {
@@ -770,20 +785,16 @@ private fun UnlockedVaultPane(
                 // 计算字母索引：每个首字母对应的第一个条目在列表中的位置
                 // 注意：如果有 database_filters item，条目从 index 1 开始
                 val filterItemOffset = if (uiState.databaseOptions.isNotEmpty()) 1 else 0
-                val letterIndex: List<Pair<String, Int>> = remember(uiState.entries) {
-                    val result = mutableListOf<Pair<String, Int>>()
-                    var lastLetter = ""
-                    uiState.entries.forEachIndexed { idx, entry ->
-                        val letter = entry.title.firstOrNull()
-                            ?.uppercaseChar()
-                            ?.let { if (it.isLetter()) it.toString() else "#" }
-                            ?: "#"
-                        if (letter != lastLetter) {
-                            result.add(letter to (idx + filterItemOffset))
-                            lastLetter = letter
+                val letterIndex: List<Pair<String, Int>> = remember(uiState.entries, filterItemOffset) {
+                    buildImeLetterIndex(
+                        itemCount = uiState.entries.size,
+                        itemOffset = filterItemOffset
+                    ) { index ->
+                        val entry = uiState.entries[index]
+                        entry.title.ifBlank {
+                            entry.website.ifBlank { entry.username }
                         }
                     }
-                    result
                 }
 
                 Box(
@@ -975,12 +986,49 @@ private fun VelocityScrollBar(
     }
 }
 
+private fun buildImeLetterIndex(
+    itemCount: Int,
+    itemOffset: Int = 0,
+    titleAt: (Int) -> String
+): List<Pair<String, Int>> {
+    val result = mutableListOf<Pair<String, Int>>()
+    var lastLetter = ""
+
+    repeat(itemCount) { index ->
+        val letter = titleAt(index)
+            .firstOrNull()
+            ?.uppercaseChar()
+            ?.let { if (it.isLetter()) it.toString() else "#" }
+            ?: "#"
+
+        if (letter != lastLetter) {
+            result += letter to (index + itemOffset)
+            lastLetter = letter
+        }
+    }
+
+    return result
+}
+
 private fun MonicaImeDatabaseScope.icon(): androidx.compose.ui.graphics.vector.ImageVector {
     return when (this) {
         MonicaImeDatabaseScope.All -> Icons.AutoMirrored.Filled.List
         MonicaImeDatabaseScope.Local -> Icons.Default.Smartphone
         is MonicaImeDatabaseScope.KeePass -> Icons.Default.Key
+        is MonicaImeDatabaseScope.Mdbx -> Icons.Default.Storage
         is MonicaImeDatabaseScope.Bitwarden -> Icons.Default.CloudSync
+    }
+}
+
+@Composable
+private fun AutofillLoadingState() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 28.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        PasswordListInitialLoadingIndicator()
     }
 }
 
@@ -1056,25 +1104,52 @@ private fun AuthenticatorPane(
                     )
                 }
             } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f, fill = true),
-                contentPadding = PaddingValues(
-                    start = 14.dp,
-                    top = 0.dp,
-                    end = 14.dp,
-                    bottom = 10.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(uiState.authenticatorEntries, key = { it.id }) { entry ->
-                    AuthenticatorEntryCard(
-                        entry = entry,
-                        onInsertCode = { onInsertCode(entry) }
+                val lazyListState = rememberLazyListState()
+                val letterIndex = remember(uiState.authenticatorEntries) {
+                    buildImeLetterIndex(itemCount = uiState.authenticatorEntries.size) { index ->
+                        val entry = uiState.authenticatorEntries[index]
+                        entry.title.ifBlank {
+                            entry.issuer.ifBlank {
+                                entry.accountName.ifBlank { entry.sourceLabel }
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = true)
+                ) {
+                    LazyColumn(
+                        state = lazyListState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentPadding = PaddingValues(
+                            start = 14.dp,
+                            top = 0.dp,
+                            end = 6.dp,
+                            bottom = 10.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(uiState.authenticatorEntries, key = { it.id }) { entry ->
+                            AuthenticatorEntryCard(
+                                entry = entry,
+                                onInsertCode = { onInsertCode(entry) }
+                            )
+                        }
+                    }
+                    VelocityScrollBar(
+                        lazyListState = lazyListState,
+                        letterIndex = letterIndex,
+                        modifier = Modifier
+                            .width(24.dp)
+                            .fillMaxHeight()
+                            .padding(end = 4.dp)
                     )
                 }
-            }
             }
         }
     }
@@ -1117,25 +1192,50 @@ private fun CardWalletPane(
                     )
                 }
             } else {
-                LazyColumn(
+                val lazyListState = rememberLazyListState()
+                val letterIndex = remember(uiState.cardWalletEntries) {
+                    buildImeLetterIndex(itemCount = uiState.cardWalletEntries.size) { index ->
+                        val entry = uiState.cardWalletEntries[index]
+                        entry.title.ifBlank {
+                            entry.subtitle.ifBlank { entry.typeLabel }
+                        }
+                    }
+                }
+
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f, fill = true),
-                    contentPadding = PaddingValues(
-                        start = 14.dp,
-                        top = 0.dp,
-                        end = 14.dp,
-                        bottom = 10.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .weight(1f, fill = true)
                 ) {
-                    items(uiState.cardWalletEntries, key = { it.id }) { entry ->
-                        CardWalletEntryCard(
-                            entry = entry,
-                            onSmartFill = { onSmartFill(entry) },
-                            onInsertField = onInsertField
-                        )
+                    LazyColumn(
+                        state = lazyListState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentPadding = PaddingValues(
+                            start = 14.dp,
+                            top = 0.dp,
+                            end = 6.dp,
+                            bottom = 10.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(uiState.cardWalletEntries, key = { it.id }) { entry ->
+                            CardWalletEntryCard(
+                                entry = entry,
+                                onSmartFill = { onSmartFill(entry) },
+                                onInsertField = onInsertField
+                            )
+                        }
                     }
+                    VelocityScrollBar(
+                        lazyListState = lazyListState,
+                        letterIndex = letterIndex,
+                        modifier = Modifier
+                            .width(24.dp)
+                            .fillMaxHeight()
+                            .padding(end = 4.dp)
+                    )
                 }
             }
         }

@@ -198,7 +198,10 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             true
         }
         observeVaultSnapshots()
-        loadVaults(triggerStartupAutoSync = true)
+        loadVaults(
+            triggerStartupAutoSync = false,
+            triggerActiveVaultAutoSync = false
+        )
     }
 
     override fun onCleared() {
@@ -211,7 +214,10 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     /**
      * 加载 Vault 列表
      */
-    fun loadVaults(triggerStartupAutoSync: Boolean = false) {
+    fun loadVaults(
+        triggerStartupAutoSync: Boolean = false,
+        triggerActiveVaultAutoSync: Boolean = true
+    ) {
         viewModelScope.launch {
             try {
                 val restoredVaultIds = if (_isNeverLockEnabled.value) {
@@ -249,7 +255,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                         SyncTriggerReason.PAGE_ENTER
                     }
                     requestAutoSyncForUnlockedVaults(vaultList, reason)
-                } else if (active != null && activeUnlockState == UnlockState.Unlocked) {
+                } else if (triggerActiveVaultAutoSync && active != null && activeUnlockState == UnlockState.Unlocked) {
                     val trigger = if (active.id in restoredVaultIds) {
                         "loadVaults:restoredUnlock"
                     } else {

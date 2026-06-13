@@ -45,6 +45,7 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.BillingAddress
+import takagi.ru.monica.data.model.CardBrandDetector
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.StorageTarget
@@ -66,6 +67,7 @@ import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
 import takagi.ru.monica.ui.components.rememberCommonNameSuggestionState
+import takagi.ru.monica.ui.cardwallet.CardBrandIcon
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.RememberedStorageTarget
 import takagi.ru.monica.utils.SettingsManager
@@ -100,7 +102,7 @@ fun AddEditBankCardScreen(
     val coroutineScope = rememberCoroutineScope()
     val database = remember { PasswordDatabase.getDatabase(context) }
     val securityManager = remember { SecurityManager(context) }
-    val bitwardenSyncViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
+    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     val localKeePassViewModel: LocalKeePassViewModel = viewModel {
         LocalKeePassViewModel(
             context.applicationContext as android.app.Application,
@@ -165,6 +167,12 @@ fun AddEditBankCardScreen(
     var currentReplicaGroupId by rememberSaveable { mutableStateOf<String?>(null) }
     var showStorageTargetSheet by remember { mutableStateOf(false) }
     var hasLoadedExistingCardFields by rememberSaveable(cardId) { mutableStateOf(false) }
+    val detectedCardBrand = remember(cardNumber, brand) {
+        CardBrandDetector.detect(
+            number = cardNumber,
+            storedBrand = brand
+        )
+    }
     val commonNameSuggestions = rememberCommonNameSuggestionState(
         database = database,
         includeAnalyzedItems = shouldLoadCommonNameAnalysis || showCommonNamePicker
@@ -550,7 +558,7 @@ fun AddEditBankCardScreen(
                 )
             )
         }
-        syncVaultIds.forEach(bitwardenSyncViewModel::requestLocalMutationSync)
+        syncVaultIds.forEach(bitwardenRepository::requestLocalMutationSync)
         onNavigateBack()
     }
     val toggleFavoriteAction: () -> Unit = {
@@ -679,7 +687,13 @@ fun AddEditBankCardScreen(
                         },
                         label = { Text(stringResource(R.string.card_number_required)) },
                         placeholder = { Text("1234 5678 9012 3456") },
-                        leadingIcon = { Icon(Icons.Default.Numbers, contentDescription = null) },
+                        leadingIcon = {
+                            CardBrandIcon(
+                                brand = detectedCardBrand,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(width = 32.dp, height = 20.dp)
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
@@ -1134,7 +1148,7 @@ fun AddEditBankCardScreen(
                 if (showTopBar) {
                     Column {
                         TopAppBar(
-                            title = { Text(stringResource(if (cardId == null) R.string.add_bank_card_title else R.string.edit_bank_card_title)) },
+                            title = { Text(stringResource(R.string.bank_card_default_title)) },
                             navigationIcon = {
                                 IconButton(onClick = onNavigateBack) {
                                     Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))

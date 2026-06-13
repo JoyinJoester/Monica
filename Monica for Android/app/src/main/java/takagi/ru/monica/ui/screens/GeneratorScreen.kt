@@ -178,7 +178,7 @@ fun GeneratorScreen(
     val passwordEntries by passwordViewModel.passwordEntries.collectAsState()
     val appendGeneratorHistory: (password: String, domain: String, type: String) -> Unit = history@{ password, domain, type ->
         if (password.isBlank()) return@history
-        val latest = filteredHistoryList.firstOrNull()
+        val latest = historyList.firstOrNull()
         if (latest?.password == password && latest.type == type) return@history
         scope.launch {
             historyManager.addHistory(
@@ -289,7 +289,6 @@ fun GeneratorScreen(
                 }
                 viewModel.updateSymbolResult(result)
                 if (result.isEmpty()) return@regenerate
-                appendGeneratorHistory(result, context.getString(R.string.random_symbol_generator), "SYMBOL")
             }
             GeneratorType.PASSWORD -> {
                 val result = generatePassword(
@@ -301,7 +300,6 @@ fun GeneratorScreen(
                     segmentLength = segmentLength
                 )
                 viewModel.updatePasswordResult(result)
-                appendGeneratorHistory(result, context.getString(R.string.password_generator), "PASSWORD")
             }
             GeneratorType.PASSPHRASE -> {
                 val result = PasswordGenerator.generatePassphrase(
@@ -314,12 +312,10 @@ fun GeneratorScreen(
                     customWords = parsedCustomMnemonicWords
                 )
                 viewModel.updatePassphraseResult(result)
-                appendGeneratorHistory(result, context.getString(R.string.passphrase_generator), "PASSPHRASE")
             }
             GeneratorType.PIN -> {
                 val result = PasswordGenerator.generatePinCode(pinLength)
                 viewModel.updatePinResult(result)
-                appendGeneratorHistory(result, context.getString(R.string.pin_generator), "PIN")
             }
             GeneratorType.SSH_KEY -> {
                 if (isSshKeyGenerating) return@regenerate
@@ -335,11 +331,6 @@ fun GeneratorScreen(
                     }
                     generated.onSuccess { data ->
                         viewModel.updateSshKeyResult(data)
-                        appendGeneratorHistory(
-                            data.fingerprintSha256,
-                            context.getString(R.string.generator_ssh_key),
-                            "SSH_KEY"
-                        )
                     }.onFailure {
                         Toast.makeText(
                             context,
@@ -491,6 +482,15 @@ fun GeneratorScreen(
         val isSshKeyGenerator = selectedGenerator == GeneratorType.SSH_KEY
         val shouldShowResultCard = currentResult.isNotEmpty()
         val shouldShowSshGenerationProgress = isSshKeyGenerator && isSshKeyGenerating
+        val copyGeneratedResult: (String) -> Unit = { text ->
+            copyToClipboard(context, text)
+            appendGeneratorHistory(
+                text,
+                generatorTypeTitle(selectedGenerator, context),
+                selectedGenerator.name
+            )
+            Toast.makeText(context, context.getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
+        }
         // SSH_KEY 的结果卡片不参与 sticky compact 模式：指纹文本短，不需要收缩，
         // 且 compact 切换会导致高度跳变影响滚动体验。
         val isResultCardPinned by remember(listState, shouldShowResultCard, selectedGenerator) {
@@ -606,10 +606,7 @@ fun GeneratorScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(bottom = 20.dp),
-                            onCopy = { text ->
-                                copyToClipboard(context, text)
-                                Toast.makeText(context, context.getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
-                            }
+                            onCopy = copyGeneratedResult
                         )
                     }
                 }
@@ -627,10 +624,7 @@ fun GeneratorScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(bottom = if (isResultCardPinned) 8.dp else 20.dp),
-                            onCopy = { text ->
-                                copyToClipboard(context, text)
-                                Toast.makeText(context, context.getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
-                            }
+                            onCopy = copyGeneratedResult
                         )
                     }
                 }

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -71,7 +72,13 @@ fun CardWalletAddTypeChip(
     var expanded by remember { mutableStateOf(false) }
     val chipContentDescription = stringResource(R.string.nav_card_wallet)
     val interactionSource = remember { MutableInteractionSource() }
-    val options = remember { listOf(CardWalletTab.BANK_CARDS, CardWalletTab.DOCUMENTS) }
+    val options = remember {
+        listOf(
+            CardWalletTab.BANK_CARDS,
+            CardWalletTab.DOCUMENTS,
+            CardWalletTab.BILLING_ADDRESSES
+        )
+    }
 
     val targetContent = contentColorOverride ?: if (drawContainer) {
         MaterialTheme.colorScheme.onSecondaryContainer
@@ -196,7 +203,13 @@ fun PlusBlurCardWalletAddTopBar(
     val islandSize = 40.dp
     val topBarHeight = statusBarTop + 52.dp
     var typeMenuExpanded by remember { mutableStateOf(false) }
-    val options = remember { listOf(CardWalletTab.BANK_CARDS, CardWalletTab.DOCUMENTS) }
+    val options = remember {
+        listOf(
+            CardWalletTab.BANK_CARDS,
+            CardWalletTab.DOCUMENTS,
+            CardWalletTab.BILLING_ADDRESSES
+        )
+    }
 
     Box(
         modifier = modifier
@@ -387,12 +400,14 @@ private fun PlusBlurCardWalletTypeButton(
 private fun cardWalletAddTypeLabel(type: CardWalletTab): String = stringResource(
     when (type) {
         CardWalletTab.DOCUMENTS -> R.string.item_type_document
+        CardWalletTab.BILLING_ADDRESSES -> R.string.billing_address
         else -> R.string.item_type_bank_card
     }
 )
 
 private fun cardWalletAddTypeIcon(type: CardWalletTab): ImageVector = when (type) {
     CardWalletTab.DOCUMENTS -> Icons.Default.Badge
+    CardWalletTab.BILLING_ADDRESSES -> Icons.Default.Home
     else -> Icons.Default.CreditCard
 }
 

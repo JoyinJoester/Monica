@@ -74,7 +74,10 @@ internal data class CardWalletPaneUiState(
     val isAddingBankCardInline: Boolean = false,
     val selectedDocumentId: Long? = null,
     val inlineDocumentEditorId: Long? = null,
-    val isAddingDocumentInline: Boolean = false
+    val isAddingDocumentInline: Boolean = false,
+    val selectedBillingAddressId: Long? = null,
+    val inlineBillingAddressEditorId: Long? = null,
+    val isAddingBillingAddressInline: Boolean = false
 )
 
 internal val CardWalletPaneUiStateSaver = Saver<CardWalletPaneUiState, List<Any?>>(
@@ -85,7 +88,10 @@ internal val CardWalletPaneUiStateSaver = Saver<CardWalletPaneUiState, List<Any?
             state.isAddingBankCardInline,
             state.selectedDocumentId,
             state.inlineDocumentEditorId,
-            state.isAddingDocumentInline
+            state.isAddingDocumentInline,
+            state.selectedBillingAddressId,
+            state.inlineBillingAddressEditorId,
+            state.isAddingBillingAddressInline
         )
     },
     restore = { saved ->
@@ -95,7 +101,10 @@ internal val CardWalletPaneUiStateSaver = Saver<CardWalletPaneUiState, List<Any?
             isAddingBankCardInline = saved.getOrNull(2) as? Boolean ?: false,
             selectedDocumentId = saved.getOrNull(3) as? Long,
             inlineDocumentEditorId = saved.getOrNull(4) as? Long,
-            isAddingDocumentInline = saved.getOrNull(5) as? Boolean ?: false
+            isAddingDocumentInline = saved.getOrNull(5) as? Boolean ?: false,
+            selectedBillingAddressId = saved.getOrNull(6) as? Long,
+            inlineBillingAddressEditorId = saved.getOrNull(7) as? Long,
+            isAddingBillingAddressInline = saved.getOrNull(8) as? Boolean ?: false
         )
     }
 )
@@ -139,6 +148,24 @@ internal object CardWalletPaneUiStateTransitions {
     fun clearSelectedDocument(current: CardWalletPaneUiState): CardWalletPaneUiState =
         current.copy(selectedDocumentId = null)
 
+    fun openBillingAddressAddInline(): CardWalletPaneUiState =
+        CardWalletPaneUiState(isAddingBillingAddressInline = true)
+
+    fun openBillingAddressEditInline(addressId: Long): CardWalletPaneUiState =
+        CardWalletPaneUiState(inlineBillingAddressEditorId = addressId)
+
+    fun openBillingAddressDetail(addressId: Long): CardWalletPaneUiState =
+        CardWalletPaneUiState(selectedBillingAddressId = addressId)
+
+    fun closeBillingAddressEditor(current: CardWalletPaneUiState): CardWalletPaneUiState =
+        current.copy(
+            inlineBillingAddressEditorId = null,
+            isAddingBillingAddressInline = false
+        )
+
+    fun clearSelectedBillingAddress(current: CardWalletPaneUiState): CardWalletPaneUiState =
+        current.copy(selectedBillingAddressId = null)
+
     fun resetDocumentPane(current: CardWalletPaneUiState): CardWalletPaneUiState =
         current.copy(
             selectedDocumentId = null,
@@ -151,6 +178,13 @@ internal object CardWalletPaneUiStateTransitions {
             selectedBankCardId = null,
             inlineBankCardEditorId = null,
             isAddingBankCardInline = false
+        )
+
+    fun resetBillingAddressPane(current: CardWalletPaneUiState): CardWalletPaneUiState =
+        current.copy(
+            selectedBillingAddressId = null,
+            inlineBillingAddressEditorId = null,
+            isAddingBillingAddressInline = false
         )
 }
 

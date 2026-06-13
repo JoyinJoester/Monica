@@ -34,6 +34,8 @@ object MapperFactory {
             ItemType.BANK_CARD -> cardMapper as BitwardenMapper<T>
             ItemType.NOTE -> secureNoteMapper as BitwardenMapper<T>
             ItemType.DOCUMENT -> identityMapper as BitwardenMapper<T>
+            ItemType.BILLING_ADDRESS -> null
+            ItemType.PAYMENT_ACCOUNT -> null
         }
     }
     

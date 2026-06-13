@@ -270,6 +270,10 @@
     
     <!-- TOTP List -->
     <string name="search_authenticator">認証器を検索</string>
+    <string name="bind_authenticator">認証器を関連付け</string>
+    <string name="bound_authenticator_change">認証器を変更</string>
+    <string name="select_authenticator_to_bind">関連付ける認証器を選択</string>
+    <string name="selected_authenticator_format">選択済み：%1$s</string>
     <string name="clear">クリア</string>
     <string name="no_authenticators_title">認証器がありません</string>
     <string name="no_authenticators_description">右下の + ボタンをタップして認証器を追加</string>
@@ -599,7 +603,7 @@
     <string name="settings_import_data_description">バックアップファイルから復元</string>
     <string name="settings_version_info">バージョン情報</string>
     <string name="version_info_full_version_label">完全版バージョン</string>
-    <string name="settings_version_number">V1.0.289</string>
+    <string name="settings_version_number">V1.0.290</string>
     <string name="settings_support_author">作者をサポート</string>
     <string name="settings_support_author_description">ご支援ありがとうございます</string>
     <string name="settings_privacy_policy">プライバシーポリシー</string>

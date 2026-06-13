@@ -17,10 +17,12 @@ import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.bitwarden.BitwardenVaultDao
 import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.isLocalOnlyPasskey
+import takagi.ru.monica.data.model.BillingAddressData
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.NoteData
+import takagi.ru.monica.data.model.PaymentAccountData
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.repository.CustomFieldRepository
 import takagi.ru.monica.repository.PasskeyRepository
@@ -684,6 +686,40 @@ class DedupMergeService(
                     data.ssn.trim()
                 ).joinToString("\u0001")
             }
+            ItemType.BILLING_ADDRESS -> decodeBillingAddressData(item)?.let { data ->
+                listOf(
+                    "billing_address",
+                    normalizeText(data.fullName),
+                    normalizeText(data.company),
+                    normalizeText(data.streetAddress),
+                    normalizeText(data.apartment),
+                    normalizeText(data.city),
+                    normalizeText(data.stateProvince),
+                    data.postalCode.trim().uppercase(Locale.ROOT),
+                    normalizeText(data.country),
+                    data.phone.filter { it.isDigit() || it == '+' },
+                    normalizeText(data.email)
+                ).joinToString("\u0001")
+            }
+            ItemType.PAYMENT_ACCOUNT -> decodePaymentAccountData(item)?.let { data ->
+                listOf(
+                    "payment_account",
+                    data.paymentType.name,
+                    normalizeText(data.provider),
+                    normalizeText(data.accountName),
+                    normalizeText(data.accountHolderName),
+                    normalizeText(data.email),
+                    data.phone.filter { it.isDigit() || it == '+' },
+                    normalizeText(data.username),
+                    normalizeText(data.accountId),
+                    data.maskedAccountNumber.trim(),
+                    data.linkedCardLast4.trim(),
+                    data.iban.trim(),
+                    data.swiftBic.trim(),
+                    normalizeText(data.website),
+                    data.currency.trim().uppercase(Locale.ROOT)
+                ).joinToString("\u0001")
+            }
             ItemType.NOTE -> decodeNoteData(item)?.let { data ->
                 listOf(
                     "note",
@@ -814,6 +850,40 @@ class DedupMergeService(
                     "secure_exact|${exactContentFingerprint(item)}"
                 }
             }
+            ItemType.BILLING_ADDRESS -> {
+                val data = decodeBillingAddressData(item)
+                val addressKey = listOf(
+                    data?.fullName?.let(::normalizeText).orEmpty(),
+                    data?.streetAddress?.let(::normalizeText).orEmpty(),
+                    data?.apartment?.let(::normalizeText).orEmpty(),
+                    data?.city?.let(::normalizeText).orEmpty(),
+                    data?.stateProvince?.let(::normalizeText).orEmpty(),
+                    data?.postalCode?.trim()?.uppercase(Locale.ROOT).orEmpty(),
+                    data?.country?.let(::normalizeText).orEmpty()
+                ).joinToString("|")
+                if (addressKey.replace("|", "").isNotBlank()) {
+                    "billing_address|$addressKey"
+                } else {
+                    "secure_exact|${exactContentFingerprint(item)}"
+                }
+            }
+            ItemType.PAYMENT_ACCOUNT -> {
+                val data = decodePaymentAccountData(item)
+                val accountKey = listOf(
+                    data?.provider?.let(::normalizeText).orEmpty(),
+                    data?.accountName?.let(::normalizeText).orEmpty(),
+                    data?.email?.let(::normalizeText).orEmpty(),
+                    data?.username?.let(::normalizeText).orEmpty(),
+                    data?.accountId?.let(::normalizeText).orEmpty(),
+                    data?.maskedAccountNumber?.trim().orEmpty(),
+                    data?.linkedCardLast4?.trim().orEmpty()
+                ).joinToString("|")
+                if (accountKey.replace("|", "").isNotBlank()) {
+                    "payment_account|$accountKey"
+                } else {
+                    "secure_exact|${exactContentFingerprint(item)}"
+                }
+            }
             ItemType.NOTE,
             ItemType.PASSWORD -> "secure_exact|${exactContentFingerprint(item)}"
         }
@@ -930,6 +1000,20 @@ class DedupMergeService(
 
     private fun decodeDocumentData(item: SecureItem): DocumentData? {
         return CardWalletDataCodec.parseDocumentData(
+            raw = item.itemData,
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+        )
+    }
+
+    private fun decodeBillingAddressData(item: SecureItem): BillingAddressData? {
+        return CardWalletDataCodec.parseBillingAddressData(
+            raw = item.itemData,
+            decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
+        )
+    }
+
+    private fun decodePaymentAccountData(item: SecureItem): PaymentAccountData? {
+        return CardWalletDataCodec.parsePaymentAccountData(
             raw = item.itemData,
             decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
         )

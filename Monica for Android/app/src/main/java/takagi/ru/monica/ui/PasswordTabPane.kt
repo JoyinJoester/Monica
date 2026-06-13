@@ -23,6 +23,7 @@ import takagi.ru.monica.ui.screens.HistoryTab
 import takagi.ru.monica.ui.screens.PasswordDetailScreen
 import takagi.ru.monica.ui.screens.TimelineScreen
 import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.BillingAddressViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
@@ -54,6 +55,7 @@ internal fun PasswordTabPane(
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToBankCardDetail: (Long) -> Unit,
     onNavigateToDocumentDetail: (Long) -> Unit,
+    onNavigateToBillingAddressDetail: (Long) -> Unit,
     onNavigateToAddNote: (Long?) -> Unit,
     onNavigateToNoteDetail: (Long) -> Unit,
     onNavigateToPasskeyDetail: (Long) -> Unit,
@@ -91,6 +93,7 @@ internal fun PasswordTabPane(
     bankCardViewModel: BankCardViewModel,
     noteViewModel: NoteViewModel,
     documentViewModel: DocumentViewModel,
+    billingAddressViewModel: BillingAddressViewModel,
     passkeyViewModel: PasskeyViewModel,
     biometricEnabled: Boolean,
     iconCardsEnabled: Boolean,
@@ -139,11 +142,13 @@ internal fun PasswordTabPane(
                 totpViewModel = totpViewModel,
                 bankCardViewModel = bankCardViewModel,
                 documentViewModel = documentViewModel,
+                billingAddressViewModel = billingAddressViewModel,
                 noteViewModel = noteViewModel,
                 passkeyViewModel = passkeyViewModel,
                 onOpenTotp = { onNavigateToAddTotp(it) },
                 onOpenBankCard = onNavigateToBankCardDetail,
                 onOpenDocument = onNavigateToDocumentDetail,
+                onOpenBillingAddress = onNavigateToBillingAddressDetail,
                 onOpenNote = onNavigateToAddNote,
                 onOpenPasskey = onNavigateToPasskeyDetail
             )

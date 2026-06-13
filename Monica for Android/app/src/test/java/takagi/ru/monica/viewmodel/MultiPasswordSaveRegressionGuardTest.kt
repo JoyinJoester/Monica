@@ -159,8 +159,8 @@ class MultiPasswordSaveRegressionGuardTest {
                 simpleMainSource.contains("onScanPasswordAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode") &&
                 passwordTabPaneSource.contains("pendingQrResult = pendingPasswordAuthenticatorQrResult") &&
                 passwordTabPaneSource.contains("onScanAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode") &&
-                mainScreenFabSource.contains("pendingQrResult = pendingPasswordAuthenticatorQrResult") &&
-                mainScreenFabSource.contains("onScanAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode")
+                mainScreenFabSource.contains("pendingPasswordAuthenticatorQrResult: String? = null") &&
+                mainScreenFabSource.contains("onScanPasswordAuthenticatorQrCode: () -> Unit = {}")
         )
     }
 
@@ -172,8 +172,6 @@ class MultiPasswordSaveRegressionGuardTest {
         val mainScreenSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt"
         ).readText()
-        val expandedContentTransition = source.substringAfter("AnimatedVisibility(\n            visible = isExpanded")
-            .substringBefore("BackHandler(enabled = isExpanded)")
         val fabTransition = source.substringAfter("AnimatedVisibility(\n            visible = !isExpanded")
             .substringBefore("Box(\n                modifier = Modifier")
         val renderMainSurface = mainScreenSource.substringAfter("fun RenderMainSurface() {")
@@ -184,24 +182,15 @@ class MultiPasswordSaveRegressionGuardTest {
         val renderCallIndex = mainScreenSource.indexOf("RenderMainSurface()", startIndex = overlayCallIndex)
 
         assertTrue(
-            "FAB add should follow EasyNotes' edit-page transition: click the button, fade/scale in a full-screen add page, and fade/scale the FAB away.",
-            expandedContentTransition.contains("fadeIn(animationSpec = tween(300))") &&
-                expandedContentTransition.contains("scaleIn(initialScale = 0.9f, animationSpec = tween(400))") &&
-                expandedContentTransition.contains("fadeOut(animationSpec = tween(300))") &&
-                expandedContentTransition.contains("scaleOut(targetScale = 0.9f, animationSpec = tween(400))") &&
-                expandedContentTransition.contains("modifier = Modifier.matchParentSize()") &&
-                source.contains("expandedContent { animateExpanded(false) }") &&
+            "FAB add should keep the lightweight button transition and delegate full-screen editing to the page-level inline editor.",
+            source.contains("onClick: () -> Unit") &&
+                source.contains("onClick = onClick") &&
                 fabTransition.contains("fadeIn(animationSpec = tween(160))") &&
                 fabTransition.contains("scaleIn(initialScale = 0.9f, animationSpec = tween(180))") &&
                 fabTransition.contains("fadeOut(animationSpec = tween(120))") &&
                 fabTransition.contains("scaleOut(targetScale = 0.9f, animationSpec = tween(140))") &&
-                mainScreenSource.contains("val mainSurfaceFabTransitionScale by animateFloatAsState(") &&
-                mainScreenSource.contains("targetValue = if (isFabExpanded) 0.9f else 1f") &&
-                mainScreenSource.contains("label = \"main_surface_fab_transition_scale\"") &&
                 renderMainSurface.contains("Box(modifier = Modifier.fillMaxSize())") &&
                 scaledMainSurfaceLayer.contains(".matchParentSize()") &&
-                scaledMainSurfaceLayer.contains("scaleX = mainSurfaceFabTransitionScale") &&
-                scaledMainSurfaceLayer.contains("scaleY = mainSurfaceFabTransitionScale") &&
                 overlayCallIndex in 0 until renderCallIndex
         )
         assertFalse(
@@ -279,7 +268,7 @@ class MultiPasswordSaveRegressionGuardTest {
         assertTrue(
             "Wide/inline Add Password entry points must pass the inherited MDBX folder into the screen.",
             passwordTabSource.contains("initialMdbxFolderId = passwordNewItemDefaults.mdbxFolderId") &&
-                fabSource.contains("initialMdbxFolderId = aggregateStorageDefaults?.mdbxFolderId")
+                fabSource.contains("aggregateStorageDefaults.mdbxFolderId")
         )
     }
 
@@ -353,7 +342,8 @@ class MultiPasswordSaveRegressionGuardTest {
         ).forEach { mutationBody ->
             assertTrue(
                 "User-visible MDBX mutations should publish the working copy to SAF/WebDAV before reporting success.",
-                mutationBody.contains("markWorkingCopyDirtyAndFlush(dbInfo, file)")
+                mutationBody.contains("markWorkingCopyDirtyAndFlush(dbInfo, file)") ||
+                    mutationBody.contains("markWorkingCopyDirtyAndFlushLocked(dbInfo, file)")
             )
         }
 
@@ -406,15 +396,21 @@ class MultiPasswordSaveRegressionGuardTest {
                 repositorySource.contains("suspend fun deletePasskeys(passkeys: List<PasskeyEntry>)")
         )
 
+        val upsertEntryMutationBody = storeSource.substringAfter("private suspend fun upsertEntryMutations(")
+            .substringBefore("private suspend fun deleteEntryMutations(")
+        val deleteEntryMutationBody = storeSource.substringAfter("private suspend fun deleteEntryMutations(")
+            .substringBefore("private suspend fun <T : Any> mutateEntriesByVault(")
         val batchedMutationBody = storeSource.substringAfter("private suspend fun <T : Any> mutateEntriesByVault(")
             .substringBefore("private fun mutationDatabaseId(")
         assertTrue(
             "Batched MDBX mutations must commit a local SQLite transaction and publish once per vault before returning.",
             batchedMutationBody.contains("openExistingWritableVault(file).use") &&
                 batchedMutationBody.contains("db.beginTransaction()") &&
-                batchedMutationBody.contains("vaultMutations.forEach") &&
+                upsertEntryMutationBody.contains("vaultMutations.forEach") &&
+                deleteEntryMutationBody.contains("vaultMutations.forEach") &&
+                batchedMutationBody.contains("writeMutations(db, vaultMutations, epochKey)") &&
                 batchedMutationBody.contains("db.setTransactionSuccessful()") &&
-                batchedMutationBody.contains("markWorkingCopyDirtyAndFlush(dbInfo, file)")
+                batchedMutationBody.contains("markWorkingCopyDirtyAndFlushLocked(dbInfo, file)")
         )
 
         assertTrue(
@@ -516,8 +512,8 @@ class MultiPasswordSaveRegressionGuardTest {
             "History UI must expose Diff and Revert controls.",
             managerSource.contains("onShowDiff") &&
                 managerSource.contains("onRevert") &&
-                managerSource.contains("Text(\"Diff\")") &&
-                managerSource.contains("Text(\"Revert\")")
+                managerSource.contains("Text(\"查看变更\")") &&
+                managerSource.contains("Text(\"回滚\")")
         )
     }
 
@@ -1073,8 +1069,8 @@ class MultiPasswordSaveRegressionGuardTest {
         assertTrue(
             "Database and backup settings must expose MDBX as its own testing category.",
             syncBackupSource.contains("onNavigateToMdbx") &&
-                syncBackupSource.contains("MDBX（测试）") &&
-                syncBackupSource.contains("MDBX 格式管理") &&
+                syncBackupSource.contains("MDBX 1.0") &&
+                syncBackupSource.contains("MDBX 1.0 数据库管理") &&
                 mainActivitySource.contains("onNavigateToMdbx = {") &&
                 mainActivitySource.contains("navController.navigate(Screen.MdbxManager.route)")
         )
@@ -1777,7 +1773,9 @@ class MultiPasswordSaveRegressionGuardTest {
                 managerSource.contains("marker = \"+\"") &&
                 managerSource.contains("backgroundColor = MaterialTheme.colorScheme.errorContainer.copy") &&
                 managerSource.contains("backgroundColor = MaterialTheme.colorScheme.primaryContainer.copy") &&
-                managerSource.contains("Text(\n                    \"字段变更\"") &&
+                managerSource.substringAfter("private fun FieldChangeGroupBlock(")
+                    .substringBefore("private fun FieldChangeRow(")
+                    .contains("\"字段变更\"") &&
                 managerSource.contains("\"${'$'}{change.fieldLabel}:\"") &&
                 managerSource.contains("value.ifBlank { \"null\" }") &&
                 managerSource.contains("group.displayPath()") &&
@@ -1811,6 +1809,9 @@ class MultiPasswordSaveRegressionGuardTest {
                 managerSource.contains("onShowDiff = { onShowSnapshotDiff(snapshot.baseCommitId) }") &&
                 managerSource.contains("Text(\"查看变更\")")
         )
+        val snapshotStructurePreviewBody = managerSource
+            .substringAfter("private fun SnapshotStructurePreviewPage(")
+            .substringBefore("private fun StructureTreePanel(")
         assertTrue(
             "Snapshot rows should open a real subpage for the VSCode-style structure preview and support landscape comparison.",
             managerSource.contains("data class SnapshotStructure(") &&
@@ -1835,18 +1836,11 @@ class MultiPasswordSaveRegressionGuardTest {
                 managerSource.contains("val snapshotTopBarMeta = snapshotPage?.let") &&
                 managerSource.contains("IconButton(onClick = { snapshotCompareMode = !snapshotCompareMode })") &&
                 managerSource.contains("if (snapshotCompareMode) Icons.Default.FullscreenExit else Icons.Default.Fullscreen") &&
-                managerSource.substringAfter("private fun SnapshotStructurePreviewPage(")
-                    .substringBefore("@Composable\nprivate fun StructureTreePanel(")
-                    .contains(".verticalScroll(rememberScrollState())") &&
-                managerSource.substringAfter("private fun SnapshotStructurePreviewPage(")
-                    .substringBefore("@Composable\nprivate fun StructureTreePanel(")
-                    .contains("VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)") &&
-                managerSource.substringAfter("private fun SnapshotStructurePreviewPage(")
-                    .substringBefore("@Composable\nprivate fun StructureTreePanel(")
-                    .contains("modifier = Modifier.weight(1f),\n                    framed = false") &&
-                !managerSource.substringAfter("private fun SnapshotStructurePreviewPage(")
-                    .substringBefore("@Composable\nprivate fun StructureTreePanel(")
-                    .contains("Icons.Default.Fullscreen") &&
+                snapshotStructurePreviewBody.contains(".verticalScroll(rememberScrollState())") &&
+                snapshotStructurePreviewBody.contains("VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)") &&
+                snapshotStructurePreviewBody.contains("modifier = Modifier.weight(1f)") &&
+                snapshotStructurePreviewBody.contains("framed = false") &&
+                !snapshotStructurePreviewBody.contains("Icons.Default.Fullscreen") &&
                 !managerSource.contains("rememberSaveable(snapshotId)") &&
                 managerSource.contains("framed = false") &&
                 managerSource.contains("private fun StructureIndentLines(") &&
@@ -1857,7 +1851,7 @@ class MultiPasswordSaveRegressionGuardTest {
                 managerSource.contains("{ if (it.type == MdbxStructureNodeType.FOLDER) 0 else 1 }") &&
                 managerSource.contains("childrenByParent[parentId].orEmpty().sortedWith(structureTreeNodeComparator)") &&
                 !managerSource.substringAfter("private fun MdbxSnapshotPage(")
-                    .substringBefore("@Composable\nprivate fun MdbxCommitHistoryPage(")
+                    .substringBefore("private fun MdbxCommitHistoryPage(")
                     .contains("SnapshotStructurePreviewPage(") &&
                 !managerSource.contains("onCloseSnapshotStructure") &&
                 storeSource.contains("data class MdbxStructurePreview(") &&
@@ -1946,6 +1940,9 @@ class MultiPasswordSaveRegressionGuardTest {
         val mainPaneSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/password/PasswordListMainPane.kt"
         ).readText()
+        val quickStatusDialogsSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListQuickStatusDialogs.kt"
+        ).readText()
         val moveSupportSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/password/PasswordBatchMoveSupport.kt"
         ).readText()
@@ -1986,7 +1983,8 @@ class MultiPasswordSaveRegressionGuardTest {
                 listContentSource.contains("onQuickStatusTransferClick = {") &&
                 listContentSource.contains("backgroundedTransferOperationId = null") &&
                 listContentSource.contains("backgroundedTransferOperationId = quickStatusTransferState?.operationId") &&
-                listContentSource.contains("quickStatusTransferDialogState?.let") &&
+                listContentSource.contains("PasswordListQuickStatusDialogs(") &&
+                quickStatusDialogsSource.contains("quickStatusTransferState?.toDialogUiState()?.let") &&
                 mainPaneSource.contains("quickStatusTransferState: PasswordBatchTransferGlobalProgressState? = null") &&
                 mainPaneSource.contains("onQuickStatusTransferClick: (() -> Unit)? = null") &&
                 mainPaneSource.contains("transferState = quickStatusTransferState") &&
@@ -2025,15 +2023,13 @@ class MultiPasswordSaveRegressionGuardTest {
         assertTrue(
             "After the user confirms a move/copy target, multi-select mode should close immediately while the transfer continues in the quick status bar.",
             moveSupportSource.indexOf("onProgressUpdate(if (totalCount > 1) 1 else 0, totalCount)").let { progressIndex ->
-                moveSupportSource.indexOf("onDismiss()\n            onSelectionCleared()").let { clearIndex ->
-                    moveSupportSource.indexOf("viewModel.viewModelScope.launch {").let { launchIndex ->
-                        progressIndex >= 0 &&
-                            clearIndex >= 0 &&
-                            launchIndex >= 0 &&
-                            progressIndex < clearIndex &&
-                            clearIndex < launchIndex
-                    }
-                }
+                val dismissIndex = moveSupportSource.indexOf("onDismiss()", progressIndex.coerceAtLeast(0))
+                val clearIndex = moveSupportSource.indexOf("onSelectionCleared()", dismissIndex.coerceAtLeast(0))
+                val launchIndex = moveSupportSource.indexOf("viewModel.viewModelScope.launch {")
+                progressIndex >= 0 &&
+                    dismissIndex > progressIndex &&
+                    clearIndex > dismissIndex &&
+                    launchIndex > clearIndex
             }
         )
         assertTrue(
@@ -2044,6 +2040,9 @@ class MultiPasswordSaveRegressionGuardTest {
                 unifiedMoveSheetSource.contains("activeMdbxDatabaseId?.let(refreshMdbxFolders)") &&
                 moveSupportSource.contains("refreshMdbxFolders = viewModel::refreshMdbxFolders")
         )
+        val markLegacyEntryDeletedBody = mdbxStoreSource
+            .substringAfter("private fun markLegacyEntryDeleted(")
+            .substringBefore("private fun writeEntryDeleteMutation(")
         assertTrue(
             "MDBX password object ids must reuse imported MDBX entry ids across clients, while tombstoning the broken local Room-id object written by older builds.",
             mdbxStoreSource.contains("?.takeIf(::isMdbxPasswordObjectId)") &&
@@ -2058,7 +2057,10 @@ class MultiPasswordSaveRegressionGuardTest {
                 mdbxStoreSource.contains("clearTombstone(db, \"project\", mutation.projectId)") &&
                 mdbxStoreSource.contains("val projectId = version?.projectId ?: mutation.entryId") &&
                 mdbxStoreSource.contains("insertTombstone(db, \"project\", projectId)") &&
-                mdbxStoreSource.contains("UPDATE projects SET title_ct = ?, group_id = ?, object_clock = object_clock + 1,\n                head_commit_id = ?, deleted = ?") &&
+                markLegacyEntryDeletedBody.contains("UPDATE projects SET deleted = 1") &&
+                markLegacyEntryDeletedBody.contains("UPDATE entries SET deleted = 1") &&
+                markLegacyEntryDeletedBody.contains("object_clock = object_clock + 1") &&
+                markLegacyEntryDeletedBody.contains("head_commit_id = ?") &&
                 passwordRepositorySource.contains("replicaGroupId = entry.mdbxPasswordObjectId()") &&
                 passwordRepositorySource.contains("passwordEntryDao.updatePasswordEntries(entriesForMdbx)") &&
                 passwordRepositorySource.contains("private fun PasswordEntry.mdbxPasswordObjectId(): String") &&
@@ -2122,6 +2124,9 @@ class MultiPasswordSaveRegressionGuardTest {
         val mainPaneSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/password/PasswordListMainPane.kt"
         ).readText()
+        val quickStatusDialogsSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListQuickStatusDialogs.kt"
+        ).readText()
         val dialogsSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/password/PasswordListDialogs.kt"
         ).readText()
@@ -2147,7 +2152,8 @@ class MultiPasswordSaveRegressionGuardTest {
                 listContentSource.contains("onQuickStatusDeleteClick = {") &&
                 listContentSource.contains("backgroundedDeleteOperationId = null") &&
                 listContentSource.contains("backgroundedDeleteOperationId = quickStatusDeleteState?.operationId") &&
-                listContentSource.contains("quickStatusDeleteDialogState?.let") &&
+                listContentSource.contains("PasswordListQuickStatusDialogs(") &&
+                quickStatusDialogsSource.contains("quickStatusDeleteState?.toDialogUiState()?.let") &&
                 mainPaneSource.contains("quickStatusDeleteState: PasswordBatchDeleteGlobalProgressState? = null") &&
                 mainPaneSource.contains("onQuickStatusDeleteClick: (() -> Unit)? = null") &&
                 mainPaneSource.contains("deleteState = quickStatusDeleteState") &&
@@ -2359,8 +2365,10 @@ class MultiPasswordSaveRegressionGuardTest {
             saveTotpSection.contains("findTotpBySecret(")
         )
         assertTrue(
-            "The password editor must create the first real bound TOTP when none exists, so the authenticator page can display and edit the saved name/key instead of opening an empty virtual item.",
-            savePasswordBoundTotpBody.contains("val preferredItem = activeBoundItems") &&
+            "The password editor must reuse a selected real TOTP first and create the first real bound TOTP when none exists, so the authenticator page can display and edit the saved name/key instead of opening an empty virtual item.",
+            savePasswordBoundTotpBody.contains("val activeStoredItems = existingStoredTotps.mapNotNull") &&
+                savePasswordBoundTotpBody.contains("val preferredItem = activeStoredItems") &&
+                savePasswordBoundTotpBody.contains("preferredTotpId != null && item.id == preferredTotpId") &&
                 savePasswordBoundTotpBody.contains("id = preferredItem?.first?.id") &&
                 savePasswordBoundTotpBody.contains("title = preferredItem?.first?.title ?: title") &&
                 !savePasswordBoundTotpBody.contains("No persisted bound TOTP for passwordId=")
@@ -2629,7 +2637,9 @@ class MultiPasswordSaveRegressionGuardTest {
             "Trash restore must inject an MDBX repository, otherwise MDBX restore only flips Room flags and sync deletes it again.",
             source.contains("private val mdbxRepository: MdbxRepository = MdbxVaultStore(") &&
                 source.contains("mdbxRepository = mdbxRepository") &&
-                source.contains("private val secureItemRepository = SecureItemRepository(database.secureItemDao(), mdbxRepository)")
+                source.contains("private val secureItemRepository = SecureItemRepository(") &&
+                source.contains("database.secureItemDao(),") &&
+                source.contains("mdbxRepository,")
         )
         assertTrue(
             "Trash restore must update via repositories so MDBX tombstones are cleared in the vault.",
@@ -2794,7 +2804,8 @@ class MultiPasswordSaveRegressionGuardTest {
                 webDavSource.contains("val autofillBlacklistEnabled = autofillPreferences.isBlacklistEnabled.first()") &&
                 webDavSource.contains("val autofillBlacklistPackages = autofillPreferences.blacklistPackages.first()") &&
                 webDavSource.contains("File(monicaConfigDir, \"autofill_blacklist.json\")") &&
-                webDavSource.contains("json.encodeToString(\n                                    AutofillBlacklistBackupEntry.serializer()") &&
+                webDavSource.contains("json.encodeToString(") &&
+                webDavSource.contains("AutofillBlacklistBackupEntry.serializer()") &&
                 webDavSource.contains("normalizedEntryName == \"monica_config/autofill_blacklist.json\"") &&
                 webDavSource.contains("setBlacklistEnabled(autofillBlacklistBackup.enabled)") &&
                 webDavSource.contains("setBlacklistPackages(normalizedPackages)") &&

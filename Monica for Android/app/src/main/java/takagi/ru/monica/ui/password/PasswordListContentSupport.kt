@@ -43,6 +43,7 @@ import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.ui.password.PasswordAggregateCardStyle
 import takagi.ru.monica.ui.password.PasswordAggregateListItemUi
+import takagi.ru.monica.ui.password.PasswordAggregateWalletItemType
 import takagi.ru.monica.ui.password.PasswordListAggregateConfig
 import takagi.ru.monica.ui.password.StackCardMode
 import takagi.ru.monica.ui.password.appendAggregateContentQuickFilterItems
@@ -55,6 +56,7 @@ import takagi.ru.monica.ui.password.resolvePasswordPageDisplayedTypes
 import takagi.ru.monica.ui.password.resolvePasswordPageQuickFilterTypes
 import takagi.ru.monica.ui.password.toPasswordPageContentTypeOrNull
 import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.BillingAddressViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
@@ -88,12 +90,14 @@ internal data class PasswordListAggregateUiState(
     val visibleItems: List<PasswordAggregateListItemUi>,
     val bankCards: List<SecureItem>,
     val documents: List<SecureItem>,
+    val billingAddresses: List<SecureItem>,
     val totpItems: List<SecureItem>,
     val notes: List<SecureItem>,
     val passkeys: List<PasskeyEntry>,
     val totpViewModel: TotpViewModel?,
     val bankCardViewModel: BankCardViewModel?,
     val documentViewModel: DocumentViewModel?,
+    val billingAddressViewModel: BillingAddressViewModel?,
     val noteViewModel: NoteViewModel?,
     val passkeyViewModel: PasskeyViewModel?
 )
@@ -516,6 +520,9 @@ internal fun rememberPasswordAggregateUiState(
     val aggregateDocumentsState =
         aggregateConfig?.documentViewModel?.allDocuments?.collectAsState(initial = emptySecureItems)
             ?: remember { mutableStateOf(emptySecureItems) }
+    val aggregateBillingAddressesState =
+        aggregateConfig?.billingAddressViewModel?.allBillingAddresses?.collectAsState(initial = emptySecureItems)
+            ?: remember { mutableStateOf(emptySecureItems) }
     val aggregateNotesState =
         aggregateConfig?.noteViewModel?.allNotes?.collectAsState(initial = emptySecureItems)
             ?: remember { mutableStateOf(emptySecureItems) }
@@ -525,12 +532,14 @@ internal fun rememberPasswordAggregateUiState(
     val aggregateTotpItems by aggregateTotpItemsState
     val aggregateBankCards by aggregateBankCardsState
     val aggregateDocuments by aggregateDocumentsState
+    val aggregateBillingAddresses by aggregateBillingAddressesState
     val aggregateNotes by aggregateNotesState
     val aggregatePasskeys by aggregatePasskeysState
     val aggregateVisibleContentTypes = remember(
         aggregateConfig?.visibleContentTypes,
         aggregateBankCards,
         aggregateDocuments,
+        aggregateBillingAddresses,
         aggregateNotes,
         aggregateTotpItems,
         aggregatePasskeys,
@@ -540,6 +549,7 @@ internal fun rememberPasswordAggregateUiState(
             configuredTypes = aggregateConfig?.visibleContentTypes ?: emptyList(),
             bankCards = aggregateBankCards,
             documents = aggregateDocuments,
+            billingAddresses = aggregateBillingAddresses,
             notes = aggregateNotes,
             totpItems = aggregateTotpItems,
             passkeys = aggregatePasskeys,
@@ -622,6 +632,7 @@ internal fun rememberPasswordAggregateUiState(
         aggregateContentTypeFilterTypes,
         aggregateBankCards,
         aggregateDocuments,
+        aggregateBillingAddresses,
         aggregateNotes,
         aggregateTotpItems,
         aggregatePasskeys,
@@ -632,6 +643,7 @@ internal fun rememberPasswordAggregateUiState(
             selectedContentTypes = aggregateDisplayedContentTypes,
             bankCards = aggregateBankCards,
             documents = aggregateDocuments,
+            billingAddresses = aggregateBillingAddresses,
             notes = aggregateNotes,
             totpItems = aggregateTotpItems,
             passkeys = aggregatePasskeys,
@@ -646,6 +658,11 @@ internal fun rememberPasswordAggregateUiState(
                 { item: SecureItem -> viewModel.parseDocumentData(item.itemData) }
             } ?: {
                 takagi.ru.monica.data.model.CardWalletDataCodec.parseDocumentData(it.itemData)
+            },
+            parseBillingAddressData = aggregateConfig?.billingAddressViewModel?.let { viewModel ->
+                { item: SecureItem -> viewModel.parseAddressData(item.itemData) }
+            } ?: {
+                takagi.ru.monica.data.model.CardWalletDataCodec.parseBillingAddressData(it.itemData)
             },
             parseTotpData = aggregateConfig?.totpViewModel?.let { viewModel ->
                 { item: SecureItem -> viewModel.parseTotpDataForDisplay(item) }
@@ -674,12 +691,14 @@ internal fun rememberPasswordAggregateUiState(
         visibleItems = aggregateVisibleItems,
         bankCards = aggregateBankCards,
         documents = aggregateDocuments,
+        billingAddresses = aggregateBillingAddresses,
         totpItems = aggregateTotpItems,
         notes = aggregateNotes,
         passkeys = aggregatePasskeys,
         totpViewModel = aggregateConfig?.totpViewModel,
         bankCardViewModel = aggregateConfig?.bankCardViewModel,
         documentViewModel = aggregateConfig?.documentViewModel,
+        billingAddressViewModel = aggregateConfig?.billingAddressViewModel,
         noteViewModel = aggregateConfig?.noteViewModel,
         passkeyViewModel = aggregateConfig?.passkeyViewModel
     )
@@ -1183,10 +1202,14 @@ internal suspend fun applyFavoriteSelectionToggle(
 
             PasswordPageContentType.CARD_WALLET -> {
                 item.secureItemId?.let { id ->
-                    if (item.isDocument) {
-                        request.aggregateUiState.documentViewModel?.toggleFavorite(id)
-                    } else {
-                        request.aggregateUiState.bankCardViewModel?.toggleFavorite(id)
+                    when (item.walletItemType) {
+                        PasswordAggregateWalletItemType.BANK_CARD ->
+                            request.aggregateUiState.bankCardViewModel?.toggleFavorite(id)
+                        PasswordAggregateWalletItemType.DOCUMENT ->
+                            request.aggregateUiState.documentViewModel?.toggleFavorite(id)
+                        PasswordAggregateWalletItemType.BILLING_ADDRESS ->
+                            request.aggregateUiState.billingAddressViewModel?.toggleFavorite(id)
+                        null -> Unit
                     }
                 }
             }

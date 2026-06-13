@@ -2043,6 +2043,8 @@ class MdbxVaultStore(
             ItemType.TOTP -> "totp"
             ItemType.BANK_CARD -> "card"
             ItemType.DOCUMENT -> "document-ref"
+            ItemType.BILLING_ADDRESS -> "billing-address"
+            ItemType.PAYMENT_ACCOUNT -> "payment-account"
             ItemType.PASSWORD -> "password"
         }
 
@@ -3781,6 +3783,8 @@ class MdbxVaultStore(
             "note" -> "安全笔记"
             "card" -> "银行卡"
             "document-ref" -> "文档"
+            "billing-address" -> "账单地址"
+            "payment-account" -> "支付方式"
             "passkey" -> "通行密钥"
             else -> type
         }

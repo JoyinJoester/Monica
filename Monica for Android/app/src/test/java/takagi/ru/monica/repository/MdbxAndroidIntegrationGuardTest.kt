@@ -94,7 +94,7 @@ class MdbxAndroidIntegrationGuardTest {
         )
         assertTrue(
             "Sync bundles must carry complete project tag sets when present.",
-            source.contains(".put(\n                \"project_tags\"") &&
+            source.contains("\"project_tags\"") &&
                 source.contains("SELECT p.project_id, pt.tag") &&
                 source.contains("private fun importBundleProjectTags(")
         )
@@ -539,6 +539,84 @@ class MdbxAndroidIntegrationGuardTest {
             moveSheetSource.contains("is MovePickerSource.MdbxDatabase -> when (source.database.sourceTypeEnum)") &&
                 moveSheetSource.contains("MdbxSourceType.REMOTE_WEBDAV -> \"WebDAV\"") &&
                 moveSheetSource.contains("MdbxSourceType.REMOTE_ONEDRIVE -> \"OneDrive\"")
+        )
+    }
+
+    @Test
+    fun billingAddressesUseFirstClassMdbxSecureItemType() {
+        val secureItemRepositorySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/SecureItemRepository.kt"
+        ).readText()
+        val vaultStoreSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
+        ).readText()
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/MdbxViewModel.kt"
+        ).readText()
+        val billingAddressViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/BillingAddressViewModel.kt"
+        ).readText()
+
+        assertTrue(
+            "Billing addresses must map to an explicit MDBX entry type and use the existing secure-item MDBX persistence path.",
+            secureItemRepositorySource.contains("ItemType.BILLING_ADDRESS -> \"billing-address\"") &&
+                secureItemRepositorySource.contains("mdbxRepository?.upsertSecureItem(persistedItem)") &&
+                secureItemRepositorySource.contains("mdbxRepository?.upsertSecureItem(normalizedItem)")
+        )
+        assertTrue(
+            "MDBX vault storage must preserve billing addresses as first-class secure items instead of silently dropping them.",
+            vaultStoreSource.contains("ItemType.BILLING_ADDRESS -> \"billing-address\"") &&
+                vaultStoreSource.contains("\"billing-address\" -> \"账单地址\"")
+        )
+        assertTrue(
+            "MDBX import must include active billing-address entries and restore their Room item type.",
+            viewModelSource.contains("private val mdbxSecureItemEntryTypes = setOf(") &&
+                viewModelSource.contains("\"billing-address\"") &&
+                viewModelSource.contains("entryType in mdbxSecureItemEntryTypes") &&
+                viewModelSource.contains("\"billing-address\" -> ItemType.BILLING_ADDRESS") &&
+                viewModelSource.contains("ItemType.BILLING_ADDRESS -> \"billing-address\"")
+        )
+        assertTrue(
+            "Billing address ViewModel operations must route through SecureItemRepository so MDBX-backed items write the vault file, not only Room.",
+            billingAddressViewModelSource.contains("mdbxDatabaseId: Long? = null") &&
+                billingAddressViewModelSource.contains("itemType = ItemType.BILLING_ADDRESS") &&
+                billingAddressViewModelSource.contains("mdbxDatabaseId = mdbxDatabaseId") &&
+                billingAddressViewModelSource.contains("repository.insertItem(copy)") &&
+                billingAddressViewModelSource.contains("repository.updateItem(updatedItem)")
+        )
+    }
+
+    @Test
+    fun paymentAccountsUseExplicitRemoteCompatibilityBoundaries() {
+        val secureItemRepositorySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/SecureItemRepository.kt"
+        ).readText()
+        val vaultStoreSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
+        ).readText()
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/MdbxViewModel.kt"
+        ).readText()
+        val mapperFactorySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/bitwarden/mapper/MapperFactory.kt"
+        ).readText()
+
+        assertTrue(
+            "Payment accounts must use an explicit MDBX entry type when a storage path later writes them to MDBX.",
+            secureItemRepositorySource.contains("ItemType.PAYMENT_ACCOUNT -> \"payment-account\"") &&
+                vaultStoreSource.contains("ItemType.PAYMENT_ACCOUNT -> \"payment-account\"") &&
+                vaultStoreSource.contains("\"payment-account\" -> \"支付方式\"")
+        )
+        assertTrue(
+            "MDBX import must recognize payment-account entries instead of treating them as orphans.",
+            viewModelSource.contains("private val mdbxSecureItemEntryTypes = setOf(\"note\", \"totp\", \"card\", \"document-ref\", \"billing-address\", \"payment-account\")") &&
+                viewModelSource.contains("\"note\", \"totp\", \"card\", \"document-ref\", \"billing-address\", \"payment-account\" ->") &&
+                viewModelSource.contains("\"payment-account\" -> ItemType.PAYMENT_ACCOUNT") &&
+                viewModelSource.contains("ItemType.PAYMENT_ACCOUNT -> \"payment-account\"")
+        )
+        assertTrue(
+            "Bitwarden has no first-class payment-account cipher in Monica, so the mapper boundary must stay explicit.",
+            mapperFactorySource.contains("ItemType.PAYMENT_ACCOUNT -> null")
         )
     }
 

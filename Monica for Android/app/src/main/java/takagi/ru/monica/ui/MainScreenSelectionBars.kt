@@ -63,7 +63,8 @@ internal fun MainScreenSelectionBars(
             )
         }
         currentTab == BottomNavItem.CardWallet &&
-            (cardWalletSubTab == CardWalletTab.BANK_CARDS || cardWalletSubTab == CardWalletTab.ALL) &&
+            (cardWalletSubTab == CardWalletTab.BANK_CARDS ||
+                cardWalletSubTab == CardWalletTab.ALL) &&
             isBankCardSelectionMode -> {
             SelectionActionBar(
                 modifier = modifier,

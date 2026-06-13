@@ -15,7 +15,7 @@ class AutofillDropdownClickRegressionGuardTest {
         val buildBody = source.substringAfter("fun build(")
             .substringBefore("private fun buildCipherDataset(")
         val cipherDatasetBody = source.substringAfter("private fun buildCipherDataset(")
-            .substringBefore("private fun createCipherAuthPendingIntent(")
+            .substringBefore("private fun shouldUseHuaweiApi29AuthDatasetCompat(")
         val authIntentBody = source.substringAfter("private fun createCipherAuthPendingIntent(")
             .substringBefore("private fun buildVaultItemDataset(")
 

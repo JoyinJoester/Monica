@@ -430,6 +430,10 @@
 
     <!-- TOTP List -->
     <string name="search_authenticator">Поиск аутентификатора</string>
+    <string name="bind_authenticator">Привязать аутентификатор</string>
+    <string name="bound_authenticator_change">Сменить аутентификатор</string>
+    <string name="select_authenticator_to_bind">Выберите аутентификатор для привязки</string>
+    <string name="selected_authenticator_format">Выбрано: %1$s</string>
     <string name="clear">Очистить</string>
     <string name="no_authenticators_title">Аутентификаторов нет</string>
     <string name="no_authenticators_description">Нажмите + внизу справа, чтобы добавить аутентификатор</string>
@@ -952,7 +956,7 @@
     <string name="all_navigation_items">Все элементы навигации</string>
     <string name="category_all">Все</string>
     <string name="hidden">Скрыто</string>
-    <string name="settings_version_number">V1.0.289</string>
+    <string name="settings_version_number">V1.0.290</string>
     <string name="settings_support_author">Поддержать автора</string>
     <string name="settings_support_author_description">Спасибо за поддержку</string>
     <string name="settings_privacy_policy">Политика конфиденциальности</string>

@@ -87,6 +87,7 @@ import takagi.ru.monica.data.removeLinkedAppBinding
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.normalizedStorageTargets
+import takagi.ru.monica.data.model.storageScopeKey
 import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.data.model.withStorageTargetSelected
 import takagi.ru.monica.data.model.withoutStorageTarget
@@ -111,6 +112,7 @@ import takagi.ru.monica.ui.components.InlineTotpPreviewCard
 import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
 import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
+import takagi.ru.monica.ui.components.MonicaModalBottomSheet
 import takagi.ru.monica.ui.components.NotePickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
@@ -170,6 +172,19 @@ private data class CommonAccountFillOption(
     val type: String,
     val content: String
 )
+
+private data class PasswordTotpBindingCandidate(
+    val item: SecureItem,
+    val data: TotpData
+)
+
+private enum class PasswordTotpPickerSourceFilter {
+    ALL,
+    LOCAL,
+    KEEPASS,
+    MDBX,
+    BITWARDEN
+}
 
 private enum class PasswordFillMode {
     GENERATOR,
@@ -273,7 +288,10 @@ fun AddEditPasswordScreen(
     var passkeyBindings by rememberSaveable { mutableStateOf("") }
     var originalAuthenticatorKey by rememberSaveable { mutableStateOf("") }
     var existingSshKeyData by rememberSaveable { mutableStateOf("") }
-    var existingTotpId by remember { mutableStateOf<Long?>(null) }
+    var existingTotpId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedExistingTotpTitle by rememberSaveable { mutableStateOf("") }
+    var selectedExistingTotpStorageTarget by remember { mutableStateOf<StorageTarget?>(null) }
+    var authenticatorPayloadOverride by rememberSaveable { mutableStateOf<String?>(null) }
     var notes by rememberSaveable { mutableStateOf("") }
     var boundNoteId by rememberSaveable { mutableStateOf<Long?>(null) }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
@@ -383,6 +401,20 @@ fun AddEditPasswordScreen(
         boundNoteId?.let { noteId -> selectableNotes.firstOrNull { it.id == noteId } }
     }
     var showBoundNotePicker by remember { mutableStateOf(false) }
+    var showAuthenticatorPicker by remember { mutableStateOf(false) }
+    val allTotpItemsForBinding by (totpViewModel?.allTotpItems ?: flowOf(emptyList()))
+        .collectAsState(initial = emptyList())
+    val selectableTotpBindings = remember(showAuthenticatorPicker, allTotpItemsForBinding, totpViewModel) {
+        if (!showAuthenticatorPicker || totpViewModel == null) {
+            emptyList()
+        } else {
+            allTotpItemsForBinding.mapNotNull { item ->
+                if (item.id <= 0 || item.itemType != ItemType.TOTP || item.isDeleted) return@mapNotNull null
+                val data = totpViewModel.parseTotpDataForDisplay(item) ?: return@mapNotNull null
+                PasswordTotpBindingCandidate(item = item, data = data)
+            }
+        }
+    }
     
     // 自定义字段状态
     val customFields = remember { mutableStateListOf<CustomFieldDraft>() }
@@ -393,13 +425,21 @@ fun AddEditPasswordScreen(
     val selectedAuthenticatorOtpType = remember(selectedAuthenticatorOtpTypeName) {
         runCatching { OtpType.valueOf(selectedAuthenticatorOtpTypeName) }.getOrDefault(OtpType.TOTP)
     }
-    val authenticatorKey = remember(authenticatorSecret, selectedAuthenticatorOtpType, title, username) {
-        buildPasswordScreenAuthenticatorPayload(
-            secret = authenticatorSecret,
-            otpType = selectedAuthenticatorOtpType,
-            issuer = title,
-            accountName = username
-        )
+    val authenticatorKey = remember(
+        authenticatorSecret,
+        selectedAuthenticatorOtpType,
+        title,
+        username,
+        authenticatorPayloadOverride
+    ) {
+        authenticatorPayloadOverride
+            ?.takeIf { it.isNotBlank() }
+            ?: buildPasswordScreenAuthenticatorPayload(
+                secret = authenticatorSecret,
+                otpType = selectedAuthenticatorOtpType,
+                issuer = title,
+                accountName = username
+            )
     }
     val authenticatorPreviewTotpData = remember(authenticatorKey, title, username) {
         buildPasswordScreenInlinePreviewTotpData(
@@ -499,6 +539,9 @@ fun AddEditPasswordScreen(
 
     fun applyAuthenticatorInput(rawValue: String) {
         val trimmed = rawValue.trim()
+        existingTotpId = null
+        selectedExistingTotpTitle = ""
+        selectedExistingTotpStorageTarget = null
         val parsed = if (trimmed.contains("://")) {
             TotpDataResolver.fromAuthenticatorKey(
                 rawKey = trimmed,
@@ -511,17 +554,26 @@ fun AddEditPasswordScreen(
         if (parsed != null) {
             authenticatorSecret = parsed.secret
             selectedAuthenticatorOtpTypeName = parsed.otpType.toPasswordScreenOtpType().name
+            authenticatorPayloadOverride = trimmed
         } else {
             authenticatorSecret = rawValue
+            authenticatorPayloadOverride = null
         }
     }
 
     fun applyScannedAuthenticator(rawValue: String) {
+        existingTotpId = null
+        selectedExistingTotpTitle = ""
+        selectedExistingTotpStorageTarget = null
         when (val scanResult = takagi.ru.monica.util.TotpUriParser.parseScannedContent(rawValue)) {
             is takagi.ru.monica.util.TotpScanParseResult.Single -> {
                 val imported = scanResult.item.totpData
                 authenticatorSecret = imported.secret
                 selectedAuthenticatorOtpTypeName = imported.otpType.toPasswordScreenOtpType().name
+                authenticatorPayloadOverride = TotpDataResolver.toBitwardenPayload(
+                    title = scanResult.item.label,
+                    data = imported
+                ).takeIf { it.isNotBlank() && it != imported.secret }
                 if (title.isBlank()) {
                     title = scanResult.item.label
                         .substringBefore(":")
@@ -537,6 +589,10 @@ fun AddEditPasswordScreen(
                     val imported = first.totpData
                     authenticatorSecret = imported.secret
                     selectedAuthenticatorOtpTypeName = imported.otpType.toPasswordScreenOtpType().name
+                    authenticatorPayloadOverride = TotpDataResolver.toBitwardenPayload(
+                        title = first.label,
+                        data = imported
+                    ).takeIf { it.isNotBlank() && it != imported.secret }
                     if (title.isBlank()) {
                         title = first.label
                             .substringBefore(":")
@@ -554,6 +610,7 @@ fun AddEditPasswordScreen(
                 ).show()
             }
             takagi.ru.monica.util.TotpScanParseResult.UnsupportedPhoneFactor -> {
+                authenticatorPayloadOverride = null
                 Toast.makeText(
                     context,
                     context.getString(R.string.qr_phonefactor_not_supported),
@@ -561,12 +618,35 @@ fun AddEditPasswordScreen(
                 ).show()
             }
             takagi.ru.monica.util.TotpScanParseResult.InvalidFormat -> {
+                authenticatorPayloadOverride = null
                 Toast.makeText(
                     context,
                     context.getString(R.string.qr_invalid_authenticator),
                     Toast.LENGTH_SHORT
                 ).show()
             }
+        }
+    }
+
+    fun applyExistingAuthenticator(candidate: PasswordTotpBindingCandidate) {
+        val normalized = TotpDataResolver.normalizeTotpData(candidate.data)
+        val payload = TotpDataResolver.toBitwardenPayload(
+            title = candidate.item.title.ifBlank { normalized.issuer.ifBlank { title } },
+            data = normalized
+        )
+        existingTotpId = candidate.item.id
+        selectedExistingTotpTitle = candidate.item.title
+            .ifBlank { normalized.issuer }
+            .ifBlank { normalized.accountName }
+        selectedExistingTotpStorageTarget = candidate.item.toStorageTarget()
+        authenticatorSecret = normalized.secret
+        selectedAuthenticatorOtpTypeName = normalized.otpType.toPasswordScreenOtpType().name
+        authenticatorPayloadOverride = payload.takeIf { it.isNotBlank() && it != normalized.secret }
+        if (title.isBlank()) {
+            title = normalized.issuer.ifBlank { candidate.item.title }.ifBlank { title }
+        }
+        if (username.isBlank()) {
+            username = normalized.accountName
         }
     }
 
@@ -648,6 +728,20 @@ fun AddEditPasswordScreen(
 
     fun removeSelectedStorageTarget(target: StorageTarget) {
         setSelectedStorageTargets(selectedStorageTargets.withoutStorageTarget(target))
+    }
+
+    fun buildStorageTargetsForSave(authenticatorKey: String): List<StorageTarget> {
+        val currentTargets = selectedStorageTargets.toList().normalizedStorageTargets()
+        val authenticatorTarget = selectedExistingTotpStorageTarget
+            ?.takeIf { authenticatorKey.isNotBlank() }
+            ?: return currentTargets
+
+        val alreadyHasAuthenticatorDatabase = currentTargets.any { target ->
+            target.storageScopeKey() == authenticatorTarget.storageScopeKey()
+        }
+        if (alreadyHasAuthenticatorDatabase) return currentTargets
+
+        return (currentTargets + authenticatorTarget).normalizedStorageTargets()
     }
 
     fun normalizeCommonTemplateType(raw: String): String {
@@ -1164,6 +1258,11 @@ fun AddEditPasswordScreen(
                     authenticatorSecret = authenticatorDraft.secret
                     selectedAuthenticatorOtpTypeName = authenticatorDraft.otpType.toPasswordScreenOtpType().name
                     originalAuthenticatorKey = resolvedAuthenticatorKey
+                    authenticatorPayloadOverride = resolvedAuthenticatorKey
+                        .takeIf { it.isNotBlank() && it != authenticatorDraft.secret }
+                    existingTotpId = null
+                    selectedExistingTotpTitle = ""
+                    selectedExistingTotpStorageTarget = null
                     passkeyBindings = entry.passkeyBindings
                     existingSshKeyData = entry.sshKeyData
                     
@@ -1410,6 +1509,7 @@ fun AddEditPasswordScreen(
             val currentWebsite = website
             val currentBindWebsite = bindWebsite
             val currentBindTitle = bindTitle
+            val storageTargetsForSave = buildStorageTargetsForSave(currentAuthKey)
 
             // Create common entry without password
             val commonEntry = PasswordEntry(
@@ -1481,9 +1581,9 @@ fun AddEditPasswordScreen(
                 originalIds = originalIds,
                 commonEntry = commonEntry.copy(replicaGroupId = currentReplicaGroupId),
                 passwords = normalizedPasswords, // Snapshot (trimmed)
-                targets = selectedStorageTargets.toList(),
+                targets = storageTargetsForSave,
                 customFields = currentCustomFields, // 保存自定义字段
-                onComplete = onComplete@{ firstPasswordId ->
+                onCompleteWithIds = onComplete@{ firstPasswordId, savedPasswordIds ->
                     if (firstPasswordId == null) {
                         isSaving = false
                         Toast.makeText(context, context.getString(R.string.save_failed), Toast.LENGTH_SHORT).show()
@@ -1513,8 +1613,8 @@ fun AddEditPasswordScreen(
                             boundPasswordId = firstPasswordId,
                         )
 
-                        totpViewModel.savePasswordBoundTotp(
-                            passwordId = firstPasswordId,
+                        totpViewModel.savePasswordBoundTotps(
+                            passwordIds = savedPasswordIds.ifEmpty { listOf(firstPasswordId) },
                             title = currentTitle,
                             notes = "",
                             totpData = totpData,
@@ -2524,10 +2624,46 @@ fun AddEditPasswordScreen(
                                             text = { Text(stringResource(labelRes)) },
                                             onClick = {
                                                 selectedAuthenticatorOtpTypeName = type.name
+                                                existingTotpId = null
+                                                selectedExistingTotpTitle = ""
+                                                selectedExistingTotpStorageTarget = null
+                                                authenticatorPayloadOverride = null
                                                 authenticatorTypeExpanded = false
                                             }
                                         )
                                     }
+                                }
+                            }
+
+                            if (totpViewModel != null) {
+                                OutlinedButton(
+                                    onClick = { showAuthenticatorPicker = true },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.Security, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        if (authenticatorSecret.isNotBlank()) {
+                                            stringResource(R.string.bound_authenticator_change)
+                                        } else {
+                                            stringResource(R.string.bind_authenticator)
+                                        }
+                                    )
+                                }
+
+                                if (selectedExistingTotpTitle.isNotBlank()) {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.selected_authenticator_format,
+                                            selectedExistingTotpTitle
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    )
                                 }
                             }
 
@@ -3190,6 +3326,17 @@ fun AddEditPasswordScreen(
         )
     }
 
+    PasswordTotpBindingPickerBottomSheet(
+        visible = showAuthenticatorPicker,
+        candidates = selectableTotpBindings,
+        selectedItemId = existingTotpId,
+        onSelect = { candidate ->
+            applyExistingAuthenticator(candidate)
+            showAuthenticatorPicker = false
+        },
+        onDismiss = { showAuthenticatorPicker = false }
+    )
+
     MultiStorageTargetPickerBottomSheet(
         visible = showStorageTargetSheet,
         selectedTargets = selectedStorageTargets.toList(),
@@ -3219,6 +3366,507 @@ fun AddEditPasswordScreen(
     )
 
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PasswordTotpBindingPickerBottomSheet(
+    visible: Boolean,
+    candidates: List<PasswordTotpBindingCandidate>,
+    selectedItemId: Long?,
+    onSelect: (PasswordTotpBindingCandidate) -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (!visible) return
+
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val passwordDatabase = remember(context) { PasswordDatabase.getDatabase(context) }
+    val keepassDatabases by passwordDatabase.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val mdbxDatabases by passwordDatabase.localMdbxDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val bitwardenVaults by passwordDatabase.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
+    var foldersByVault by remember { mutableStateOf<Map<Long, List<BitwardenFolder>>>(emptyMap()) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(bitwardenVaults) {
+        foldersByVault = withContext(Dispatchers.IO) {
+            bitwardenVaults.associate { vault ->
+                vault.id to passwordDatabase.bitwardenFolderDao().getFoldersByVault(vault.id)
+            }
+        }
+    }
+
+    var sourceFilter by rememberSaveable { mutableStateOf(PasswordTotpPickerSourceFilter.ALL) }
+    var selectedKeePassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedMdbxDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedFolderId by rememberSaveable { mutableStateOf<String?>(null) }
+    var keepassMenuExpanded by remember { mutableStateOf(false) }
+    var mdbxMenuExpanded by remember { mutableStateOf(false) }
+    var vaultMenuExpanded by remember { mutableStateOf(false) }
+    var folderMenuExpanded by remember { mutableStateOf(false) }
+
+    val keepassNameById = remember(keepassDatabases) {
+        keepassDatabases.associate { it.id to it.name }
+    }
+    val mdbxNameById = remember(mdbxDatabases) {
+        mdbxDatabases.associate { it.id to it.name }
+    }
+    val vaultLabelById = remember(bitwardenVaults) {
+        bitwardenVaults.associate { vault ->
+            val label = vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email
+            vault.id to label
+        }
+    }
+    val selectedVaultFolders = remember(selectedVaultId, foldersByVault) {
+        selectedVaultId?.let { foldersByVault[it] }.orEmpty()
+    }
+    val folderNameById = remember(selectedVaultFolders) {
+        selectedVaultFolders.associate { it.bitwardenFolderId to it.name }
+    }
+
+    val filteredCandidates = remember(
+        candidates,
+        searchQuery,
+        sourceFilter,
+        selectedKeePassDatabaseId,
+        selectedMdbxDatabaseId,
+        selectedVaultId,
+        selectedFolderId
+    ) {
+        val query = searchQuery.trim()
+        candidates.filter { candidate ->
+            val item = candidate.item
+            val matchesQuery = query.isBlank() || listOf(
+                item.title,
+                candidate.data.issuer,
+                candidate.data.accountName
+            ).any { value -> value.contains(query, ignoreCase = true) }
+            val matchesSource = when (sourceFilter) {
+                PasswordTotpPickerSourceFilter.ALL -> true
+                PasswordTotpPickerSourceFilter.LOCAL ->
+                    item.bitwardenVaultId == null && item.keepassDatabaseId == null && item.mdbxDatabaseId == null
+                PasswordTotpPickerSourceFilter.KEEPASS -> {
+                    val keepassId = item.keepassDatabaseId
+                    keepassId != null && (selectedKeePassDatabaseId == null || keepassId == selectedKeePassDatabaseId)
+                }
+                PasswordTotpPickerSourceFilter.MDBX -> {
+                    val mdbxId = item.mdbxDatabaseId
+                    mdbxId != null && (selectedMdbxDatabaseId == null || mdbxId == selectedMdbxDatabaseId)
+                }
+                PasswordTotpPickerSourceFilter.BITWARDEN -> {
+                    val vaultId = item.bitwardenVaultId
+                    val folderId = item.bitwardenFolderId
+                    vaultId != null &&
+                        (selectedVaultId == null || vaultId == selectedVaultId) &&
+                        (selectedFolderId == null || folderId == selectedFolderId)
+                }
+            }
+            matchesQuery && matchesSource
+        }
+    }
+
+    MonicaModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.select_authenticator_to_bind),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = stringResource(R.string.password_picker_results_count, filteredCandidates.size),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            TextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text(stringResource(R.string.search_authenticator)) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                singleLine = true,
+                shape = RoundedCornerShape(28.dp),
+                colors = TextFieldDefaults.colors(
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                    errorIndicatorColor = Color.Transparent
+                )
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = sourceFilter == PasswordTotpPickerSourceFilter.ALL,
+                    onClick = {
+                        sourceFilter = PasswordTotpPickerSourceFilter.ALL
+                        selectedKeePassDatabaseId = null
+                        selectedMdbxDatabaseId = null
+                        selectedVaultId = null
+                        selectedFolderId = null
+                    },
+                    label = { Text(stringResource(R.string.filter_all)) }
+                )
+                FilterChip(
+                    selected = sourceFilter == PasswordTotpPickerSourceFilter.LOCAL,
+                    onClick = {
+                        sourceFilter = PasswordTotpPickerSourceFilter.LOCAL
+                        selectedKeePassDatabaseId = null
+                        selectedMdbxDatabaseId = null
+                        selectedVaultId = null
+                        selectedFolderId = null
+                    },
+                    label = { Text(stringResource(R.string.filter_local_only)) }
+                )
+                FilterChip(
+                    selected = sourceFilter == PasswordTotpPickerSourceFilter.KEEPASS,
+                    onClick = {
+                        sourceFilter = PasswordTotpPickerSourceFilter.KEEPASS
+                        selectedMdbxDatabaseId = null
+                        selectedVaultId = null
+                        selectedFolderId = null
+                    },
+                    label = { Text(stringResource(R.string.filter_keepass)) }
+                )
+                FilterChip(
+                    selected = sourceFilter == PasswordTotpPickerSourceFilter.MDBX,
+                    onClick = {
+                        sourceFilter = PasswordTotpPickerSourceFilter.MDBX
+                        selectedKeePassDatabaseId = null
+                        selectedVaultId = null
+                        selectedFolderId = null
+                    },
+                    label = { Text("MDBX") }
+                )
+                FilterChip(
+                    selected = sourceFilter == PasswordTotpPickerSourceFilter.BITWARDEN,
+                    onClick = {
+                        sourceFilter = PasswordTotpPickerSourceFilter.BITWARDEN
+                        selectedKeePassDatabaseId = null
+                        selectedMdbxDatabaseId = null
+                    },
+                    label = { Text(stringResource(R.string.filter_bitwarden)) }
+                )
+            }
+
+            if (sourceFilter == PasswordTotpPickerSourceFilter.KEEPASS) {
+                ExposedDropdownMenuBox(
+                    expanded = keepassMenuExpanded,
+                    onExpandedChange = { keepassMenuExpanded = !keepassMenuExpanded }
+                ) {
+                    OutlinedTextField(
+                        readOnly = true,
+                        value = selectedKeePassDatabaseId?.let { keepassNameById[it] }
+                            ?: stringResource(R.string.password_picker_all_databases),
+                        onValueChange = {},
+                        label = { Text(stringResource(R.string.password_picker_filter_database)) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = keepassMenuExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        singleLine = true
+                    )
+                    ExposedDropdownMenu(
+                        expanded = keepassMenuExpanded,
+                        onDismissRequest = { keepassMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.password_picker_all_databases)) },
+                            onClick = {
+                                selectedKeePassDatabaseId = null
+                                keepassMenuExpanded = false
+                            }
+                        )
+                        keepassDatabases.forEach { databaseItem ->
+                            DropdownMenuItem(
+                                text = { Text(databaseItem.name) },
+                                onClick = {
+                                    selectedKeePassDatabaseId = databaseItem.id
+                                    keepassMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (sourceFilter == PasswordTotpPickerSourceFilter.MDBX) {
+                ExposedDropdownMenuBox(
+                    expanded = mdbxMenuExpanded,
+                    onExpandedChange = { mdbxMenuExpanded = !mdbxMenuExpanded }
+                ) {
+                    OutlinedTextField(
+                        readOnly = true,
+                        value = selectedMdbxDatabaseId?.let { mdbxNameById[it] }
+                            ?: stringResource(R.string.password_picker_all_databases),
+                        onValueChange = {},
+                        label = { Text(stringResource(R.string.password_picker_filter_database)) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = mdbxMenuExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        singleLine = true
+                    )
+                    ExposedDropdownMenu(
+                        expanded = mdbxMenuExpanded,
+                        onDismissRequest = { mdbxMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.password_picker_all_databases)) },
+                            onClick = {
+                                selectedMdbxDatabaseId = null
+                                mdbxMenuExpanded = false
+                            }
+                        )
+                        mdbxDatabases.forEach { databaseItem ->
+                            DropdownMenuItem(
+                                text = { Text(databaseItem.name) },
+                                onClick = {
+                                    selectedMdbxDatabaseId = databaseItem.id
+                                    mdbxMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (sourceFilter == PasswordTotpPickerSourceFilter.BITWARDEN) {
+                ExposedDropdownMenuBox(
+                    expanded = vaultMenuExpanded,
+                    onExpandedChange = { vaultMenuExpanded = !vaultMenuExpanded }
+                ) {
+                    OutlinedTextField(
+                        readOnly = true,
+                        value = selectedVaultId?.let { vaultLabelById[it] }
+                            ?: stringResource(R.string.password_picker_all_vaults),
+                        onValueChange = {},
+                        label = { Text(stringResource(R.string.password_picker_filter_vault)) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = vaultMenuExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        singleLine = true
+                    )
+                    ExposedDropdownMenu(
+                        expanded = vaultMenuExpanded,
+                        onDismissRequest = { vaultMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.password_picker_all_vaults)) },
+                            onClick = {
+                                selectedVaultId = null
+                                selectedFolderId = null
+                                vaultMenuExpanded = false
+                            }
+                        )
+                        bitwardenVaults.forEach { vault ->
+                            val label = vaultLabelById[vault.id].orEmpty()
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    selectedVaultId = vault.id
+                                    selectedFolderId = null
+                                    vaultMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                if (selectedVaultId != null) {
+                    ExposedDropdownMenuBox(
+                        expanded = folderMenuExpanded,
+                        onExpandedChange = { folderMenuExpanded = !folderMenuExpanded }
+                    ) {
+                        OutlinedTextField(
+                            readOnly = true,
+                            value = selectedFolderId?.let { folderNameById[it] }
+                                ?: stringResource(R.string.password_picker_all_folders),
+                            onValueChange = {},
+                            label = { Text(stringResource(R.string.password_picker_filter_folder)) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = folderMenuExpanded) },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            singleLine = true
+                        )
+                        ExposedDropdownMenu(
+                            expanded = folderMenuExpanded,
+                            onDismissRequest = { folderMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.password_picker_all_folders)) },
+                                onClick = {
+                                    selectedFolderId = null
+                                    folderMenuExpanded = false
+                                }
+                            )
+                            selectedVaultFolders.forEach { folder ->
+                                DropdownMenuItem(
+                                    text = { Text(folder.name) },
+                                    onClick = {
+                                        selectedFolderId = folder.bitwardenFolderId
+                                        folderMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (filteredCandidates.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.no_results),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredCandidates, key = { it.item.id }) { candidate ->
+                        val item = candidate.item
+                        val data = candidate.data
+                        val selected = item.id == selectedItemId
+                        val sourceLabel = when {
+                            item.bitwardenVaultId != null -> {
+                                val vaultText = vaultLabelById[item.bitwardenVaultId].orEmpty()
+                                val folderText = item.bitwardenFolderId?.let { folderId ->
+                                    foldersByVault[item.bitwardenVaultId]?.firstOrNull { it.bitwardenFolderId == folderId }?.name
+                                } ?: stringResource(R.string.category_none)
+                                "${stringResource(R.string.filter_bitwarden)} · $vaultText · $folderText"
+                            }
+                            item.keepassDatabaseId != null -> {
+                                val dbName = keepassNameById[item.keepassDatabaseId]
+                                    ?: item.keepassDatabaseId.toString()
+                                "${stringResource(R.string.filter_keepass)} · $dbName"
+                            }
+                            item.mdbxDatabaseId != null -> {
+                                val dbName = mdbxNameById[item.mdbxDatabaseId]
+                                    ?: item.mdbxDatabaseId.toString()
+                                "MDBX · $dbName"
+                            }
+                            else -> stringResource(R.string.filter_local_only)
+                        }
+                        val supporting = listOf(data.issuer, data.accountName)
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                            .joinToString(" · ")
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    scope.launch {
+                                        sheetState.hide()
+                                        onSelect(candidate)
+                                    }
+                                },
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (selected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerLow
+                                }
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = when {
+                                        item.bitwardenVaultId != null -> Icons.Default.Cloud
+                                        item.keepassDatabaseId != null -> Icons.Default.Storage
+                                        item.mdbxDatabaseId != null -> Icons.Default.Folder
+                                        else -> Icons.Default.PhoneAndroid
+                                    },
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = if (selected) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    }
+                                )
+
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = item.title
+                                            .ifBlank { data.issuer }
+                                            .ifBlank { data.accountName },
+                                        style = MaterialTheme.typography.titleMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (supporting.isNotBlank()) {
+                                        Text(
+                                            text = supporting,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Text(
+                                        text = sourceLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                if (selected) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun InlineGeneratedPasswordSuggestionCard(
     password: String,

@@ -27,6 +27,7 @@ import takagi.ru.monica.data.hasOwnershipConflict
 import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.model.storageScopeKey
 import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
@@ -884,64 +885,123 @@ class TotpViewModel(
         preferredTotpId: Long? = null
     ) {
         viewModelScope.launch {
-            try {
-                val normalizedInput = TotpDataResolver.normalizeTotpData(totpData).copy(
-                    boundPasswordId = passwordId
-                )
-                val identityKey = buildTotpIdentityKey(normalizedInput)
-                val existingStoredTotps = repository.getItemsByType(ItemType.TOTP).first()
-                val activeBoundItems = existingStoredTotps.mapNotNull { item ->
-                    if (item.isDeleted) return@mapNotNull null
-                    val data = parseStoredTotpData(item)
-                        ?: return@mapNotNull null
-                    if (data.boundPasswordId == passwordId) {
-                        item to data
-                    } else {
-                        null
-                    }
-                }
-                val preferredItem = activeBoundItems
-                    .firstOrNull { (item, _) -> preferredTotpId != null && item.id == preferredTotpId }
-                    ?: activeBoundItems.firstOrNull { (_, data) -> buildTotpIdentityKey(data) == identityKey }
-                    ?: activeBoundItems.firstOrNull()
-                val boundPassword = passwordRepository.getPasswordEntryById(passwordId)
-                val resolvedCategoryId = boundPassword?.categoryId ?: normalizedInput.categoryId
-                val resolvedKeepassDatabaseId = boundPassword?.keepassDatabaseId ?: normalizedInput.keepassDatabaseId
-                val resolvedData = normalizedInput.copy(
-                    categoryId = resolvedCategoryId,
-                    keepassDatabaseId = resolvedKeepassDatabaseId
-                )
+            savePasswordBoundTotpInternal(
+                passwordId = passwordId,
+                title = title,
+                notes = notes,
+                totpData = totpData,
+                isFavorite = isFavorite,
+                preferredTotpId = preferredTotpId
+            )
+        }
+    }
 
-                val saved = saveTotpItemInternal(
-                    id = preferredItem?.first?.id,
-                    title = preferredItem?.first?.title ?: title,
-                    notes = preferredItem?.first?.notes ?: notes,
-                    totpData = resolvedData,
-                    isFavorite = preferredItem?.first?.isFavorite ?: isFavorite,
-                    categoryId = resolvedCategoryId,
-                    keepassDatabaseId = resolvedKeepassDatabaseId,
-                    keepassGroupPath = boundPassword?.keepassGroupPath,
-                    mdbxDatabaseId = boundPassword?.mdbxDatabaseId,
-                    mdbxFolderId = boundPassword?.mdbxFolderId,
-                    bitwardenVaultId = null,
-                    bitwardenFolderId = null,
-                    followBoundPasswordStorage = true
-                )
-                if (!saved) {
-                    Log.e(
-                        "TotpViewModel",
-                        "savePasswordBoundTotp failed to persist bound item passwordId=$passwordId totpId=${preferredItem?.first?.id}"
+    fun savePasswordBoundTotps(
+        passwordIds: List<Long>,
+        title: String,
+        notes: String = "",
+        totpData: TotpData,
+        isFavorite: Boolean = false,
+        preferredTotpId: Long? = null
+    ) {
+        viewModelScope.launch {
+            passwordIds
+                .filter { it > 0L }
+                .distinct()
+                .forEach { passwordId ->
+                    savePasswordBoundTotpInternal(
+                        passwordId = passwordId,
+                        title = title,
+                        notes = notes,
+                        totpData = totpData,
+                        isFavorite = isFavorite,
+                        preferredTotpId = preferredTotpId
                     )
-                    return@launch
                 }
+        }
+    }
 
-                removeOtherBoundTotpsForPassword(
-                    keepItemId = preferredItem?.first?.id,
-                    passwordId = passwordId
-                )
-            } catch (e: Exception) {
-                Log.e("TotpViewModel", "savePasswordBoundTotp failed for passwordId=$passwordId", e)
+    private suspend fun savePasswordBoundTotpInternal(
+        passwordId: Long,
+        title: String,
+        notes: String,
+        totpData: TotpData,
+        isFavorite: Boolean,
+        preferredTotpId: Long?
+    ): Boolean {
+        return try {
+            val normalizedInput = TotpDataResolver.normalizeTotpData(totpData).copy(
+                boundPasswordId = passwordId
+            )
+            val identityKey = buildTotpIdentityKey(normalizedInput)
+            val boundPassword = passwordRepository.getPasswordEntryById(passwordId)
+            val boundTargetScopeKey = boundPassword?.toStorageTarget()?.storageScopeKey()
+            val existingStoredTotps = repository.getItemsByType(ItemType.TOTP).first()
+            val activeStoredItems = existingStoredTotps.mapNotNull { item ->
+                if (item.isDeleted) return@mapNotNull null
+                val data = parseStoredTotpData(item)
+                    ?: return@mapNotNull null
+                item to data
             }
+            fun Pair<SecureItem, TotpData>.isInBoundPasswordStorage(): Boolean {
+                return boundTargetScopeKey == null ||
+                    first.toStorageTarget().storageScopeKey() == boundTargetScopeKey
+            }
+
+            val activeBoundItems = activeStoredItems.mapNotNull { (item, data) ->
+                if (data.boundPasswordId == passwordId) {
+                    item to data
+                } else {
+                    null
+                }
+            }
+            val selectedSourceItem = activeStoredItems
+                .firstOrNull { (item, _) -> preferredTotpId != null && item.id == preferredTotpId }
+            val preferredItem = selectedSourceItem
+                ?.takeIf { it.isInBoundPasswordStorage() }
+                ?: activeBoundItems.firstOrNull {
+                    it.isInBoundPasswordStorage() && buildTotpIdentityKey(it.second) == identityKey
+                }
+                ?: activeBoundItems.firstOrNull { it.isInBoundPasswordStorage() }
+            val metadataSource = preferredItem ?: selectedSourceItem
+            val resolvedCategoryId = boundPassword?.categoryId ?: normalizedInput.categoryId
+            val resolvedKeepassDatabaseId = boundPassword?.keepassDatabaseId ?: normalizedInput.keepassDatabaseId
+            val resolvedData = normalizedInput.copy(
+                categoryId = resolvedCategoryId,
+                keepassDatabaseId = resolvedKeepassDatabaseId
+            )
+
+            val savedItemId = saveTotpItemInternal(
+                id = preferredItem?.first?.id,
+                title = metadataSource?.first?.title ?: title,
+                notes = metadataSource?.first?.notes ?: notes,
+                totpData = resolvedData,
+                isFavorite = metadataSource?.first?.isFavorite ?: isFavorite,
+                categoryId = resolvedCategoryId,
+                keepassDatabaseId = resolvedKeepassDatabaseId,
+                keepassGroupPath = boundPassword?.keepassGroupPath,
+                mdbxDatabaseId = boundPassword?.mdbxDatabaseId,
+                mdbxFolderId = boundPassword?.mdbxFolderId,
+                bitwardenVaultId = null,
+                bitwardenFolderId = null,
+                followBoundPasswordStorage = true
+            )
+            if (savedItemId == null) {
+                Log.e(
+                    "TotpViewModel",
+                    "savePasswordBoundTotp failed to persist bound item passwordId=$passwordId totpId=${preferredItem?.first?.id}"
+                )
+                return false
+            }
+
+            removeOtherBoundTotpsForPassword(
+                keepItemId = savedItemId,
+                passwordId = passwordId
+            )
+            true
+        } catch (e: Exception) {
+            Log.e("TotpViewModel", "savePasswordBoundTotp failed for passwordId=$passwordId", e)
+            false
         }
     }
 
@@ -1035,7 +1095,7 @@ class TotpViewModel(
                     }
 
                     suspend fun saveIntoTarget(target: StorageTarget, targetId: Long?): Boolean {
-                        return when (target) {
+                        val savedId = when (target) {
                             is StorageTarget.MonicaLocal -> saveTotpItemInternal(
                                 id = targetId,
                                 title = title,
@@ -1101,6 +1161,7 @@ class TotpViewModel(
                                 replicaGroupId = replicaGroupId
                             )
                         }
+                        return savedId != null
                     }
 
                     val currentSaved = saveIntoTarget(currentTarget, existingItem?.id)
@@ -1161,11 +1222,11 @@ class TotpViewModel(
         bitwardenFolderId: String?,
         followBoundPasswordStorage: Boolean,
         replicaGroupId: String? = null
-    ): Boolean {
+    ): Long? {
         val existingItem = if (id != null && id > 0) repository.getItemById(id) else null
         if (id != null && id > 0 && existingItem == null) {
             Log.e("TotpViewModel", "saveTotpItemInternal failed because item does not exist id=$id")
-            return false
+            return null
         }
         val previousTotpData = existingItem?.let(::parseStoredTotpData)
         val previousBoundId = previousTotpData?.boundPasswordId
@@ -1217,7 +1278,7 @@ class TotpViewModel(
             existingItem != null &&
             existingItem.mdbxDatabaseId != boundPassword.mdbxDatabaseId
         ) {
-            repository.ensureMdbxCopyForBinding(
+            val copy = repository.ensureMdbxCopyForBinding(
                 source = existingItem,
                 databaseId = boundPassword.mdbxDatabaseId,
                 title = title,
@@ -1232,7 +1293,7 @@ class TotpViewModel(
             if (authenticatorPayload.isNotBlank()) {
                 updatePasswordAuthenticatorKeyForStorage(boundPassword.id, authenticatorPayload)
             }
-            return true
+            return copy.id
         }
 
         val resolvedBitwardenVaultId = if (shouldFollowBoundPassword) null else bitwardenVaultId
@@ -1252,7 +1313,7 @@ class TotpViewModel(
                 "TotpViewModel",
                 "saveTotpItemInternal failed because Bitwarden transition could not be resolved id=$id bitwardenVaultId=$resolvedBitwardenVaultId"
             )
-            return false
+            return null
         }
 
         val item = if (id != null && id > 0) {
@@ -1281,7 +1342,7 @@ class TotpViewModel(
                     "TotpViewModel",
                     "saveTotpItemInternal failed while updating missing item id=$id"
                 )
-                return false
+                return null
             }
         } else {
             SecureItem(
@@ -1310,7 +1371,7 @@ class TotpViewModel(
             )
         }
 
-        if (id != null && id > 0) {
+        val savedItemId = if (id != null && id > 0) {
             val existing = repository.getItemById(id)
             repository.updateItem(item)
             requestBitwardenMutationSync(resolvedBitwardenVaultId)
@@ -1333,6 +1394,7 @@ class TotpViewModel(
                     }
                 )
             }
+            item.id
         } else {
             val newId = keepassSecureItemCreateExecutor.create(
                 item = item,
@@ -1343,7 +1405,7 @@ class TotpViewModel(
                     "TotpViewModel",
                     "saveTotpItemInternal failed while creating item keepassDatabaseId=$resolvedKeepassDatabaseId mdbxDatabaseId=$resolvedMdbxDatabaseId bitwardenVaultId=$resolvedBitwardenVaultId"
                 )
-                return false
+                return null
             }
             requestBitwardenMutationSync(resolvedBitwardenVaultId)
             OperationLogger.logCreate(
@@ -1351,6 +1413,7 @@ class TotpViewModel(
                 itemId = newId,
                 itemTitle = title
             )
+            newId
         }
 
         val boundId = updatedTotpData.boundPasswordId
@@ -1378,7 +1441,7 @@ class TotpViewModel(
                 keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = current)
             }
         }
-        return true
+        return savedItemId
     }
 
     private fun resolveKeePassMutationIdentity(

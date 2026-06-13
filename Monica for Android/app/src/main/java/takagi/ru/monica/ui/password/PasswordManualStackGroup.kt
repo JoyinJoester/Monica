@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.ui.cardwallet.CardBrandIcon
 
 @Composable
 internal fun PasswordManualStackGroup(
@@ -91,6 +92,15 @@ internal fun PasswordManualStackGroup(
                 decryptAuthenticatorKey = decryptAuthenticatorKey,
                 iconCardsEnabled = iconCardsEnabled,
                 enableSharedBounds = false,
+                leadingIconOverride = leadCard.bankCardBrand?.let { brand ->
+                    {
+                        CardBrandIcon(
+                            brand = brand,
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(width = 52.dp, height = 34.dp)
+                        )
+                    }
+                },
                 badge = leadCard.badgeText?.let { text ->
                     PasswordListCardBadge(
                         text = text,
@@ -137,6 +147,15 @@ internal fun PasswordManualStackGroup(
                 decryptAuthenticatorKey = decryptAuthenticatorKey,
                 iconCardsEnabled = iconCardsEnabled,
                 enableSharedBounds = false,
+                leadingIconOverride = card.bankCardBrand?.let { brand ->
+                    {
+                        CardBrandIcon(
+                            brand = brand,
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(width = 52.dp, height = 34.dp)
+                        )
+                    }
+                },
                 badge = card.badgeText?.let { text ->
                     PasswordListCardBadge(
                         text = text,

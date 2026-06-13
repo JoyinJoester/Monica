@@ -750,6 +750,7 @@ private fun PasswordBatchAggregateSelection.totalItemCount(
     return selectedPasswordCount +
         bankCards.size +
         documents.size +
+        billingAddresses.size +
         notes.size +
         totpItems.size +
         passkeys.size
@@ -831,6 +832,7 @@ internal fun PasswordBatchMoveSheet(
         selectedSupplementaryItems,
         aggregateUiState.bankCards,
         aggregateUiState.documents,
+        aggregateUiState.billingAddresses,
         aggregateUiState.notes,
         aggregateUiState.totpItems,
         aggregateUiState.passkeys
