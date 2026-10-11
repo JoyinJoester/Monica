@@ -220,7 +220,8 @@ class DeviceVaultProviderTest {
             // Registration stores X.509 SPKI, whereas imported credentials can store COSE.
             a.passkeyDao().insert(PasskeyEntry(credentialId=UUID.randomUUID().toString(),rpId="example.test",rpName="Fixture passkey",
                 userId=Base64.getEncoder().encodeToString("fixture".toByteArray()),userName="fixture",userDisplayName="Fixture",publicKey=Base64.getEncoder().encodeToString(material.public.encoded),
-                privateKeyAlias=Base64.getEncoder().encodeToString(material.private.encoded),boundPasswordId=password,categoryId=category))
+                privateKeyAlias=Base64.getEncoder().encodeToString(material.private.encoded),boundPasswordId=password,categoryId=category,
+                backupEligible=false,backupState=false))
             val binary = ByteArray(700017).also { java.security.SecureRandom().nextBytes(it) }
             val storage = takagi.ru.monica.attachments.storage.AttachmentStorage(context)
             val keyVault = takagi.ru.monica.attachments.storage.AttachmentKeyVault(SecurityManager(context))
@@ -253,6 +254,8 @@ class DeviceVaultProviderTest {
             assertEquals(6,items.size)
             assertEquals(17,JSONObject(items.single { it.itemType==ItemType.TOTP }.itemData).getInt("counter"))
             val credential = b.passkeyDao().getAllPasskeysSync().single()
+            assertEquals(false, credential.backupEligible)
+            assertEquals(false, credential.backupState)
             assertEquals(received.id,credential.boundPasswordId)
             assertEquals(received.categoryId,credential.categoryId)
             assertTrue(takagi.ru.monica.passkey.PasskeyPrivateKeyStore.isProtectedReference(credential.privateKeyAlias))

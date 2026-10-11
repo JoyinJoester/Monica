@@ -23,6 +23,7 @@ internal object DevicePasskeyShape {
             .put("use_count", entry.useCount).put("icon_url", entry.iconUrl ?: JSONObject.NULL).put("is_discoverable", entry.isDiscoverable)
             .put("is_user_verification_required", entry.isUserVerificationRequired).put("transports", entry.transports).put("aaguid", entry.aaguid)
             .put("sign_count", 0).put("notes", entry.notes).put("passkey_mode", entry.passkeyMode)
+            .put("backup_eligible", entry.backupEligible ?: JSONObject.NULL).put("backup_state", entry.backupState ?: JSONObject.NULL)
         preparePayload(context, p)
         return DeviceVaultShape.normalize(p, entry.rpName, "", "passkey")
             .put("folder_path",org.json.JSONArray()).put("labels",org.json.JSONArray()).put("relations",org.json.JSONArray()).put("assets",org.json.JSONArray()).put("trashed",false).also(::verify)
@@ -70,9 +71,28 @@ internal object DevicePasskeyShape {
         if (number.toDouble() != number.toInt().toDouble()) invalid("algorithm_invalid")
         if (payload.getInt("public_key_algorithm") !in listOf(-7, -257, -37, -8)) invalid("algorithm_unsupported")
         if (payload.getString("key_status") !in listOf("portable", "reference")) invalid("key_status_invalid")
+        val eligibility = backupFlag(payload, "backup_eligible")
+        val state = backupFlag(payload, "backup_state")
+        if (eligibility == false && state == true) invalid("backup_flags_invalid")
     }
 
     private fun invalid(reason: String): Nothing = throw LanSyncException("invalid_passkey_material", "passkey_$reason")
+    private fun backupFlag(payload: JSONObject, name: String): Boolean? {
+        val value = payload.opt(name)
+        if (value == null || value === JSONObject.NULL) return null
+        if (value !is Boolean) invalid("backup_flags_invalid")
+        return value
+    }
+
+    fun retainBackupFlags(incoming: JSONObject, previous: JSONObject) {
+        val eligibility = try { takagi.ru.monica.passkey.PasskeyBackupFlags.mergeEligibility(
+            backupFlag(previous, "backup_eligible"), backupFlag(incoming, "backup_eligible")) }
+            catch (_: IllegalArgumentException) { throw LanSyncException("passkey_conflict", "passkey_backup_eligibility_changed") }
+        val state = backupFlag(incoming, "backup_state") ?: backupFlag(previous, "backup_state")
+        if (eligibility == false && state == true) invalid("backup_flags_invalid")
+        eligibility?.let { incoming.put("backup_eligible", it) }
+        state?.let { incoming.put("backup_state", it) }
+    }
     private fun decodeKey(value: String, reason: String): ByteArray =
         try { Base64.getDecoder().decode(value) } catch (_: IllegalArgumentException) { invalid(reason) }
 
@@ -108,6 +128,8 @@ internal object DevicePasskeyShape {
         if (old.optString("public_key").isNotBlank() && !CxfPasskeyMaterial.matchesPublicKeys(
                 old.getString("public_key"), incoming.getString("public_key"), algorithm))
             throw LanSyncException("passkey_conflict", "passkey_public_key_changed")
+        if (oldCredential.isNotBlank() || originalKey.isNotEmpty() || old.optString("public_key").isNotBlank())
+            retainBackupFlags(incoming, previous)
         if (incoming.getString("private_key_alias").isNotEmpty() || originalKey.isEmpty()) return
         preparePayload(context, old)
         val normalized = old.optString("private_key_alias")
@@ -139,6 +161,7 @@ internal object DevicePasskeyShape {
         return PasskeyPrivateKeyStore.protectPasskey(context, PasskeyEntry(id = id, credentialId = p.getString("credential_id"),
             rpId = p.getString("rp_id"), rpName = p.optString("rp_name"), userId = p.getString("user_id"), userName = p.optString("user_name"),
             userDisplayName = p.optString("user_display_name"), publicKeyAlgorithm = p.getInt("public_key_algorithm"), publicKey = p.getString("public_key"),
+            backupEligible = backupFlag(p, "backup_eligible"), backupState = backupFlag(p, "backup_state"),
             privateKeyAlias = p.optString("private_key_alias"), createdAt = p.optLong("created_at"), lastUsedAt = p.optLong("last_used_at"),
             useCount = p.optInt("use_count"), iconUrl = p.optString("icon_url").takeUnless { it == "null" || it.isBlank() },
             isDiscoverable = p.optBoolean("is_discoverable", true), isUserVerificationRequired = p.optBoolean("is_user_verification_required", true),

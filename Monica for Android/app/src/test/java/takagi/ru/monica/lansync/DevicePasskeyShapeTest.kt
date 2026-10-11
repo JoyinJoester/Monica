@@ -110,6 +110,24 @@ class DevicePasskeyShapeTest {
         assertTrue(error.message.orEmpty().contains("invalid_passkey_material"))
     }
 
+    @Test fun backup_flags_keep_immutable_eligibility_and_reject_invalid_states() {
+        val pair = keyPair(-7)
+        val original = data(pair, -7, base64(pair.public.encoded)).getJSONObject("payload")
+            .put("backup_eligible", false).put("backup_state", false)
+        val reference = JSONObject(original.toString()).put("private_key_alias", "").put("key_status", "reference")
+        reference.remove("backup_eligible"); reference.remove("backup_state")
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        DevicePasskeyShape.retainNativeKey(context, reference, original)
+        assertEquals(false, reference.get("backup_eligible"))
+        assertEquals(false, reference.get("backup_state"))
+        reference.put("private_key_alias", "").put("backup_eligible", true)
+        val conflict = assertThrows(LanSyncException::class.java) { DevicePasskeyShape.retainNativeKey(context, reference, original) }
+        assertEquals("passkey_conflict", conflict.code)
+        val invalid = data(pair, -7, base64(pair.public.encoded))
+        invalid.getJSONObject("payload").put("backup_eligible", false).put("backup_state", true)
+        assertInvalidMaterial(invalid)
+    }
+
     private fun data(pair: KeyPair, algorithm: Int, publicKey: String): JSONObject =
         DeviceVaultShape.normalize(JSONObject()
             .put("credential_id", "synthetic-credential").put("rp_id", "example.test")

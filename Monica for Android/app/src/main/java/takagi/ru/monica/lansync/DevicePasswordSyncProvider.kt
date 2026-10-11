@@ -373,11 +373,19 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
             }
             var incoming = DevicePasskeyShape.import(app, data, localId ?: 0).copy(boundPasswordId = metadata.localPassword(data.getJSONObject("payload").optString("bound_password_entry_id")),
                 categoryId = metadata.localFolder(data))
-            if(previous != null && incoming.privateKeyAlias.isEmpty()) {
+            if(previous != null) {
                 if (!DevicePasskeyShape.matchesStoredPublicKey(app, previous, data.getJSONObject("payload")))
                     throw LanSyncException("passkey_conflict", "passkey_room_${previous.id}_public_key_changed", previous.rpName)
-                incoming = incoming.copy(privateKeyAlias = previous.privateKeyAlias, isBackedUp = previous.isBackedUp,
-                    syncStatus = previous.syncStatus)
+                val flags = JSONObject(data.getJSONObject("payload").toString())
+                DevicePasskeyShape.withRecord("room_${previous.id}", previous.rpName) {
+                    DevicePasskeyShape.retainBackupFlags(flags, JSONObject()
+                        .put("backup_eligible", previous.backupEligible ?: JSONObject.NULL).put("backup_state", previous.backupState ?: JSONObject.NULL))
+                    flags
+                }
+                incoming = incoming.copy(backupEligible = if(flags.isNull("backup_eligible")) null else flags.getBoolean("backup_eligible"),
+                    backupState = if(flags.isNull("backup_state")) null else flags.getBoolean("backup_state"))
+                if(incoming.privateKeyAlias.isEmpty()) incoming = incoming.copy(privateKeyAlias = previous.privateKeyAlias,
+                    isBackedUp = previous.isBackedUp, syncStatus = previous.syncStatus)
             }
             val duplicate = passkeys.getPasskeysByCredentialId(incoming.credentialId).firstOrNull { it.rpId == incoming.rpId && it.id != localId }
             if(duplicate != null) throw LanSyncException("passkey_conflict")
