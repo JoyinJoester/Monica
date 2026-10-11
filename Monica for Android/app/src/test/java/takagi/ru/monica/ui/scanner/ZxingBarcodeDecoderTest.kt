@@ -4,6 +4,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.qrcode.QRCodeWriter
+import takagi.ru.monica.lansync.LanPairingInvitation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,6 +15,17 @@ import org.junit.Test
  * 旧 zxing 方案以"正反混合扫描"覆盖、而替换初期曾遗漏的能力。
  */
 class ZxingBarcodeDecoderTest {
+
+    @Test fun `nearby multi-address qr is decoded and accepted`() {
+        val link = "monica-lan:2:10.30.250.111,192.168.1.5:53318:" + "A".repeat(43)
+        val size = 300
+        val matrix = QRCodeWriter().encode(link, BarcodeFormat.QR_CODE, size, size, mapOf(EncodeHintType.MARGIN to 4))
+        val luminance = ByteArray(size * size) { index -> if (matrix[index % size, index / size]) 0 else 255.toByte() }
+        val source = PlanarYUVLuminanceSource(luminance, size, size, 0, 0, size, size, false)
+        val decoded = ZxingBarcodeDecoder(listOf(BarcodeFormat.QR_CODE)).decodeWithFallback(source).single()
+        assertEquals(link, decoded)
+        assertEquals(listOf("10.30.250.111", "192.168.1.5"), LanPairingInvitation.parse(decoded)!!.addresses)
+    }
 
     private val payload = "otpauth://totp/Monica:scan-test?secret=53EFVQDZNZNA6HACH4W7OVUEP45OX64H&issuer=Monica"
     private val decoder = ZxingBarcodeDecoder(listOf(BarcodeFormat.QR_CODE))

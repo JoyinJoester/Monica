@@ -12,7 +12,8 @@ import kotlinx.coroutines.launch
 
 internal enum class PasswordBatchDeletePhase {
     RUNNING,
-    SUCCESS
+    SUCCESS,
+    FAILURE
 }
 
 internal data class PasswordBatchDeleteGlobalProgressState(
@@ -75,11 +76,11 @@ internal object PasswordBatchDeleteProgressTracker {
     fun complete(successCount: Int) {
         clearJob?.cancel()
         val safeCount = successCount.coerceAtLeast(0)
-        if (safeCount <= 0) {
+        val current = _progress.value
+        if (safeCount <= 0 && current == null) {
             clear()
             return
         }
-        val current = _progress.value
         val operationId = if (
             current != null &&
             current.phase == PasswordBatchDeletePhase.RUNNING
@@ -88,16 +89,27 @@ internal object PasswordBatchDeleteProgressTracker {
         } else {
             allocateOperationId()
         }
+        val total = (current?.total ?: safeCount).coerceAtLeast(safeCount)
         val successState = PasswordBatchDeleteGlobalProgressState(
             operationId = operationId,
-            processed = safeCount,
-            total = safeCount,
-            phase = PasswordBatchDeletePhase.SUCCESS,
+            processed = total,
+            total = total,
+            phase = if (safeCount == total) PasswordBatchDeletePhase.SUCCESS else PasswordBatchDeletePhase.FAILURE,
             successCount = safeCount
         )
+        publishTerminal(successState)
+    }
+
+    fun fail() {
+        val current = _progress.value ?: return
+        publishTerminal(current.copy(phase = PasswordBatchDeletePhase.FAILURE, successCount = null))
+    }
+
+    private fun publishTerminal(successState: PasswordBatchDeleteGlobalProgressState) {
+        clearJob?.cancel()
         _progress.value = successState
         clearJob = scope.launch {
-            delay(1300)
+            if (successState.phase == PasswordBatchDeletePhase.SUCCESS) delay(1300) else delay(8000)
             if (_progress.value == successState) {
                 _progress.value = null
             }

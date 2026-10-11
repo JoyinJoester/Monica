@@ -85,9 +85,12 @@ class SteamFolderFilterMenuTest {
         compose.onNodeWithText("BW Games").assertIsSelected()
         compose.onNodeWithText(context.getString(R.string.category_selection_menu_folders)).assertExists()
         val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
-        File(context.filesDir,"steam-folder-filter.png").outputStream().use {
-            screenshot.compress(Bitmap.CompressFormat.PNG,100,it)
+        // Evidence is optional: secure windows can legitimately refuse screenshots.
+        if (screenshot != null) {
+            File(context.filesDir,"steam-folder-filter.png").outputStream().use {
+                screenshot.compress(Bitmap.CompressFormat.PNG,100,it)
+            }
+            screenshot.recycle()
         }
-        screenshot.recycle()
     }
 }

@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface SecureItemDao {
+    @Query("SELECT * FROM secure_items WHERE mdbx_database_id IS NULL AND bitwarden_vault_id IS NULL AND keepass_database_id IS NULL ORDER BY id")
+    suspend fun getDeviceSyncLocalItems(): List<SecureItem>
     
     // 获取所有项目（排除已删除）
     @Query("SELECT * FROM secure_items WHERE $MDBX_AVAILABLE_ENTRY_FILTER AND (isDeleted = 0) ORDER BY updatedAt DESC")

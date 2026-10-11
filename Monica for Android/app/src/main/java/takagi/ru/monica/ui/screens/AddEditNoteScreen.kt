@@ -149,6 +149,7 @@ fun AddEditNoteScreen(
     onEmbeddedSave: (suspend (takagi.ru.monica.attachments.EmbeddedWalletEditorResult) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    takagi.ru.monica.lansync.DeviceSyncEditorLease()
     val draftStore = remember { NoteDraftStore.init(context) }
     val biometricHelper = remember { BiometricHelper(context) }
     val securityManager = takagi.ru.monica.ui.rememberUiSecurityManager()

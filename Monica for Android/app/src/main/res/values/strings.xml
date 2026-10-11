@@ -4696,4 +4696,11 @@
     <string name="local_recovery_save_failed">Could not safely save the master password. Original data has been preserved.</string>
     <string name="autofill_keep_unlocked">Keep unlocked for two minutes</string>
     <string name="autofill_keep_unlocked_desc">Reuse verification only within the same app and website. Turning this off, locking the screen or clearing Monica from recent apps ends access. Monica itself stays locked.</string>
+    <string name="storage_picker_edit_multi_append_hint">Select additional save locations for this item.</string>
+    <string name="qr_image_read_failed">Could not read the QR code image.</string>
+    <string name="device_sync_passkey_title">Passkey cross-device limits</string>
+    <string name="device_sync_passkey_summary">These %1$d Passkeys may not work on another device or platform. Review the reasons before syncing. You may need to register a new Passkey on the destination device.</string>
+    <string name="device_sync_passkey_reference_hint">This entry cannot export a private key. Only credential metadata will sync; it cannot enable sign-in on another device.</string>
+    <string name="device_sync_passkey_cancel">Cancel sync</string>
+    <string name="device_sync_passkey_continue">Understand and continue</string>
 </resources>

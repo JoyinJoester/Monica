@@ -32,7 +32,8 @@ import androidx.compose.ui.unit.dp
 
 enum class QuickStatusDeletePhase {
     RUNNING,
-    SUCCESS
+    SUCCESS,
+    FAILURE
 }
 
 data class QuickStatusDeleteState(
@@ -56,7 +57,7 @@ fun QuickStatusDeleteBar(
     state: QuickStatusDeleteState,
     modifier: Modifier = Modifier
 ) {
-    if (state.phase == QuickStatusDeletePhase.SUCCESS) {
+    if (state.phase != QuickStatusDeletePhase.RUNNING) {
         QuickStatusDeleteSuccessStatus(
             state = state,
             modifier = modifier
@@ -167,7 +168,9 @@ private fun QuickStatusDeleteSuccessStatus(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = stringResource(R.string.legacy_ui_deleted_count, count),
+                text = if (state.phase == QuickStatusDeletePhase.SUCCESS) stringResource(R.string.legacy_ui_deleted_count, count)
+                    else if (state.successCount != null) stringResource(R.string.batch_delete_notification_done_detail_partial, state.successCount, state.total - state.successCount)
+                    else stringResource(R.string.batch_delete_incomplete_title),
                 style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

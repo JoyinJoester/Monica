@@ -20,6 +20,8 @@ import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import uniffi.mdbx_ffi.MdbxAttachmentBatchCommand
 import kotlinx.coroutines.withContext
 import okio.utf8Size
 import org.json.JSONArray
@@ -46,6 +48,7 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.SecureItemDao
 import takagi.ru.monica.data.resolvedActiveFilePath
 import takagi.ru.monica.passkey.PasskeyPrivateKeyStore
+import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.util.TotpDataResolver
 import uniffi.mdbx_ffi.MdbxAttachmentContentLimits
@@ -480,6 +483,379 @@ class Mdbx2Repository(
 
     internal suspend fun nativeBrowser(databaseId: Long): MdbxNativeBrowser =
         sessions.withNativeReadVault(databaseId) { _, vault -> readMdbxNativeBrowser(vault) }
+
+    internal suspend fun deviceSyncRevision(databaseId: Long): String = getCurrentHeadCommitId(databaseId).orEmpty()
+
+    internal suspend fun deviceSyncPasswords(databaseId: Long): List<takagi.ru.monica.lansync.DevicePasswordSnapshot> =
+        sessions.withNativeReadVault(databaseId) { database, vault ->
+            requireMdbxAppReplicaAllowed(database)
+            val root = Mdbx2VaultSessionExecutor.rootProjectId(vault.info().vaultId)
+            buildList {
+                addAll(takagi.ru.monica.lansync.DeviceNativeRootMetadata(vault).read().map { it.copy(localId="mdbx:$databaseId:${it.localId}",scope="mdbx:$databaseId") })
+                val projects = vault.listAllProjects(includeDeleted = true)
+                val logicalTitles = projects.associate { it.collectionId to deviceSyncFolderTitle(vault,it.collectionId,it.title) }
+                projects.forEach { project ->
+                    val folderPath = deviceSyncFolderPath(project.collectionId, projects, root,logicalTitles)
+                    if(folderPath.length() > 0) add(takagi.ru.monica.lansync.DevicePasswordSnapshot("mdbx:$databaseId:folder:${project.collectionId}", project.collectionId,
+                        "mdbx:$databaseId", deviceSyncFolderGuard(vault,project.collectionId), project.deleted, JSONObject().put("title", logicalTitles[project.collectionId]).put("folder", "").put("entry_type", "folder").put("trashed",project.deleted)
+                            .put("payload", JSONObject().put("path", folderPath).put("tags", JSONArray(projectTagRecords(vault,project.collectionId).sortedBy { it.name }.map { tag ->
+                                JSONObject().put("name",tag.name).put("payload",tag.payloadJson).put("version",tag.payloadSchemaVersion.toLong()) } )))))
+                    var cursor: String? = null
+                    val seen = mutableSetOf<String>()
+                    do {
+                        val page = vault.listObjectSummaries(project.collectionId, null, 100u, cursor)
+                        page.items.forEach { item ->
+                            require(item.objectTypeId in takagi.ru.monica.lansync.DeviceVaultShape.types && item.payloadSchemaVersion == 1u) { "unsupported_vault_content" }
+                            val payload = vault.getObject(item.collectionId, item.objectId)?.payloadJson ?: error("password_changed")
+                            if(JSONObject(payload).optBoolean("device_sync_staging")) return@forEach
+                            // Third-party replicas remain owned by their existing connector.
+                            val source = if (item.objectTypeId in listOf("login", "ssh-key")) takagi.ru.monica.lansync.DevicePasswordShape.nativePayload(JSONObject(payload)) else JSONObject(payload)
+                            if (source.optBoolean("bitwarden_mode") || source.optBoolean("keepass_mode")) return@forEach
+                            val folder = if (project.collectionId == root) "" else logicalTitles[project.collectionId].orEmpty()
+                            val purged = item.deleted && source.optLong("deleted_at", -1) == 0L
+                            var data = if (purged) JSONObject() else if(item.objectTypeId in listOf("login", "ssh-key"))
+                                takagi.ru.monica.lansync.DevicePasswordShape.fromNative(source, item.title, folder, item.objectTypeId, securityManager)
+                            else if (item.objectTypeId == "passkey") takagi.ru.monica.lansync.DevicePasskeyShape.withRecord(
+                                "native_${databaseId}_${sha256Hex(item.objectId.toByteArray()).take(12)}", item.title) {
+                                takagi.ru.monica.lansync.DevicePasskeyShape.preparePayload(appContext, source)
+                                takagi.ru.monica.lansync.DeviceVaultShape.normalize(source, item.title, folder, item.objectTypeId).also {
+                                    takagi.ru.monica.lansync.DevicePasskeyShape.verify(it)
+                                }
+                            }
+                            else takagi.ru.monica.lansync.DeviceVaultShape.normalize(source, item.title, folder, item.objectTypeId)
+                            val assets = mutableListOf<takagi.ru.monica.lansync.DeviceVaultAsset>()
+                            if(!purged) {
+                                data.put("folder_path", folderPath).put("trashed", item.deleted)
+                                val descriptors = JSONArray()
+                                vault.listAttachments(project.collectionId, item.objectId).filterNot { it.deleted }.sortedWith(compareBy({it.contentHash}, {it.fileName})).forEach { attachment ->
+                                    val hash = attachment.contentHash.lowercase()
+                                    val savedList = source.optJSONArray("device_sync_assets") ?: JSONArray()
+                                    val saved = (0 until savedList.length()).map(savedList::getJSONObject).firstOrNull { it.optString("local_id") == attachment.attachmentId }
+                                    val descriptor = JSONObject().put("id", hash).put("attachment_id", saved?.optString("attachment_id", attachment.attachmentId) ?: attachment.attachmentId)
+                                        .put("file_name", attachment.fileName).put("media_type", attachment.mediaType ?: DEFAULT_MIME_TYPE).put("size", attachment.originalSize.toLong())
+                                    if(saved?.has("image") == true) descriptor.put("image", saved.optBoolean("image"))
+                                    if(saved?.has("icon") == true) descriptor.put("icon", saved.optBoolean("icon"))
+                                    descriptors.put(descriptor)
+                                    takagi.ru.monica.lansync.DeviceVaultShape.remapAssetPath(data,"mdbx:${attachment.attachmentId}","device-asset:$hash")
+                                    source.optJSONObject("device_sync_images")?.optString(hash)?.takeIf { it.isNotBlank() }?.let { image -> takagi.ru.monica.lansync.DeviceVaultShape.remapAssetPath(data,image,"device-asset:$hash") }
+                                    assets += takagi.ru.monica.lansync.DeviceVaultAsset(hash, attachment.attachmentId, databaseId, attachment.originalSize.toLong())
+                                }
+                                takagi.ru.monica.lansync.DeviceVaultShape.icons(data).forEachIndexed { index,value ->
+                                    val bytes = takagi.ru.monica.lansync.DeviceVaultShape.readIcon(appContext,value)
+                                    val hash = sha256Hex(bytes)
+                                    descriptors.put(JSONObject().put("id",hash).put("attachment_id","custom-icon:$index").put("file_name","icon-$index.png").put("media_type","image/png").put("size",bytes.size).put("icon",true))
+                                    assets += takagi.ru.monica.lansync.DeviceVaultAsset(hash,"",databaseId,bytes.size.toLong(),icon=value)
+                                    bytes.fill(0); takagi.ru.monica.lansync.DeviceVaultShape.remapAssetPath(data,value,"device-asset:$hash")
+                                }
+                                data.put("assets", descriptors)
+                                data.put("labels", deviceSyncLabels(vault, item.objectId))
+                                data.put("relations", source.optJSONArray("device_sync_pending_relations") ?: deviceSyncRelations(vault,item.objectId))
+                            }
+                            add(takagi.ru.monica.lansync.DevicePasswordSnapshot("mdbx:$databaseId:${item.objectId}", item.objectId,
+                                "mdbx:$databaseId", deviceSyncGuard(vault, item.objectId), item.deleted, data, assets))
+                        }
+                        cursor = page.nextCursor
+                        check(cursor == null || (page.items.isNotEmpty() && seen.add(cursor!!)))
+                    } while (cursor != null)
+                }
+            }
+        }
+
+    /** Compare and write under the same native lease used by ordinary edits. */
+    internal suspend fun applyDeviceSyncPassword(databaseId: Long, nativeId: String?, globalId: String, expectedGuard: String?,
+        deleted: Boolean, data: JSONObject, assetReader: (suspend (JSONObject) -> ByteArray)? = null): takagi.ru.monica.lansync.DevicePasswordSnapshot? =
+        sessions.withMutatingVault(databaseId) { database, vault ->
+            requireMdbxAppReplicaAllowed(database)
+            check(takagi.ru.monica.security.SessionManager.isUnlocked.value) { "device_sync_locked" }
+            val retainedTrash = deleted && data.optBoolean("trashed")
+            if(nativeId?.startsWith("metadata:") == true || ((!deleted || retainedTrash) && data.optString("entry_type") == "vault-metadata")) {
+                if(!deleted) takagi.ru.monica.lansync.DeviceVaultShape.validate(data)
+                val owner = nativeId?.removePrefix("metadata:") ?: globalId
+                val guard = takagi.ru.monica.lansync.DeviceNativeRootMetadata(vault).apply(owner,expectedGuard,nativeId == null,deleted,data) ?: return@withMutatingVault null
+                markPendingUpload(databaseId)
+                return@withMutatingVault takagi.ru.monica.lansync.DevicePasswordSnapshot("mdbx:$databaseId:metadata:$owner",globalId,"mdbx:$databaseId",guard,deleted,data)
+            }
+            if(nativeId?.startsWith("folder:") == true || ((!deleted || retainedTrash) && data.optString("entry_type") == "folder")) {
+                val folderId = nativeId?.removePrefix("folder:") ?: globalId
+                val previous = vault.getCollectionSummary(folderId)
+                if(nativeId != null && deviceSyncFolderGuard(vault,folderId) != expectedGuard.orEmpty()) return@withMutatingVault null
+                if(deleted && !data.optBoolean("trashed")) { if(previous?.deleted == false) vault.executeWriteOperation(UUID.randomUUID().toString(), "device-folder-delete", listOf(MdbxWriteCommand.DeleteProject(folderId))) }
+                else {
+                    val path = JSONArray(data.getJSONObject("payload").getJSONArray("path").toString())
+                    require(path.length() > 0) { "invalid_folder" }; path.getJSONObject(path.length()-1).put("id", folderId).put("title", data.getString("title"))
+                    val commands = deviceSyncFolderCommands(vault, path, updateId = folderId).toMutableList()
+                    data.getJSONObject("payload").optJSONArray("tags")?.let { tags ->
+                        val existingTags = projectTagRecords(vault,folderId)
+                        val desired = (0 until tags.length()).map { tags.getJSONObject(it).getString("name") }.toSet()
+                        commands += existingTags.filter { it.name !in desired }.map { MdbxWriteCommand.DeleteObjectLabel(it.labelId) }
+                        for(index in 0 until tags.length()) {
+                            val tag = tags.getJSONObject(index); val old = existingTags.firstOrNull { it.name == tag.getString("name") }
+                            if(old == null) commands += MdbxWriteCommand.CreateObjectLabel(UUID.randomUUID().toString(), folderId, tag.getString("name"), tag.getString("payload"),tag.getLong("version").toUInt())
+                            else if(old.payloadJson != tag.getString("payload") || old.payloadSchemaVersion != tag.getLong("version").toUInt()) commands += MdbxWriteCommand.UpdateObjectLabel(old.labelId,old.name,tag.getString("payload"),tag.getLong("version").toUInt())
+                        }
+                    }
+                    if(deleted) commands += MdbxWriteCommand.DeleteProject(folderId)
+                    if(commands.isNotEmpty()) vault.executeWriteOperation(UUID.randomUUID().toString(), "device-vault-folder",commands)
+                }
+                markPendingUpload(databaseId)
+                return@withMutatingVault takagi.ru.monica.lansync.DevicePasswordSnapshot("mdbx:$databaseId:folder:$folderId", globalId, "mdbx:$databaseId", deviceSyncFolderGuard(vault,folderId), deleted, data)
+            }
+            if (!deleted || retainedTrash) {
+                takagi.ru.monica.lansync.DeviceVaultShape.validate(data)
+                if (data.getString("entry_type") == "passkey") takagi.ru.monica.lansync.DevicePasskeyShape.verify(data)
+            }
+            val id = nativeId ?: globalId
+            require(UUID.fromString(id).toString() == id) { "invalid_password_identity" }
+            val before = vault.getObjectSummary(id)
+            val candidate = before?.let { vault.getObject(it.collectionId, id)?.payloadJson }
+            val staging = candidate?.let { JSONObject(it).optBoolean("device_sync_staging") && JSONObject(it).optString("device_sync_record_id") == id } == true
+            require(before == null || (before.objectTypeId in takagi.ru.monica.lansync.DeviceVaultShape.types && before.payloadSchemaVersion == 1u)) { "password_identity_collision" }
+            if (nativeId == null && before != null && !staging) return@withMutatingVault null
+            val previousGuard = deviceSyncGuard(vault, id)
+            if (!staging && previousGuard != expectedGuard.orEmpty()) return@withMutatingVault null
+            val scope = "mdbx:$databaseId"
+            if (before == null && deleted && !retainedTrash) return@withMutatingVault takagi.ru.monica.lansync.DevicePasswordSnapshot("", globalId, scope, "", true, JSONObject())
+            val existing = if(staging) null else candidate
+            if (before != null && candidate == null) return@withMutatingVault null
+            if (existing != null) {
+                val source = if (before?.objectTypeId in listOf("login", "ssh-key")) takagi.ru.monica.lansync.DevicePasswordShape.nativePayload(JSONObject(existing)) else JSONObject(existing)
+                require(!source.optBoolean("bitwarden_mode") && !source.optBoolean("keepass_mode")) { "password_source_unavailable" }
+            }
+            if (deleted && !retainedTrash) {
+                val previous = requireNotNull(before)
+                val empty = JSONObject().put("kind",if(previous.objectTypeId in listOf("login","ssh-key")) "password" else previous.objectTypeId)
+                    .put("password_plain","").put("item_data","").put("deleted_at",0).put("monica_entry_id",id)
+                if(previous.objectTypeId == "passkey" && existing != null) JSONObject(existing).let { old ->
+                    empty.put("credential_id",old.optString("credential_id")).put("rp_id",old.optString("rp_id"))
+                }
+                val commands = mutableListOf<MdbxWriteCommand>()
+                if(previous.deleted) commands += MdbxWriteCommand.RestoreEntry(id,previous.collectionId)
+                commands += MdbxWriteCommand.UpdateEntry(id,previous.collectionId,previous.objectTypeId,previous.title,empty.toString())
+                vault.listObjectLabelAssignments(id).filterNot { it.deleted }.forEach { commands += MdbxWriteCommand.RemoveObjectLabelAssignment(it.assignmentId) }
+                vault.listObjectRelationsFrom(id,null).filterNot { it.deleted }.forEach { commands += MdbxWriteCommand.DeleteObjectRelation(it.relationId) }
+                commands += MdbxWriteCommand.DeleteEntry(id,previous.collectionId)
+                val removals = vault.listAttachments(previous.collectionId,id).filterNot { it.deleted }.map { MdbxAttachmentBatchCommand.Delete(it.attachmentId) }
+                if(removals.isEmpty()) vault.executeWriteOperation(UUID.randomUUID().toString(),"device-vault-purge",commands)
+                else vault.executeCompositeWriteOperation(UUID.randomUUID().toString(),"device-vault-purge",commands,removals)
+                markPendingUpload(databaseId)
+            } else {
+                val root = Mdbx2VaultSessionExecutor.rootProjectId(vault.info().vaultId)
+                val projects = vault.listAllProjects()
+                val folder = data.getString("folder")
+                val path = data.optJSONArray("folder_path")
+                if(path != null && path.length() > 0) ensureDeviceSyncFolders(vault, path)
+                val projectId = if(path != null && path.length() > 0) path.getJSONObject(path.length()-1).getString("id") else if (folder.isEmpty()) root else projects.firstOrNull { it.title == folder }?.collectionId
+                    ?: UUID.nameUUIDFromBytes("device-folder:$root:$folder".toByteArray()).toString()
+                val payload = takagi.ru.monica.lansync.DeviceVaultShape.applyNative(data, existing, id, projectId.takeUnless { it == root })
+                if (data.getString("entry_type") == "passkey" && before?.objectTypeId == "passkey" && existing != null)
+                    takagi.ru.monica.lansync.DevicePasskeyShape.withRecord(
+                        "native_${databaseId}_${sha256Hex(id.toByteArray()).take(12)}", before.title) {
+                        takagi.ru.monica.lansync.DevicePasskeyShape.retainNativeKey(appContext, payload, JSONObject(existing))
+                        payload
+                    }
+                val commands = buildList {
+                    if (vault.getCollectionSummary(root) == null) add(MdbxWriteCommand.CreateProject(root, Mdbx2VaultSessionExecutor.ROOT_PROJECT_TITLE))
+                    if ((path == null || path.length() == 0) && projectId != root && projects.none { it.collectionId == projectId }) add(MdbxWriteCommand.CreateProjectWithParent(projectId, folder, root))
+                    if (before == null) add(MdbxWriteCommand.CreateEntry(id, projectId, data.getString("entry_type"), data.getString("title"), payload.toString()))
+                    else {
+                        if (before.deleted) add(MdbxWriteCommand.RestoreEntry(id, before.collectionId))
+                        if (before.collectionId != projectId) add(MdbxWriteCommand.MoveEntry(id, before.collectionId, projectId))
+                        add(MdbxWriteCommand.UpdateEntry(id, projectId, data.getString("entry_type"), data.getString("title"), payload.toString()))
+                    }
+                }
+                val writes = mutableListOf<MdbxAttachmentBatchCommand>()
+                val buffers = mutableListOf<ByteArray>()
+                var materialized = JSONObject(payload.toString())
+                data.optJSONArray("relations")?.let { materialized.put("device_sync_pending_relations",it) }
+                try {
+                data.optJSONArray("assets")?.let { descriptors ->
+                    val attached = if(before == null) emptyList() else vault.listAttachments(before.collectionId, id).filterNot { it.deleted }
+                    val keep = mutableSetOf<String>(); val stored = JSONArray(); val imageMap = JSONObject()
+                    for(index in 0 until descriptors.length()) {
+                        val descriptor = descriptors.getJSONObject(index)
+                        val hash = descriptor.getString("id")
+                        val name = descriptor.getString("file_name")
+                        val attachment = attached.firstOrNull { it.attachmentId !in keep && it.contentHash == hash && it.fileName == name }
+                        val attachmentId = attachment?.attachmentId ?: UUID.randomUUID().toString()
+                        var bytes: ByteArray? = null
+                        if(attachment == null || descriptor.optBoolean("image") || descriptor.optBoolean("icon")) {
+                            bytes = (assetReader ?: throw IllegalStateException("asset_unavailable"))(descriptor)
+                            buffers += bytes
+                        }
+                        if(attachment == null) writes += MdbxAttachmentBatchCommand.Create(attachmentId, projectId, id, name, descriptor.optString("media_type", DEFAULT_MIME_TYPE), bytes!!)
+                        val localPath = if(descriptor.optBoolean("icon")) takagi.ru.monica.lansync.DeviceVaultShape.saveIcon(appContext,bytes!!,hash).also { imageMap.put(hash,it) }
+                            else if(descriptor.optBoolean("image")) takagi.ru.monica.util.ImageManager(appContext).saveImageBytes(bytes!!, "device-sync-$hash")
+                            ?.also { imageMap.put(hash,it) } ?: error("invalid_asset") else "mdbx:$attachmentId"
+                        keep += attachmentId
+                        stored.put(JSONObject(descriptor.toString()).put("local_id", attachmentId))
+                        takagi.ru.monica.lansync.DeviceVaultShape.remapAssetPath(materialized,"device-asset:$hash",localPath)
+                    }
+                    attached.filter { it.attachmentId !in keep }.forEach { writes += MdbxAttachmentBatchCommand.Delete(it.attachmentId) }
+                    materialized.put("device_sync_assets", stored).put("device_sync_images", imageMap)
+                }
+                val finalCommands = commands.map { command -> when(command) {
+                    is MdbxWriteCommand.CreateEntry -> MdbxWriteCommand.CreateEntry(id, projectId, data.getString("entry_type"), data.getString("title"), materialized.toString())
+                    is MdbxWriteCommand.UpdateEntry -> MdbxWriteCommand.UpdateEntry(id, projectId, data.getString("entry_type"), data.getString("title"), materialized.toString())
+                    else -> command
+                } }.toMutableList()
+                data.optJSONArray("labels")?.let { labels ->
+                    if(before != null) vault.listObjectLabelAssignments(id).filterNot { it.deleted }.forEach { finalCommands += MdbxWriteCommand.RemoveObjectLabelAssignment(it.assignmentId) }
+                    for(index in 0 until labels.length()) {
+                        val label = labels.getJSONObject(index); val labelId = UUID.randomUUID().toString()
+                        finalCommands += MdbxWriteCommand.CreateObjectLabel(labelId, projectId, label.getString("name"), label.getString("payload"), label.getLong("version").toUInt())
+                        finalCommands += MdbxWriteCommand.AssignObjectLabel(UUID.randomUUID().toString(), id, labelId)
+                    }
+                }
+                if(retainedTrash) finalCommands += MdbxWriteCommand.DeleteEntry(id, projectId)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if(deviceSyncGuard(vault,id) != previousGuard) return@withMutatingVault null
+                val staged = mutableListOf<String>(); var placeholder = false
+                try {
+                    if(before == null && writes.any { it is MdbxAttachmentBatchCommand.Create }) {
+                        vault.executeWriteOperation(UUID.randomUUID().toString(), "device-vault-stage", listOf(MdbxWriteCommand.CreateEntry(id, projectId,
+                            data.getString("entry_type"), data.getString("title"), JSONObject().put("device_sync_staging",true).put("device_sync_record_id",id).toString())))
+                        placeholder = true
+                        val position = finalCommands.indexOfFirst { it is MdbxWriteCommand.CreateEntry }
+                        finalCommands[position] = MdbxWriteCommand.UpdateEntry(id, projectId, data.getString("entry_type"), data.getString("title"), materialized.toString())
+                    }
+                    writes.filterIsInstance<MdbxAttachmentBatchCommand.Create>().forEach { attachment ->
+                        vault.createAttachmentWithExternalContent(UUID.randomUUID().toString(), MdbxAttachmentCreateRequest(attachment.attachmentId,
+                            before?.collectionId ?: projectId, id, attachment.fileName, attachment.mediaType), attachment.content, attachmentLimits())
+                        staged += attachment.attachmentId
+                    }
+                    val removals = writes.filterIsInstance<MdbxAttachmentBatchCommand.Delete>()
+                    if(removals.isEmpty()) vault.executeWriteOperation(UUID.randomUUID().toString(), "device-vault-apply", finalCommands)
+                    else vault.executeCompositeWriteOperation(UUID.randomUUID().toString(), "device-vault-apply", finalCommands, removals)
+                } catch(failure: Throwable) {
+                    staged.forEach { vault.deleteAttachment(it) }
+                    if(placeholder) vault.executeWriteOperation(UUID.randomUUID().toString(), "device-vault-stage-discard", listOf(MdbxWriteCommand.DeleteEntry(id,projectId)))
+                    throw failure
+                }
+                } finally { buffers.forEach { it.fill(0) } }
+                markPendingUpload(databaseId)
+            }
+            val after = requireNotNull(vault.getObjectSummary(id))
+            takagi.ru.monica.lansync.DevicePasswordSnapshot("mdbx:$databaseId:$id", globalId, scope, deviceSyncGuard(vault, id), deleted, data)
+        }
+
+    private fun deviceSyncLabels(vault: uniffi.mdbx_ffi.MdbxVault, id: String): JSONArray {
+        val labels = vault.listObjectLabelAssignments(id).filterNot { it.deleted }.mapNotNull { assignment ->
+            val label = vault.revealObjectLabelWithLimits(assignment.labelId, uniffi.mdbx_ffi.MdbxObjectMetadataDisclosureLimits(1024uL*1024uL)).label
+                ?: error("unsupported_vault_content")
+            if(label.deleted) null else JSONObject().put("name",label.name).put("payload",label.payloadJson).put("version",label.payloadSchemaVersion.toLong())
+        }
+        return JSONArray(labels.sortedBy { it.toString() })
+    }
+    private fun deviceSyncRelations(vault: uniffi.mdbx_ffi.MdbxVault, id: String): JSONArray = JSONArray(vault.listObjectRelationsFrom(id,null).filterNot { it.deleted }
+        .map { r -> JSONObject().put("target",r.targetObjectId).put("kind",r.relationKind).put("payload",r.payloadJson).put("version",r.payloadSchemaVersion.toLong()) }.sortedBy { it.toString() })
+
+    internal suspend fun deviceSyncRelationTargets(databaseId: Long): List<String> = deviceSyncPasswords(databaseId)
+        .flatMap { snapshot -> val list = snapshot.data.optJSONArray("relations") ?: JSONArray(); (0 until list.length()).map { list.getJSONObject(it).getString("target") } }.distinct()
+    internal suspend fun deviceSyncObjectExists(databaseId: Long,id: String): Boolean = sessions.withNativeReadVault(databaseId) { _,vault -> vault.getObjectSummary(id) != null }
+    internal suspend fun resolveDeviceSyncRelations(databaseId: Long,targets: Map<String,String> = emptyMap()) = sessions.withMutatingVault(databaseId) { _, vault ->
+        vault.listAllProjects(includeDeleted = true).forEach { collection ->
+            var cursor: String? = null
+            do {
+                val page = vault.listObjectSummaries(collection.collectionId,null,200u,cursor); cursor = page.nextCursor
+                page.items.forEach { item ->
+                    val stored = vault.getObject(item.collectionId,item.objectId) ?: return@forEach
+                    val payload = JSONObject(stored.payloadJson)
+                    val desired = payload.optJSONArray("device_sync_pending_relations") ?: return@forEach
+                    val commands = mutableListOf<MdbxWriteCommand>()
+                    vault.listObjectRelationsFrom(item.objectId,null).filterNot { it.deleted }.forEach { commands += MdbxWriteCommand.DeleteObjectRelation(it.relationId) }
+                    for(index in 0 until desired.length()) {
+                        val relation = desired.getJSONObject(index); val target = targets[relation.getString("target")] ?: relation.getString("target")
+                        check(vault.getObjectSummary(target) != null) { "reference_unavailable" }
+                        commands += MdbxWriteCommand.CreateObjectRelation(UUID.randomUUID().toString(),item.objectId,target,relation.getString("kind"),relation.getString("payload"),relation.getLong("version").toUInt())
+                    }
+                    payload.remove("device_sync_pending_relations")
+                    if(item.deleted) commands.add(0,MdbxWriteCommand.RestoreEntry(item.objectId,item.collectionId))
+                    commands += MdbxWriteCommand.UpdateEntry(item.objectId,item.collectionId,item.objectTypeId,item.title,payload.toString())
+                    if(item.deleted) commands += MdbxWriteCommand.DeleteEntry(item.objectId,item.collectionId)
+                    vault.executeWriteOperation(UUID.randomUUID().toString(),"device-vault-relations",commands)
+                }
+            } while(cursor != null)
+        }
+        markPendingUpload(databaseId)
+    }
+    private fun deviceSyncFolderGuard(vault: uniffi.mdbx_ffi.MdbxVault, id: String): String {
+        val current = vault.getCollectionSummary(id) ?: return ""
+        val tags = JSONArray(vault.listObjectLabels(id).filter { !it.deleted && JSONObject(it.payloadJson).optString("kind") in listOf("monica-project-tag","monica-device-folder-title-v2") }.sortedBy { it.labelId }.map { tag ->
+            JSONObject().put("id",tag.labelId).put("name",tag.name).put("payload",tag.payloadJson).put("version",tag.payloadSchemaVersion.toLong()) })
+        return sha256Hex(JSONObject().put("head",current.headCommitId).put("tags",tags).toString().toByteArray())
+    }
+    private fun deviceSyncGuard(vault: uniffi.mdbx_ffi.MdbxVault, id: String): String {
+        val current = vault.getObjectSummary(id) ?: return ""
+        val attachments = JSONArray(vault.listAttachments(current.collectionId,id).sortedBy { it.attachmentId }.map { a ->
+            JSONObject().put("id",a.attachmentId).put("hash",a.contentHash).put("deleted",a.deleted).put("name",a.fileName).put("media",a.mediaType) })
+        val labels = JSONArray(vault.listObjectLabelAssignments(id).filterNot { it.deleted }.sortedBy { it.assignmentId }.map { a ->
+            JSONObject().put("id",a.assignmentId).put("label",a.labelId).put("head",vault.getObjectLabelSummary(a.labelId)?.headCommitId) })
+        return sha256Hex(JSONObject().put("head",current.headCommitId).put("attachments",attachments).put("labels",labels).put("relations",deviceSyncRelations(vault,id)).toString().toByteArray())
+    }
+
+    private fun deviceSyncFolderTitle(vault: uniffi.mdbx_ffi.MdbxVault,id: String,title: String): String {
+        val marker = vault.listObjectLabels(id).filterNot { it.deleted }.mapNotNull { runCatching { JSONObject(it.payloadJson) }.getOrNull() }
+            .firstOrNull { it.optString("kind") == "monica-device-folder-title-v2" && it.optString("local_title") == title }
+        return marker?.getString("logical_title") ?: title
+    }
+    private fun deviceSyncFolderPath(id: String, projects: List<uniffi.mdbx_ffi.MdbxCollectionSummary>, root: String,logicalTitles: Map<String,String>): JSONArray {
+        val path = mutableListOf<JSONObject>(); val seen = mutableSetOf<String>(); var current = projects.firstOrNull { it.collectionId == id }
+        while(current != null && current.collectionId != root) {
+            require(seen.add(current.collectionId) && path.size < 128) { "invalid_folder" }
+            path += JSONObject().put("id", current.collectionId).put("title", logicalTitles[current.collectionId] ?: current.title).put("parent", current.groupId?.takeUnless { it == root } ?: JSONObject.NULL)
+            current = projects.firstOrNull { it.collectionId == current?.groupId }
+        }
+        return JSONArray(path.asReversed())
+    }
+    private fun ensureDeviceSyncFolders(vault: uniffi.mdbx_ffi.MdbxVault, path: JSONArray, updateId: String? = null) {
+        val commands = deviceSyncFolderCommands(vault,path,updateId)
+        if(commands.isNotEmpty()) vault.executeWriteOperation(UUID.randomUUID().toString(),"device-vault-folders",commands)
+    }
+    private fun deviceSyncFolderCommands(vault: uniffi.mdbx_ffi.MdbxVault, path: JSONArray, updateId: String? = null): List<MdbxWriteCommand> {
+        val result = mutableListOf<MdbxWriteCommand>()
+        require(path.length() <= 128) { "invalid_folder" }
+        val root = Mdbx2VaultSessionExecutor.rootProjectId(vault.info().vaultId)
+        val occupied = vault.listAllProjects(includeDeleted=true).filterNot { it.deleted }.associate {
+            (it.groupId ?: root) to it.title.lowercase(java.util.Locale.ROOT) to it.collectionId }.toMutableMap()
+        if(vault.getCollectionSummary(root) == null) result += MdbxWriteCommand.CreateProject(root, Mdbx2VaultSessionExecutor.ROOT_PROJECT_TITLE)
+        val seen = mutableSetOf<String>()
+        for(index in 0 until path.length()) {
+            val node = path.getJSONObject(index); val id = node.getString("id"); val logicalTitle = node.getString("title"); var title=logicalTitle
+            val parent = node.optString("parent").takeUnless { it.isBlank() || it == "null" } ?: root
+            require(UUID.fromString(id).toString() == id && UUID.fromString(parent).toString() == parent && id != parent && seen.add(id) && title.length <= 4096) { "invalid_folder" }
+            val current = vault.getCollectionSummary(id)
+            val other=occupied[parent to title.lowercase(java.util.Locale.ROOT)]
+            if(other!=null && other!=id) {
+                title=logicalTitle.take(4080)+" ["+id.take(8)+"]"
+                if(occupied[parent to title.lowercase(java.util.Locale.ROOT)]?.let { it!=id } == true) title=logicalTitle.take(4050)+" [$id]"
+            }
+            if(current==null || id==updateId) occupied[parent to title.lowercase(java.util.Locale.ROOT)]=id
+            val commands = buildList {
+                if(current == null) add(MdbxWriteCommand.CreateProjectWithParent(id, title, parent))
+                else if(id == updateId) {
+                    if(current.deleted) add(MdbxWriteCommand.RestoreProject(id, parent))
+                    if(current.title != title) add(MdbxWriteCommand.RenameProject(id, title))
+                    if(current.groupId != parent) add(MdbxWriteCommand.MoveProject(id, parent))
+                }
+            }
+            result += commands
+            if((current==null || id==updateId) && title!=logicalTitle) {
+                val payload=JSONObject().put("kind","monica-device-folder-title-v2").put("logical_title",logicalTitle).put("local_title",title).toString()
+                val marker=if(current==null) null else vault.listObjectLabels(id).firstOrNull { !it.deleted && JSONObject(it.payloadJson).optString("kind")=="monica-device-folder-title-v2" }
+                if(marker==null) result+=MdbxWriteCommand.CreateObjectLabel(UUID.randomUUID().toString(),id,"monica-device-folder-title-v2",payload,1u)
+                else if(marker.payloadJson!=payload) result+=MdbxWriteCommand.UpdateObjectLabel(marker.labelId,marker.name,payload,1u)
+            }
+        }
+        return result
+    }
+
+    internal suspend fun readDeviceSyncAsset(asset: takagi.ru.monica.lansync.DeviceVaultAsset): ByteArray =
+        sessions.withNativeReadVault(asset.databaseId) { _, vault ->
+            require(asset.size in 0..MAX_ATTACHMENT_BYTES) { "asset_limit" }
+            vault.readAttachmentContent(asset.nativeId, MAX_ATTACHMENT_BYTES.toULong()).also { bytes ->
+                if(bytes.size.toLong() != asset.size || sha256Hex(bytes) != asset.id) { bytes.fill(0); error("invalid_asset") }
+            }
+        }
 
     internal suspend fun managerCapture(databaseId: Long, id: String): MdbxManagerObject =
         sessions.withNativeReadVault(databaseId, MdbxTigaScope(MdbxTigaScopeType.ENTRY, id)) { database, vault ->
@@ -1515,6 +1891,37 @@ class Mdbx2Repository(
         )
     }
 
+    internal suspend fun prepareLanSyncArtifacts(databaseId: Long, directory: File, includeBootstrap: Boolean): String =
+        withReadVaultForSync(databaseId) { database, vault ->
+            requireMdbxRemoteVaultAllowed(vault)
+            requireLanAttachmentsPortable(vault)
+            check(directory.mkdirs() || directory.isDirectory)
+            val bundle = vault.exportManualSyncBundle(File(directory, "changes.mdbxsync").absolutePath)
+            if (includeBootstrap) {
+                val backup = uniffi.mdbx_ffi.createPortableBackup(database.resolvedActiveFilePath(), File(directory, "vault.mdbx").absolutePath)
+                check(backup.vaultId == bundle.vaultId) { "Vault identity changed" }
+            }
+            bundle.vaultId
+        }
+
+    internal suspend fun applyLanSyncFile(databaseId: Long, file: File): Int =
+        sessions.withMutatingVault(databaseId) { _, vault ->
+            requireMdbxRemoteVaultAllowed(vault)
+            requireLanAttachmentsPortable(vault)
+            val result = vault.applyManualSyncBundle(file.absolutePath)
+            check(result.missingParentCount == 0u) { "The sync bundle has missing dependencies" }
+            if (result.appliedCommits > 0u || result.conflictCount > 0u) markPendingUpload(databaseId)
+            result.conflictCount.toInt()
+        }
+
+    private fun requireLanAttachmentsPortable(vault: uniffi.mdbx_ffi.MdbxVault) {
+        val references = vault.listExternalBlobReferences(null, 1u)
+        if (references.rawReferenceCount > 0u || references.uniqueReferenceCount > 0u ||
+            references.items.isNotEmpty() || vault.diagnosticsSummary().externalAttachmentCount > 0u) {
+            throw takagi.ru.monica.lansync.LanSyncException("external_blobs")
+        }
+    }
+
     override suspend fun exportSyncBundle(databaseId: Long, baseCommitId: String?): MdbxSyncBundle {
         require(baseCommitId.isNullOrBlank()) {
             "MDBX2 manual sync exports a complete authenticated bundle; incremental base commits are not accepted"
@@ -2023,6 +2430,7 @@ class Mdbx2Repository(
             .put("monica_password_encoding", "plaintext-v1")
             .put("notes", entry.notes)
             .put("sort_order", entry.sortOrder)
+            .put("is_favorite",entry.isFavorite).put("created_at",entry.createdAt.time)
             .put("category_id", entry.categoryId)
             .put("mdbx_folder_id", entry.mdbxFolderId)
             .put("bound_note_room_id", entry.boundNoteId)
@@ -2058,6 +2466,7 @@ class Mdbx2Repository(
             .put("room_id", item.id)
             .put("notes", item.notes)
             .put("sort_order", item.sortOrder)
+            .put("is_favorite",item.isFavorite).put("created_at",item.createdAt.time)
             .put("item_data", decryptSensitiveValue(item.itemData, "item_data", item.id))
             .put("image_paths", item.imagePaths)
             .put("category_id", item.categoryId)
@@ -2293,12 +2702,12 @@ class Mdbx2Repository(
         MdbxStoredVaultEntry(if (MdbxUnknownEntry.isUnknown(entryType)) entryId else logicalEntryId(),
             entryType, title, payloadJson, deleted, projectId)
 
-    private fun MdbxVault.listAllProjects(): List<uniffi.mdbx_ffi.MdbxCollectionSummary> {
+    private fun MdbxVault.listAllProjects(includeDeleted: Boolean = false): List<uniffi.mdbx_ffi.MdbxCollectionSummary> {
         val projects = mutableListOf<uniffi.mdbx_ffi.MdbxCollectionSummary>()
         var cursor: String? = null
         do {
             val page = listCollectionSummaries(COLLECTION_PAGE_SIZE, cursor)
-            projects += page.items.filterNot { it.deleted }
+            projects += page.items.filter { includeDeleted || !it.deleted }
             cursor = page.nextCursor
         } while (cursor != null)
         return projects

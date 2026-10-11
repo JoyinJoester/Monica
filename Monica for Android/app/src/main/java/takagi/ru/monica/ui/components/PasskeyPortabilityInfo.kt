@@ -79,7 +79,7 @@ private fun PasskeyPortability.label(): Int = when (this) {
     else -> R.string.passkey_portability_restricted
 }
 
-private fun PasskeyPortability.description(): Int = when (this) {
+internal fun PasskeyPortability.description(): Int = when (this) {
     PasskeyPortability.PORTABLE -> R.string.passkey_portability_exportable_hint
     PasskeyPortability.DEVICE_ONLY -> R.string.passkey_portability_local_hint
     PasskeyPortability.KEY_UNAVAILABLE -> R.string.passkey_portability_missing_hint

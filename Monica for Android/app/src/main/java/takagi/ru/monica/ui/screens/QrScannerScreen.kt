@@ -210,6 +210,7 @@ private fun QrCodeScanner(
         }
     }
     var showOverlay by remember { mutableStateOf(false) }
+    var invalidCandidateSeen by remember { mutableStateOf(false) }
 
     val acceptResult: (String?) -> Boolean = acceptResult@{ raw ->
         val value = raw?.trim()?.takeIf { it.isNotBlank() } ?: return@acceptResult false
@@ -244,6 +245,7 @@ private fun QrCodeScanner(
             diagnostics = diagnostics,
             onCandidates = { candidates, _, _ ->
                 val value = candidates.firstOrNull(currentValidator.value)
+                if (value == null && candidates.isNotEmpty()) invalidCandidateSeen = true
                 // The camera session dispatches validation and acceptance together
                 // on the main thread, after releasing the frame and checking liveness.
                 value != null && acceptResult(value)
@@ -385,6 +387,10 @@ private fun QrCodeScanner(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (invalidCandidateSeen && invalidResultMessage != null) {
+                            Text(invalidResultMessage, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             }

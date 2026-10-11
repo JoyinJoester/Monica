@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface PasswordEntryDao {
+    @Query("SELECT * FROM password_entries WHERE keepassDatabaseId IS NULL AND mdbx_database_id IS NULL AND bitwarden_vault_id IS NULL ORDER BY id")
+    suspend fun getDeviceSyncLocalPasswords(): List<PasswordEntry>
     /** Metadata projection for common-field suggestions; never select password material. */
     @Query("SELECT id, website, creditCardHolder, addressLine, city, state, zipCode, country, keepassDatabaseId, bitwarden_vault_id AS bitwardenVaultId, mdbx_database_id AS mdbxDatabaseId FROM password_entries WHERE $MDBX_AVAILABLE_ENTRY_FILTER AND isDeleted = 0 AND isArchived = 0")
     fun observeCommonSuggestionOwners(): Flow<List<CommonSuggestionOwner>>

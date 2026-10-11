@@ -128,6 +128,7 @@ fun AddEditBankCardScreen(
     onEmbeddedSave: (suspend (takagi.ru.monica.attachments.EmbeddedWalletEditorResult) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    takagi.ru.monica.lansync.DeviceSyncEditorLease()
     val coroutineScope = rememberCoroutineScope()
     val database = remember { PasswordDatabase.getDatabase(context) }
     val securityManager = takagi.ru.monica.ui.rememberUiSecurityManager()

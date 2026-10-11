@@ -4342,8 +4342,12 @@ fun VaultV2Pane(
                                 }
                                 PasswordBatchDeleteProgressTracker.complete(deleted)
                                 completed = true
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                Toast.makeText(context, R.string.batch_delete_incomplete_title, Toast.LENGTH_LONG).show()
                             } finally {
-                                if (!completed) PasswordBatchDeleteProgressTracker.clear()
+                                if (!completed) PasswordBatchDeleteProgressTracker.fail()
                             }
                         }
 					selection.forEach { item ->

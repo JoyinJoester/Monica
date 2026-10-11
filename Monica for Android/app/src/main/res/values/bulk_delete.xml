@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="batch_delete_incomplete_title">Deletion incomplete</string>
+    <string name="batch_delete_interrupted_count">Interrupted after processing %1$d of %2$d items. Check the remaining items before retrying.</string>
+</resources>

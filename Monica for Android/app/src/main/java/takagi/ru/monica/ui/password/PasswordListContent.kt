@@ -2066,9 +2066,6 @@ fun PasswordListContent(
         viewModel = viewModel,
         context = context,
         coroutineScope = coroutineScope,
-        enableBatchDeleteProgress = selectedPasswords.any { id ->
-            passwordEntries.any { it.id == id && it.keepassDatabaseId != null }
-        } || selectedSupplementaryItems.any { it.entry.keepassDatabaseId != null },
         onDeleteSelection = { onProgress ->
             val selectedPasswordIdsSnapshot = selectedPasswords.toSet()
             val selectedSupplementaryItemsSnapshot = selectedSupplementaryItems.toList()

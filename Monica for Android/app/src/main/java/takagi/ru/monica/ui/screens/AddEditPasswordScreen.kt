@@ -310,6 +310,10 @@ fun AddEditPasswordScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
+    DisposableEffect(Unit) {
+        val syncEdit = takagi.ru.monica.lansync.DeviceSyncEditGate.hold()
+        onDispose { syncEdit.close() }
+    }
     val database = remember(context) { PasswordDatabase.getDatabase(context) }
     val security = takagi.ru.monica.ui.rememberUiSecurityManager()
     val repository = remember(database, security) { takagi.ru.monica.repository.SecureItemRepository(database.secureItemDao(), decryptSensitiveValue = security::decryptDataIfMonicaCiphertext) }

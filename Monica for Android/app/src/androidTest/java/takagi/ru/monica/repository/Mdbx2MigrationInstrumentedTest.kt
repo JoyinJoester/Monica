@@ -8,6 +8,8 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -323,7 +325,9 @@ class Mdbx2MigrationInstrumentedTest {
             room.attachmentDao().deleteById(attachmentRoomId)
             attachmentRoomId = 0L
             val retrySourceHash = sha256(sourceFile)
-            viewModel.prepareMdbx2Migration(sourceDatabaseId)
+            // Match the UI dispatcher so Preparing replaces the previous Error
+            // before the test starts awaiting this new operation's result.
+            withContext(Dispatchers.Main.immediate) { viewModel.prepareMdbx2Migration(sourceDatabaseId) }
             val retryReady = withTimeout(120_000) {
                 viewModel.migrationState.first {
                     it is MdbxViewModel.MdbxMigrationState.Ready ||

@@ -3544,10 +3544,9 @@ class PasswordViewModel internal constructor(
         if (localTargets.isNotEmpty()) {
             val appliedCount = applyLocalDeleteBatch(localTargets, trashEnabled)
             deletedCount += appliedCount
-            repeat(localTargets.size) {
-                processedCount++
-                onProgress?.invoke(processedCount, totalCount)
-            }
+            // The native transaction commits as a batch; report that boundary once.
+            processedCount += localTargets.size
+            onProgress?.invoke(processedCount, totalCount)
         }
 
         if (keepassTargets.isEmpty()) return deletedCount
@@ -4837,14 +4836,14 @@ class PasswordViewModel internal constructor(
                     embeddedContentSave = embeddedContentSave
                 )
 
-                    if (initialId == null) {
-                        Log.e(
-                            "PasswordViewModel",
-                            "savePasswordsAcrossTargets failed current target=${currentTarget.stableKey} originalIds=$originalIds targets=$requestedTargetKeys"
-                        )
-                        return@withContext PasswordSaveAcrossTargetsResult(null, emptyList())
-                    }
-                    val savedTargetFirstIds = mutableListOf(initialId)
+                if (initialId == null) {
+                    Log.e(
+                        "PasswordViewModel",
+                        "savePasswordsAcrossTargets failed current target=${currentTarget.stableKey} originalIds=$originalIds targets=$requestedTargetKeys"
+                    )
+                    return@withContext PasswordSaveAcrossTargetsResult(null, emptyList())
+                }
+                val savedTargetFirstIds = mutableListOf(initialId)
 
                 distinctTargets
                     .filter { target ->

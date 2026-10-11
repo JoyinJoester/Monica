@@ -179,6 +179,7 @@ fun AddEditTotpScreen(
     }
     val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
     val context = LocalContext.current
+    takagi.ru.monica.lansync.DeviceSyncEditorLease()
     val coroutineScope = rememberCoroutineScope()
     val settingsManager = remember { SettingsManager(context) }
     val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())

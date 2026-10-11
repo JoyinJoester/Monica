@@ -7398,8 +7398,8 @@ class KeePassKdbxService(
                 sourceSignature = currentSourceSignature(database),
                 sourceRevision = source.revision
             )
-                cacheLoadedDatabase(loaded)
-                loaded
+            cacheLoadedDatabase(loaded)
+            loaded
             } finally {
                 source.close()
             }

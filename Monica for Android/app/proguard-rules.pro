@@ -97,3 +97,4 @@
 
 # 确保实体类不被混淆 (特别是用于 JSON 序列化的)
 -keep class takagi.ru.monica.data.model.** { *; }
+-keep class takagi.ru.monica.lansync.RustLanSync { *; }
