@@ -38,7 +38,10 @@ class NearbySteamTransportTest {
                 .put("revocation_code", "R00000").put("access_token", "synthetic-access")
                 .put("refresh_token", "synthetic-refresh").put("future_field", "preserved")
             val id = repository.upsertFromMaFile(SteamMaFileParser().parse(raw.toString()))
-            repository.moveToCategory(id, db.categoryDao().insert(Category(name = "Steam fixture folder")))
+            // A shared local category can also be linked to a Bitwarden folder.
+            // That link must neither block local export nor become a remote binding.
+            repository.moveToCategory(id, db.categoryDao().insert(Category(name = "Steam fixture folder",
+                bitwardenVaultId = 42L, bitwardenFolderId = "synthetic-external-folder")))
             outgoing = provider.prepare(File(root, "outgoing"))
         }
         fun request(operation: String) = JSONObject().put("operation", operation).put("protocol", 2)

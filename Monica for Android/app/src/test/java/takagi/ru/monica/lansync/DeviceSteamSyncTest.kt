@@ -123,6 +123,20 @@ class DeviceSteamSyncTest {
         assertEquals(namesA, namesB)
     } }
 
+    @Test fun sharedLocalFolderWithBitwardenLinkCanPrepareAndTransfer() = runBlocking { withTimeout(60000) {
+        val a = fixture(); val b = fixture()
+        val categoryId = a.database.categoryDao().insert(Category(name = "Shared local folder",
+            bitwardenVaultId = 42L, bitwardenFolderId = "external-folder"))
+        val id = a.seed()
+        a.repository.moveToCategory(id, categoryId)
+        send(a, b)
+        val folder = b.database.categoryDao().getCategoryById(requireNotNull(b.repository.getAccounts().single().categoryId))!!
+        assertEquals("Shared local folder", folder.name)
+        assertNull(folder.bitwardenVaultId)
+        assertNull(folder.bitwardenFolderId)
+        assertEquals(42L, a.database.categoryDao().getCategoryById(categoryId)?.bitwardenVaultId)
+    } }
+
     @Test fun activeAccountSelectionDoesNotCreateNewSyncRevision() = runBlocking { withTimeout(60000) {
         val a = fixture()
         val id = a.seed()

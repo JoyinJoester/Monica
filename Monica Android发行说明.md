@@ -4,6 +4,8 @@
 
 ## 中文
 
+- 修复附近同步准备内容时的文件夹标识缺失异常：本地 Steam 等条目使用关联 Bitwarden 的共享分类时保留文件夹归属，不复制外部账户绑定；本地 Passkey 遗留 MDBX 文件夹引用不再阻断同步。准备失败诊断增加具体操作位置，不记录凭据内容。
+
 - 重做附近设备同步页面，复用 M3E 分组设置组件与底部弹层，生成二维码时可复制配对链接；附近同步与扫码使用统一转场，扫码返回保留在附近同步页面。修复快速失败或取消配对时前台服务启动竞态导致的闪退，并从当前源码构建安装包中的同步组件。
 - Steam 本地账户支持附近设备同步，保留令牌、会话信息、未知 maFile 字段及文件夹；接收端重新加密存储，同 Steam ID 的独立副本不合并，离线冲突保留副本。
 
@@ -31,6 +33,8 @@
 - 修复仅绑定 Bitwarden／Vaultwarden 时密码库首页和搜索可能看不到已同步条目：未保存数据库范围时默认显示“全部”，旧版省略范围的设置同步采用该默认值；明确保存的本地库或具体数据库选择继续保留，锁定库仍不参与展示与搜索。
 
 ## English
+
+- Fixed missing folder identities aborting Nearby sync preparation. Local Steam and other entries retain shared categories linked to Bitwarden without copying external account bindings; stale MDBX folder references on local Passkeys no longer block sync. Preparation diagnostics identify the failing operation without recording credential content.
 
 - Redesigned Nearby sync with shared M3E settings groups and bottom sheets. Generated QR codes also offer a copyable pairing link. Nearby and scanner routes use shared transitions, and scanner Back returns to Nearby sync. Fixed the foreground-service startup race on immediate pairing failure or cancellation, and build packaged sync components from current source.
 - Nearby sync includes local Steam accounts, preserving tokens, session data, unknown maFile fields and folders. Received data is encrypted again at rest; independent copies sharing a Steam ID stay separate, and offline conflicts retain copies.

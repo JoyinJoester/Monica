@@ -103,7 +103,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     private suspend fun reconcile(force: Boolean = false) {
         currentCoroutineContext().ensureActive()
         check(SessionManager.isUnlocked.value) { "device_sync_locked" }
-        refreshProjections()
+        preparingDeviceSync("refresh_projection") { refreshProjections() }
         ensureOpen()
         val observed = changes.get()
         val checkedAt = android.os.SystemClock.elapsedRealtime()
@@ -112,19 +112,19 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
         if (!force && sourceRevision != null && observed == observedChanges && checkedAt - lastRevisionCheck < 5000) return
         val nativeDatabases = database.localMdbxDatabaseDao().getAvailableDatabasesSnapshot()
             .filter { it.engineTypeEnum == MdbxEngineType.RUST_MDBX2 && it.tigaModeEnum != MdbxTigaMode.GLITTER }
-        val revisions = nativeDatabases.map { "${it.id}:${native.deviceSyncRevision(it.id)}" }
+        val revisions = nativeDatabases.map { preparingDeviceSync("mdbx_revision_${it.id}") { "${it.id}:${native.deviceSyncRevision(it.id)}" } }
         val marker = observed.toString() + revisions.joinToString(";")
         observedChanges = observed; lastRevisionCheck = checkedAt
         if (!force && marker == sourceRevision) return
         onProgress?.invoke(DeviceSyncProgress("preparing"))
-        metadata.prepareIdentities()
+        preparingDeviceSync("room_identities") { metadata.prepareIdentities() }
         val local = database.withTransaction {
             val identities = identities()
             val entries = passwords.getDeviceSyncLocalPasswords()
             val fieldsById = if (entries.isEmpty()) emptyMap() else fields.getFieldsByEntryIds(entries.map { it.id }).groupBy { it.entryId }
             val categoryNames = categories.getDeviceSyncCategories().associate { it.id to it.name }
             entries.map { entry ->
-                val data = metadata.password(entry, fieldsById[entry.id].orEmpty(), categoryNames[entry.categoryId].orEmpty())
+                val data = preparingDeviceSync("room_password_${entry.id}") { metadata.password(entry, fieldsById[entry.id].orEmpty(), categoryNames[entry.categoryId].orEmpty()) }
                 data.put("entry_type", identities[entry.id]?.second ?: "login")
                 val snapshot = DevicePasswordSnapshot("local:${entry.id}", identities[entry.id]?.first.orEmpty(), "local", DevicePasswordShape.guard(entry, data), entry.isDeleted, data)
                 withLocalAssets(snapshot, attachments.getAllByParent(entry.id).filter { !it.isDeleted || entry.isDeleted })
@@ -133,30 +133,30 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
         val folderNames = categories.getDeviceSyncCategories().associate { it.id to it.name }
         val vaultIds = vaultIdentities()
         secureItems.getDeviceSyncLocalItems().forEach { item ->
-            val data = metadata.secure(item, folderNames[item.categoryId].orEmpty())
+            val data = preparingDeviceSync("room_item_${item.id}") { metadata.secure(item, folderNames[item.categoryId].orEmpty()) }
             val address = "secure:${item.id}"
             local += withLocalAssets(DevicePasswordSnapshot(address, vaultIds[address].orEmpty(), "secure", DevicePasskeyShape.guard(data) + ":" + item.isDeleted, item.isDeleted, data),
                 attachments.getAllBySecureItem(item.id).filter { !it.isDeleted || item.isDeleted })
         }
         val issues = mutableListOf<DevicePasskeySyncIssue>()
         passkeys.getAllPasskeysSync().filter { it.isDeviceSyncLocal() }.forEach { item ->
-            val data = localPasskey(item)
+            val data = preparingDeviceSync("room_passkey_${item.id}") { localPasskey(item) }
             val address = "passkey:${item.id}"
             val exported = DevicePasswordSnapshot(address, vaultIds[address] ?: DevicePasskeyShape.identity(item), "passkeys", DevicePasskeyShape.guard(data), false, data)
             local += exported
             DevicePasskeySyncIssue.from(exported, item.signCount)?.let(issues::add)
         }
-        categories.getDeviceSyncCategories().filter { it.mdbxDatabaseId == null && it.bitwardenVaultId == null }.forEach { category ->
-            val data = metadata.folder(category)
+        categories.getDeviceSyncCategories().filter { it.isMonicaLocalCategory() }.forEach { category ->
+            val data = preparingDeviceSync("room_folder_${category.id}") { metadata.folder(category) }
             local += DevicePasswordSnapshot("folder:${category.id}", metadata.global("folder:${category.id}").orEmpty(), "folders", DevicePasskeyShape.guard(data), false, data)
         }
         nativeDatabases.forEach {
-            val exported = native.deviceSyncPasswords(it.id)
+            val exported = preparingDeviceSync("mdbx_export_${it.id}") { native.deviceSyncPasswords(it.id) }
             local += exported
             issues += exported.mapNotNull { entry -> DevicePasskeySyncIssue.from(entry) }
         }
-        local += metadata.rootMetadata()
-        local += steam.snapshots()
+        local += preparingDeviceSync("room_metadata") { metadata.rootMetadata() }
+        local += preparingDeviceSync("steam_accounts") { steam.snapshots() }
         normalizeNativeReferences(local)
         assets = local.flatMap { it.assets }.distinctBy { it.id }
         primaryNativeId = nativeDatabases.firstOrNull { it.isDefault }?.id
@@ -559,10 +559,13 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     private suspend fun localPasskey(item: PasskeyEntry): JSONObject {
         val current = DevicePasskeyShape.withRecord("room_${item.id}", item.rpName.ifBlank { item.rpId }) { DevicePasskeyShape.export(app, item) }
         current.getJSONObject("payload").put("bound_password_entry_id",item.boundPasswordId?.let { metadata.global("local:$it") } ?: JSONObject.NULL)
-        val category = item.categoryId?.let { categories.getCategoryById(it) }
+        // A legacy local record can retain a category ID owned by an MDBX mirror.
+        // Keep that source record intact; do not export the foreign folder as local.
+        val category = item.categoryId?.let { categories.getCategoryById(it) }?.takeIf { it.isMonicaLocalCategory() }
         current.put("folder", category?.name.orEmpty())
         if(category != null) current.put("folder_path",metadata.folder(category).getJSONObject("payload").getJSONArray("path"))
         val data = metadata.supplement("passkey:${item.id}", current)
+        if (category == null) data.remove("folder_path")
         if(!data.has("folder_path") && category != null) data.put("folder_path", metadata.folder(category).getJSONObject("payload").getJSONArray("path"))
         return data
     }

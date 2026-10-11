@@ -236,14 +236,14 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         }
         try {
             val receiveOnly = settings().mode == DeviceSyncMode.RECEIVE_ONLY
-            val revision = if (receiveOnly) receiveOnlyRevision else data.revision()
+            val revision = if (receiveOnly) receiveOnlyRevision else preparingDeviceSync("vault_revision") { data.revision() }
             val issues = if (receiveOnly) emptyList() else data.currentPasskeyIssues()
             snapshot?.takeIf { it.revision == revision && it.passkeyIssues == issues }?.let { return it }
             val directory = File(root, "out-${UUID.randomUUID()}").also { snapshots += it }
             snapshot = if (receiveOnly) {
                 check(directory.mkdirs() || directory.isDirectory)
                 DevicePasswordExport(revision, directory, "")
-            } else data.prepare(directory)
+            } else preparingDeviceSync("vault_export") { data.prepare(directory) }
             return requireNotNull(snapshot)
         } finally {
             cleanSnapshots()
@@ -456,7 +456,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         if (stage == "preparing") passkeyConsent.clearPending()
         error = errorCode(failure)
         failureStage = stage
-        failureKind = failure.javaClass.simpleName
+        failureKind = (failure as? LanSyncException)?.failureKind?.ifEmpty { null } ?: failure.javaClass.simpleName
         failureOperation = (failure as? LanSyncException)?.operation.orEmpty()
         failureRecordName = (failure as? LanSyncException)?.recordName.orEmpty()
         phase = "failed"; dataProgress = null

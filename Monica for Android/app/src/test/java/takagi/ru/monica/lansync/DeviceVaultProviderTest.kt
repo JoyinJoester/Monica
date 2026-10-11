@@ -66,6 +66,29 @@ class DeviceVaultProviderTest {
             File(context.filesDir,"fixture-${UUID.randomUUID()}.replica"))
     }
 
+    @Test fun local_passkey_with_stale_mdbx_folder_does_not_abort_preparation() = runBlocking { withTimeout(60000) {
+        SessionManager.markUnlocked()
+        val (database, provider) = vault()
+        val (receivedDatabase, receiver) = vault()
+        try {
+            val context = RuntimeEnvironment.getApplication()
+            val folderId = database.categoryDao().insert(Category(name = "Foreign native folder", mdbxDatabaseId = 42L))
+            val pair = java.security.KeyPairGenerator.getInstance("EC").apply {
+                initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+            }.generateKeyPair()
+            val entry = takagi.ru.monica.passkey.PasskeyPrivateKeyStore.protectPasskey(context, PasskeyEntry(
+                credentialId = UUID.randomUUID().toString(), rpId = "example.test", rpName = "Legacy local folder",
+                userId = "Zml4dHVyZQ==", userName = "fixture", userDisplayName = "Fixture", categoryId = folderId,
+                publicKey = Base64.getEncoder().encodeToString(pair.public.encoded),
+                privateKeyAlias = Base64.getEncoder().encodeToString(pair.private.encoded)))
+            database.passkeyDao().insert(entry)
+            val outgoing = provider.prepare(File(context.filesDir, "stale-folder-${UUID.randomUUID()}"))
+            receiver.apply(outgoing.directory, JSONObject().put("pairing", JSONObject().put("content_key", outgoing.contentKey)))
+            assertNull(receivedDatabase.passkeyDao().getAllPasskeysSync().single().categoryId)
+            assertEquals(folderId, database.passkeyDao().getAllPasskeysSync().single().categoryId)
+        } finally { provider.pause(); receiver.pause() }
+    } }
+
     @Test fun locally_created_spki_passkey_can_prepare() = runBlocking { withTimeout(60000) {
         SessionManager.markUnlocked()
         val (database, provider) = vault()

@@ -43,7 +43,7 @@ internal class DeviceRoomVaultMetadata(private val database: PasswordDatabase, p
         tables()
         val addresses = database.passwordEntryDao().getDeviceSyncLocalPasswords().map { "local:${it.id}" } +
             database.secureItemDao().getDeviceSyncLocalItems().map { "secure:${it.id}" } +
-            database.categoryDao().getDeviceSyncCategories().filter { it.mdbxDatabaseId == null && it.bitwardenVaultId == null }.map { "folder:${it.id}" }
+            database.categoryDao().getDeviceSyncCategories().filter { it.isMonicaLocalCategory() }.map { "folder:${it.id}" }
         val known = mutableMapOf<String,String>()
         addresses.chunked(256).forEach { batch -> val items = lookup(batch).getJSONArray("items"); for(i in 0 until items.length()) {
             val item = items.getJSONObject(i); known[item.getString("local_id")] = item.getString("global_id")
@@ -75,7 +75,17 @@ internal class DeviceRoomVaultMetadata(private val database: PasswordDatabase, p
         return saved
     }
     fun folder(category: Category): JSONObject {
-        val id = requireNotNull(global("folder:${category.id}"))
+        if (!category.isMonicaLocalCategory()) throw LanSyncException("invalid_folder", "room_folder_scope")
+        val address = "folder:${category.id}"
+        // Local categories may also have a Bitwarden link. That does not make the
+        // local records using them external. A category can also be created after
+        // the initial identity scan, so assign its portable identity on demand.
+        val id = global(address) ?: run {
+            database.openHelper.writableDatabase.execSQL(
+                "INSERT OR IGNORE INTO device_sync_vault_identity(global_id,local_id) VALUES(?,?)",
+                arrayOf(UUID.randomUUID().toString(), address))
+            global(address) ?: throw LanSyncException("invalid_folder", "room_folder_identity")
+        }
         val result = supplement("folder:${category.id}", JSONObject().put("title", category.name).put("folder", "").put("entry_type", "folder").put("payload",JSONObject()))
         val payload = result.getJSONObject("payload")
         val path = payload.optJSONArray("path") ?: JSONArray().put(JSONObject().put("id",id).put("title",category.name).put("parent",JSONObject.NULL))
