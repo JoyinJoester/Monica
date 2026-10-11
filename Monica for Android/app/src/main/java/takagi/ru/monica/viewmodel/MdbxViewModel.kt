@@ -4402,6 +4402,11 @@ class MdbxViewModel(
             PasskeyPrivateKeyStore.hasUsablePrivateKey(context, localKey) -> prior?.syncStatus?.takeUnless { it == "REFERENCE" } ?: "NONE"
             else -> "REFERENCE"
         }
+        val backupEligibility = takagi.ru.monica.passkey.PasskeyBackupFlags.mergeEligibility(
+            prior?.backupEligible, takagi.ru.monica.passkey.PasskeyBackupFlags.readBoolean(payload, "backup_eligible"),
+            hasExistingCredential = prior != null)
+        val backupState = takagi.ru.monica.passkey.PasskeyBackupFlags.readBoolean(payload, "backup_state") ?: prior?.backupState
+        takagi.ru.monica.passkey.PasskeyBackupFlags.authenticatorFlags(backupEligibility, backupState)
         val passkey = PasskeyPrivateKeyStore.protectPasskey(context, PasskeyEntry(
             id = prior?.id ?: 0L,
             credentialId = credentialId,
@@ -4416,10 +4421,8 @@ class MdbxViewModel(
             transports = payload.optString("transports", "internal"),
             aaguid = payload.optString("aaguid"),
             signCount = payload.optLong("sign_count", 0L),
-            backupEligible = takagi.ru.monica.passkey.PasskeyBackupFlags.mergeEligibility(
-                existing?.backupEligible, takagi.ru.monica.passkey.PasskeyBackupFlags.readBoolean(payload, "backup_eligible"),
-                hasExistingCredential = existing != null),
-            backupState = takagi.ru.monica.passkey.PasskeyBackupFlags.readBoolean(payload, "backup_state") ?: existing?.backupState,
+            backupEligible = backupEligibility,
+            backupState = backupState,
             notes = payload.optString("notes"),
             passkeyMode = payload.optString("passkey_mode", PasskeyEntry.MODE_LEGACY),
             mdbxDatabaseId = databaseId,

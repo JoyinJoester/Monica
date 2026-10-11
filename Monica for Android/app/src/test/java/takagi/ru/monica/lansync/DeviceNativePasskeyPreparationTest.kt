@@ -147,7 +147,7 @@ class DeviceNativePasskeyPreparationTest {
                         PasskeyEntry(credentialId = credential, rpId = "example.test", rpName = "Projection key",
                             userId = "Zml4dHVyZQ==", userName = "fixture", userDisplayName = "Fixture",
                             publicKeyAlgorithm = algorithm, publicKey = Base64.getEncoder().encodeToString(pair.public.encoded),
-                            privateKeyAlias = Base64.getEncoder().encodeToString(pair.private.encoded), mdbxDatabaseId = id)))
+                            privateKeyAlias = Base64.getEncoder().encodeToString(pair.private.encoded), backupEligible = false, backupState = false)))
                     val payload = JSONObject().put("kind", "passkey").put("credential_id", credential)
                         .put("rp_id", "example.test").put("user_id", "Zml4dHVyZQ==")
                         .put("public_key", requireNotNull(takagi.ru.monica.credentialexchange.CxfPasskeyMaterial.decode(pair.private.encoded, algorithm)).cosePublicKey)
@@ -163,7 +163,11 @@ class DeviceNativePasskeyPreparationTest {
             model.refreshDeviceSyncProjection(id)
             val projected = database.passkeyDao().getAllPasskeysSync()
             assertEquals(3, projected.size)
-            for (item in projected) assertEquals(expected[item.credentialId], item.publicKeyAlgorithm)
+            for (item in projected) {
+                assertEquals(expected[item.credentialId], item.publicKeyAlgorithm)
+                assertEquals(false, item.backupEligible)
+                assertEquals(false, item.backupState)
+            }
         } finally {
             models.clear()
             ReflectionHelpers.setStaticField(PasswordDatabase::class.java, "INSTANCE", previous)
