@@ -23,7 +23,7 @@ internal data class DeviceSyncState(
     val phase: String = "idle", val pairing: Boolean = false, val code: String = "",
     val invitations: List<String> = emptyList(), val error: String? = null,
     val failureStage: String = "", val connectionAttempts: Int = 0, val failureKind: String = "",
-    val failureOperation: String = "", val progress: DeviceSyncProgress? = null
+    val failureOperation: String = "", val progress: DeviceSyncProgress? = null, val failureRecordName: String = ""
 )
 
 /** App-owned coordinator. Leaving settings does not cancel remembered-device synchronization. */
@@ -57,6 +57,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     private var connectionAttempts = 0
     private var failureKind = ""
     private var failureOperation = ""
+    private var failureRecordName = ""
     private var loadAfter = 0L
     private var running: Job? = null
     private var multicast: WifiManager.MulticastLock? = null
@@ -104,8 +105,12 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         val settings = preferences
         mutableState.value = DeviceSyncState(settings?.enabled ?: state.value.enabled,
             settings?.intervalSeconds ?: state.value.intervalSeconds,
-            settings?.peers?.map { DeviceSyncPeerState(it.deviceId, it.name, statuses[it.deviceId] ?: "offline", it.lastSyncedAt) } ?: state.value.peers,
-            phase, pairing, code, invitations, error, failureStage, connectionAttempts, failureKind, failureOperation, dataProgress)
+            settings?.peers?.map {
+                val status = if (error != null && failureStage == "preparing") "preparation_failed"
+                    else statuses[it.deviceId] ?: if (it.lastSyncedAt == 0L) "first_sync_pending" else "offline"
+                DeviceSyncPeerState(it.deviceId, it.name, status, it.lastSyncedAt)
+            } ?: state.value.peers,
+            phase, pairing, code, invitations, error, failureStage, connectionAttempts, failureKind, failureOperation, dataProgress, failureRecordName)
         DeviceSyncService.update(app, mutableState.value)
     }
 
@@ -197,6 +202,9 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         RustLanSync.request(JSONObject().put("operation", operation).put("handle", handle))
 
     private suspend fun currentSnapshot(): DevicePasswordExport {
+        if (failureStage == "preparing") {
+            error = null; failureStage = ""; failureKind = ""; failureOperation = ""; failureRecordName = ""
+        }
         val revision = data.revision()
         snapshot?.takeIf { it.revision == revision }?.let { return it }
         val directory = File(root, "out-${UUID.randomUUID()}").also { snapshots += it }
@@ -400,6 +408,8 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         failureStage = stage
         failureKind = failure.javaClass.simpleName
         failureOperation = (failure as? LanSyncException)?.operation.orEmpty()
+        failureRecordName = (failure as? LanSyncException)?.recordName.orEmpty()
+        if (stage == "preparing") { phase = "failed"; dataProgress = null }
         connectionAttempts = attempts
         DeviceSyncDiagLogger.failure(stage, error.orEmpty(), failureKind, attempts, failureOperation)
     }

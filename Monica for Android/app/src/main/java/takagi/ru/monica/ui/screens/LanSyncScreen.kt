@@ -105,6 +105,8 @@ fun LanSyncScreen(vaults: MdbxViewModel, onNavigateBack: () -> Unit, onManageVau
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(stringResource(R.string.device_sync_description))
+            Text(stringResource(R.string.device_sync_version, takagi.ru.monica.BuildConfig.VERSION_NAME),
+                style = MaterialTheme.typography.bodySmall)
             Card {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -141,8 +143,10 @@ fun LanSyncScreen(vaults: MdbxViewModel, onNavigateBack: () -> Unit, onManageVau
                             "scheduled" -> R.string.device_sync_scheduled
                             "paused" -> R.string.device_sync_paused
                             "locked" -> R.string.device_sync_locked
-                            "waiting" -> R.string.device_sync_waiting
-                            else -> R.string.device_sync_offline
+                            "preparation_failed" -> R.string.device_sync_preparation_failed_status
+                            "first_sync_pending" -> R.string.device_sync_first_pending
+                            "waiting" -> if (peer.lastSyncedAt == 0L) R.string.device_sync_first_pending else R.string.device_sync_waiting
+                            else -> if (peer.lastSyncedAt == 0L) R.string.device_sync_first_pending else R.string.device_sync_offline
                         }))
                         if (peer.lastSyncedAt > 0) Text(stringResource(R.string.device_sync_last,
                             DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(peer.lastSyncedAt))),
@@ -210,6 +214,7 @@ fun LanSyncScreen(vaults: MdbxViewModel, onNavigateBack: () -> Unit, onManageVau
                     "too_many_devices" -> R.string.device_sync_limit
                     "native_unavailable", "device_sync_unavailable" -> R.string.lan_unavailable
                     "invalid_password_payload", "invalid_record" -> R.string.device_sync_invalid_data
+                    "invalid_passkey_material", "passkey_key_unavailable" -> R.string.device_sync_passkey_failed
                     else -> when {
                         error.startsWith("storage_") -> R.string.device_sync_storage_failed
                         state.failureStage == "preparing" -> R.string.device_sync_prepare_failed
@@ -217,8 +222,14 @@ fun LanSyncScreen(vaults: MdbxViewModel, onNavigateBack: () -> Unit, onManageVau
                         else -> R.string.device_sync_failed
                     }
                 }), color = MaterialTheme.colorScheme.error)
-                val diagnostics = stringResource(R.string.device_sync_diagnostic_format, state.failureStage, error,
-                    state.failureKind, state.connectionAttempts, state.failureOperation.ifEmpty { "-" })
+                if (state.failureRecordName.isNotEmpty()) Text(
+                    stringResource(R.string.device_sync_failed_record, state.failureRecordName),
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                val diagnostics = stringResource(R.string.device_sync_build_diagnostic,
+                    takagi.ru.monica.BuildConfig.VERSION_NAME, takagi.ru.monica.BuildConfig.GIT_SHA,
+                    android.os.Build.VERSION.SDK_INT, android.os.Process.myUid() / 100000) + "\n" +
+                    stringResource(R.string.device_sync_diagnostic_format, state.failureStage, error,
+                        state.failureKind, state.connectionAttempts, state.failureOperation.ifEmpty { "-" })
                 TextButton(onClick = { showDiagnostics = !showDiagnostics }) { Text(stringResource(R.string.device_sync_diagnostics)) }
                 if (showDiagnostics) {
                     Text(diagnostics, style = MaterialTheme.typography.bodySmall)

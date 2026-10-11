@@ -4394,7 +4394,14 @@ class MdbxViewModel(
         if (credentialId.isBlank()) return
         val prior = existing ?: passkeyDao.getPasskeysByCredentialId(credentialId).firstOrNull {
             it.rpId == payload.optString("rp_id") && it.bitwardenVaultId == null && it.keepassDatabaseId == null && (it.mdbxDatabaseId == null || it.mdbxDatabaseId == databaseId) }
-        if(prior != null && (prior.publicKey != payload.optString("public_key") || prior.publicKeyAlgorithm != payload.optInt("public_key_algorithm",-7))) throw takagi.ru.monica.lansync.LanSyncException("passkey_conflict")
+        if(prior != null && !takagi.ru.monica.lansync.DevicePasskeyShape.matchesStoredPublicKey(context, prior, payload))
+            throw takagi.ru.monica.lansync.LanSyncException("passkey_conflict", "passkey_projection_public_key_changed", prior.rpName)
+        val localKey = payload.optString("private_key_alias").ifEmpty { prior?.privateKeyAlias.orEmpty() }
+        val keyStatus = when {
+            payload.optString("key_status") == "portable" -> "SYNCED"
+            PasskeyPrivateKeyStore.hasUsablePrivateKey(context, localKey) -> prior?.syncStatus?.takeUnless { it == "REFERENCE" } ?: "NONE"
+            else -> "REFERENCE"
+        }
         val passkey = PasskeyPrivateKeyStore.protectPasskey(context, PasskeyEntry(
             id = prior?.id ?: 0L,
             credentialId = credentialId,
@@ -4403,9 +4410,9 @@ class MdbxViewModel(
             userId = payload.optString("user_id"),
             userName = payload.optString("user_name"),
             userDisplayName = payload.optString("user_display_name"),
-            publicKeyAlgorithm = payload.optInt("public_key_algorithm", -7),
-            publicKey = payload.optString("public_key"),
-            privateKeyAlias = payload.optString("private_key_alias").ifEmpty { prior?.privateKeyAlias.orEmpty() },
+            publicKeyAlgorithm = payload.optInt("public_key_algorithm", prior?.publicKeyAlgorithm ?: -7),
+            publicKey = payload.optString("public_key").ifEmpty { prior?.publicKey.orEmpty() },
+            privateKeyAlias = localKey,
             transports = payload.optString("transports", "internal"),
             aaguid = payload.optString("aaguid"),
             signCount = 0L,
@@ -4419,11 +4426,11 @@ class MdbxViewModel(
             iconUrl = if(payload.has("icon_url")) payload.optString("icon_url").takeUnless { it.isBlank() || it == "null" } else existing?.iconUrl,
             isDiscoverable = payload.optBoolean("is_discoverable",existing?.isDiscoverable ?: true),
             isUserVerificationRequired = payload.optBoolean("is_user_verification_required",existing?.isUserVerificationRequired ?: true),
-            isBackedUp = payload.optString("key_status") == "portable" || (existing?.isBackedUp ?: false),
+            isBackedUp = payload.optString("key_status") == "portable" || (prior?.isBackedUp ?: false),
             boundPasswordId = if(payload.has("bound_password_entry_id")) importedPasswordIds[payload.optString("bound_password_entry_id")] else existing?.boundPasswordId,
             categoryId = takagi.ru.monica.data.PasswordDatabase.getDatabase(context).categoryDao().getDeviceSyncCategories()
                 .firstOrNull { it.mdbxDatabaseId == databaseId }?.id,
-            syncStatus = existing?.syncStatus ?: "NONE"
+            syncStatus = keyStatus
         ))
         if (prior != null) {
             if (prior != passkey) {

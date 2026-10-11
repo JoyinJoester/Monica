@@ -3,6 +3,12 @@
     <string name="device_sync_diagnostics">Connection diagnostics</string>
     <string name="device_sync_copy_diagnostics">Copy diagnostics</string>
     <string name="device_sync_diagnostic_format">Stage: %1$s · Code: %2$s · Type: %3$s · Address attempts: %4$d · Operation: %5$s</string>
+    <string name="device_sync_build_diagnostic">Version: %1$s · Build: %2$s · Android: %3$d · User profile: %4$d</string>
+    <string name="device_sync_version">Current version: %1$s</string>
+    <string name="device_sync_passkey_failed">A local passkey could not be prepared. Sync is incomplete. The diagnostic operation identifies the record and cause; local keys are preserved.</string>
+    <string name="device_sync_failed_record">Passkey that could not be prepared: %1$s</string>
+    <string name="device_sync_preparation_failed_status">Paired · Could not prepare sync</string>
+    <string name="device_sync_first_pending">Paired · First sync is incomplete</string>
     <string name="device_sync_connection_failed">Could not reach the other device. All invitation addresses were tried. Keep its connection screen open and check connection diagnostics.</string>
     <string name="device_sync_pairing_failed">A device answered, but pairing could not be verified. Generate a fresh QR code on the other device.</string>
     <string name="device_sync_prepare_failed">Could not prepare device synchronization. The connection has not started; see diagnostics below.</string>
@@ -23,7 +29,7 @@
     <string name="device_sync_devices">Paired devices</string>
     <string name="device_sync_no_devices">Add a device to start automatic sync.</string>
     <string name="device_sync_syncing">Syncing changes…</string>
-    <string name="device_sync_online">Connected · up to date</string>
+    <string name="device_sync_online">Last sync succeeded</string>
     <string name="device_sync_scheduled">Changes waiting for the next sync</string>
     <string name="device_sync_paused">Sync paused</string>
     <string name="device_sync_locked">Waiting for unlock</string>
@@ -38,7 +44,7 @@
     <string name="device_sync_connect">Connect device</string>
     <string name="device_sync_autofilled">Device address and pairing code are ready.</string>
     <string name="device_sync_scan_other">Scan this QR code with your other device.</string>
-    <string name="device_sync_paired">Paired. Future changes will sync automatically.</string>
+    <string name="device_sync_paired">Devices are paired. A sync time appears after the first content sync completes.</string>
     <string name="device_sync_qr_invalid">Use a device-sync QR code from an updated version of Monica on the other device.</string>
     <string name="device_sync_same_device">Scan a QR code from your other device.</string>
     <string name="device_sync_limit">Up to 8 paired devices are supported.</string>

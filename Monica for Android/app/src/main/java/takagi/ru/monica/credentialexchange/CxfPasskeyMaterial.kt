@@ -65,31 +65,43 @@ object CxfPasskeyMaterial {
         val expected = Base64.getDecoder().decode(material.cosePublicKey)
         if (MessageDigest.isEqual(expected, encoded)) return true
 
+        MessageDigest.isEqual(expected, canonicalPublicKey(encoded, material.algorithm))
+    }.getOrDefault(false)
+
+    fun matchesPublicKeys(first: String, second: String, algorithm: Int): Boolean = runCatching {
+        MessageDigest.isEqual(canonicalPublicKey(Base64.getDecoder().decode(first), algorithm),
+            canonicalPublicKey(Base64.getDecoder().decode(second), algorithm))
+    }.getOrDefault(false)
+
+    private fun canonicalPublicKey(encoded: ByteArray, algorithm: Int): ByteArray {
+        require(algorithm in listOf(-7, -257, -37, -8))
+        // Sync producers use the canonical COSE representation built above.
+        if (encoded.isNotEmpty() && (encoded[0].toInt() and 0xe0) == 0xa0) return encoded
         // Parsing the entire DER object also rejects trailing bytes.
         val info = SubjectPublicKeyInfo.getInstance(encoded)
         val fields: Map<Int, Any> = when (val key = PublicKeyFactory.createKey(info)) {
             is ECPublicKeyParameters -> {
                 val p256 = SECNamedCurves.getByName("secp256r1")
-                require(material.algorithm == -7 && key.parameters.n == p256.n &&
+                require(algorithm == -7 && key.parameters.n == p256.n &&
                     key.parameters.curve == p256.curve && key.parameters.g == p256.g)
                 val point = key.q.normalize()
-                linkedMapOf(1 to 2, 3 to material.algorithm, -1 to 1,
+                linkedMapOf(1 to 2, 3 to algorithm, -1 to 1,
                     -2 to point.affineXCoord.encoded, -3 to point.affineYCoord.encoded)
             }
             is RSAKeyParameters -> {
-                require(material.algorithm in listOf(-257, -37) && !key.isPrivate &&
+                require(algorithm in listOf(-257, -37) && !key.isPrivate &&
                     info.algorithm.algorithm.id == "1.2.840.113549.1.1.1")
-                linkedMapOf(1 to 3, 3 to material.algorithm,
+                linkedMapOf(1 to 3, 3 to algorithm,
                     -1 to unsigned(key.modulus), -2 to unsigned(key.exponent))
             }
             is Ed25519PublicKeyParameters -> {
-                require(material.algorithm == -8)
-                linkedMapOf(1 to 1, 3 to material.algorithm, -1 to 6, -2 to key.encoded)
+                require(algorithm == -8)
+                linkedMapOf(1 to 1, 3 to algorithm, -1 to 6, -2 to key.encoded)
             }
-            else -> return false
+            else -> throw IllegalArgumentException("Unsupported passkey public key")
         }
-        MessageDigest.isEqual(expected, encodeCose(fields))
-    }.getOrDefault(false)
+        return encodeCose(fields)
+    }
 
     private fun unsigned(value: BigInteger): ByteArray = value.toByteArray().let {
         if (it.size > 1 && it[0] == 0.toByte()) it.copyOfRange(1, it.size) else it

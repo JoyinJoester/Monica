@@ -373,7 +373,12 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
             }
             var incoming = DevicePasskeyShape.import(app, data, localId ?: 0).copy(boundPasswordId = metadata.localPassword(data.getJSONObject("payload").optString("bound_password_entry_id")),
                 categoryId = metadata.localFolder(data))
-            if(previous != null && incoming.privateKeyAlias.isEmpty() && incoming.publicKey == previous.publicKey) incoming = incoming.copy(privateKeyAlias=previous.privateKeyAlias)
+            if(previous != null && incoming.privateKeyAlias.isEmpty()) {
+                if (!DevicePasskeyShape.matchesStoredPublicKey(app, previous, data.getJSONObject("payload")))
+                    throw LanSyncException("passkey_conflict", "passkey_room_${previous.id}_public_key_changed", previous.rpName)
+                incoming = incoming.copy(privateKeyAlias = previous.privateKeyAlias, isBackedUp = previous.isBackedUp,
+                    syncStatus = previous.syncStatus)
+            }
             val duplicate = passkeys.getPasskeysByCredentialId(incoming.credentialId).firstOrNull { it.rpId == incoming.rpId && it.id != localId }
             if(duplicate != null) throw LanSyncException("passkey_conflict")
             if(previous == null) passkeys.insert(incoming) else passkeys.update(incoming)
@@ -498,7 +503,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     }
 
     private suspend fun localPasskey(item: PasskeyEntry): JSONObject {
-        val current = DevicePasskeyShape.export(app, item)
+        val current = DevicePasskeyShape.withRecord("room_${item.id}", item.rpName.ifBlank { item.rpId }) { DevicePasskeyShape.export(app, item) }
         current.getJSONObject("payload").put("bound_password_entry_id",item.boundPasswordId?.let { metadata.global("local:$it") } ?: JSONObject.NULL)
         val category = item.categoryId?.let { categories.getCategoryById(it) }
         current.put("folder", category?.name.orEmpty())

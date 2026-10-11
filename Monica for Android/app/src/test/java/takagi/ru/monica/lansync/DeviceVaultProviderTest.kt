@@ -85,6 +85,126 @@ class DeviceVaultProviderTest {
         } finally { provider.pause() }
     } }
 
+    @Test fun legacy_passkey_without_cached_public_key_can_prepare_and_sign_on_receiver() = runBlocking { withTimeout(60000) {
+        SessionManager.markUnlocked()
+        val (database, provider) = vault()
+        val (receivedDatabase, receiver) = vault()
+        try {
+            val context = RuntimeEnvironment.getApplication()
+            val pair = java.security.KeyPairGenerator.getInstance("EC").apply {
+                initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+            }.generateKeyPair()
+            val entry = takagi.ru.monica.passkey.PasskeyPrivateKeyStore.protectPasskey(context, PasskeyEntry(
+                credentialId = UUID.randomUUID().toString(), rpId = "example.test", rpName = "Legacy registration",
+                userId = "Zml4dHVyZQ==", userName = "fixture", userDisplayName = "Fixture", publicKey = "",
+                privateKeyAlias = Base64.getEncoder().encodeToString(pair.private.encoded)))
+            database.passkeyDao().insert(entry)
+            val outgoing = provider.prepare(File(context.filesDir, "legacy-${UUID.randomUUID()}"))
+            receiver.apply(outgoing.directory, JSONObject().put("pairing", JSONObject().put("content_key", outgoing.contentKey)))
+            val received = receivedDatabase.passkeyDao().getAllPasskeysSync().single()
+            assertTrue(received.publicKey.isNotBlank())
+            assertEquals("", database.passkeyDao().getAllPasskeysSync().single().publicKey)
+            val privateKey = java.security.KeyFactory.getInstance("EC").generatePrivate(java.security.spec.PKCS8EncodedKeySpec(
+                Base64.getDecoder().decode(takagi.ru.monica.passkey.PasskeyPrivateKeyStore.resolve(context, received.privateKeyAlias))))
+            val challenge = "synthetic legacy passkey".toByteArray()
+            val signature = java.security.Signature.getInstance("SHA256withECDSA").apply { initSign(privateKey); update(challenge) }.sign()
+            assertTrue(java.security.Signature.getInstance("SHA256withECDSA").apply { initVerify(pair.public); update(challenge) }.verify(signature))
+        } finally { provider.pause(); receiver.pause() }
+    } }
+
+    @Test fun mismatched_local_passkey_reports_record_and_reason() = runBlocking { withTimeout(60000) {
+        SessionManager.markUnlocked()
+        val (database, provider) = vault()
+        try {
+            val context = RuntimeEnvironment.getApplication()
+            val generator = java.security.KeyPairGenerator.getInstance("EC").apply {
+                initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+            }
+            val original = generator.generateKeyPair()
+            val other = generator.generateKeyPair()
+            database.passkeyDao().insert(PasskeyEntry(credentialId = UUID.randomUUID().toString(),
+                rpId = "private.example.test", rpName = "Private account title", userId = "Zml4dHVyZQ==",
+                userName = "private-user", userDisplayName = "Private user", publicKey = Base64.getEncoder().encodeToString(other.public.encoded),
+                privateKeyAlias = Base64.getEncoder().encodeToString(original.private.encoded)))
+            val id = database.passkeyDao().getAllPasskeysSync().single().id
+            val failure = try {
+                provider.prepare(File(context.filesDir, "mismatch-${UUID.randomUUID()}"))
+                fail("Mismatched keys must remain rejected")
+                error("unreachable")
+            } catch (failure: LanSyncException) { failure }
+            assertEquals("invalid_passkey_material", failure.code)
+            assertEquals("passkey_room_${id}_public_key_mismatch", failure.operation)
+            assertFalse(failure.message.orEmpty().contains("private.example.test"))
+            assertFalse(failure.message.orEmpty().contains("private-user"))
+        } finally { provider.pause() }
+    } }
+
+    @Test fun copied_protected_reference_reports_missing_key_without_replacing_it() = runBlocking { withTimeout(60000) {
+        SessionManager.markUnlocked()
+        val (database, provider) = vault()
+        try {
+            val context = RuntimeEnvironment.getApplication()
+            val pair = java.security.KeyPairGenerator.getInstance("EC").apply {
+                initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+            }.generateKeyPair()
+            val entry = takagi.ru.monica.passkey.PasskeyPrivateKeyStore.protectPasskey(context, PasskeyEntry(
+                credentialId = UUID.randomUUID().toString(), rpId = "example.test", rpName = "Copied reference",
+                userId = "Zml4dHVyZQ==", userName = "fixture", userDisplayName = "Fixture",
+                publicKey = Base64.getEncoder().encodeToString(pair.public.encoded),
+                privateKeyAlias = Base64.getEncoder().encodeToString(pair.private.encoded)))
+            database.passkeyDao().insert(entry)
+            val id = database.passkeyDao().getAllPasskeysSync().single().id
+            SecurityManager(context).removeProtectedString(entry.privateKeyAlias.substringAfter(':'))
+            val failure = try {
+                provider.prepare(File(context.filesDir, "copied-${UUID.randomUUID()}"))
+                fail("A missing protected key must not be claimed as synchronized")
+                error("unreachable")
+            } catch (failure: LanSyncException) { failure }
+            assertEquals("passkey_key_unavailable", failure.code)
+            assertEquals("passkey_room_${id}_protected_key_missing", failure.operation)
+            assertEquals(entry.privateKeyAlias, database.passkeyDao().getAllPasskeysSync().single().privateKeyAlias)
+            SecurityManager(context).putProtectedString(entry.privateKeyAlias.substringAfter(':'), "synthetic-invalid-key")
+            val corrupt = try {
+                provider.prepare(File(context.filesDir, "corrupt-${UUID.randomUUID()}"))
+                fail("Invalid protected material must not become a successful reference")
+                error("unreachable")
+            } catch (failure: LanSyncException) { failure }
+            assertEquals("invalid_passkey_material", corrupt.code)
+            assertEquals("passkey_room_${id}_protected_key_invalid", corrupt.operation)
+            assertEquals(entry.privateKeyAlias, database.passkeyDao().getAllPasskeysSync().single().privateKeyAlias)
+        } finally { provider.pause() }
+    } }
+
+    @Test fun reference_update_in_cose_keeps_the_local_spki_private_key() = runBlocking { withTimeout(60000) {
+        SessionManager.markUnlocked()
+        val (a, first) = vault(); val (b, second) = vault()
+        try {
+            val context = RuntimeEnvironment.getApplication()
+            val pair = java.security.KeyPairGenerator.getInstance("EC").apply {
+                initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+            }.generateKeyPair()
+            val original = takagi.ru.monica.passkey.PasskeyPrivateKeyStore.protectPasskey(context, PasskeyEntry(
+                credentialId = UUID.randomUUID().toString(), rpId = "example.test", rpName = "Original SPKI key",
+                userId = "Zml4dHVyZQ==", userName = "fixture", userDisplayName = "Fixture",
+                publicKey = Base64.getEncoder().encodeToString(pair.public.encoded),
+                privateKeyAlias = Base64.getEncoder().encodeToString(pair.private.encoded)))
+            a.passkeyDao().insert(original)
+            val outgoing = first.prepare(File(context.filesDir, "reference-first-${UUID.randomUUID()}"))
+            second.apply(outgoing.directory, JSONObject().put("pairing", JSONObject().put("content_key", outgoing.contentKey)))
+            val credential = b.passkeyDao().getAllPasskeysSync().single()
+            val cose = requireNotNull(takagi.ru.monica.credentialexchange.CxfPasskeyMaterial.decode(pair.private.encoded, -7)).cosePublicKey
+            b.passkeyDao().update(credential.copy(publicKey = cose, privateKeyAlias = "", notes = "Reference metadata update", isBackedUp = false))
+            val back = second.prepare(File(context.filesDir, "reference-back-${UUID.randomUUID()}"))
+            first.apply(back.directory, JSONObject().put("pairing", JSONObject().put("content_key", back.contentKey)))
+            val updated = a.passkeyDao().getAllPasskeysSync().single()
+            assertEquals("Reference metadata update", updated.notes)
+            assertEquals(original.privateKeyAlias, updated.privateKeyAlias)
+            assertEquals(original.syncStatus, updated.syncStatus)
+            assertEquals(Base64.getEncoder().encodeToString(pair.private.encoded),
+                takagi.ru.monica.passkey.PasskeyPrivateKeyStore.resolve(context, updated.privateKeyAlias))
+        } finally { first.pause(); second.pause() }
+    } }
+
     @Test fun standalone_items_history_links_and_trash_survive_real_native_exchange() = runBlocking { withTimeout(60000) {
         SessionManager.markUnlocked()
         val (a, first) = vault(); val (b, second) = vault()

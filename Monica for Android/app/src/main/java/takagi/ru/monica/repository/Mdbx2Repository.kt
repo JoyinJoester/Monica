@@ -511,14 +511,17 @@ class Mdbx2Repository(
                             // Third-party replicas remain owned by their existing connector.
                             val source = if (item.objectTypeId in listOf("login", "ssh-key")) takagi.ru.monica.lansync.DevicePasswordShape.nativePayload(JSONObject(payload)) else JSONObject(payload)
                             if (source.optBoolean("bitwarden_mode") || source.optBoolean("keepass_mode")) return@forEach
-                            if (item.objectTypeId == "passkey") {
-                                val key = PasskeyPrivateKeySupport.normalizeForBitwardenUpload(PasskeyPrivateKeyStore.resolve(appContext, source.optString("private_key_alias"))).orEmpty()
-                                source.put("private_key_alias", key).put("key_status", if (key.isEmpty()) "reference" else "portable")
-                            }
                             val folder = if (project.collectionId == root) "" else logicalTitles[project.collectionId].orEmpty()
                             val purged = item.deleted && source.optLong("deleted_at", -1) == 0L
                             var data = if (purged) JSONObject() else if(item.objectTypeId in listOf("login", "ssh-key"))
                                 takagi.ru.monica.lansync.DevicePasswordShape.fromNative(source, item.title, folder, item.objectTypeId, securityManager)
+                            else if (item.objectTypeId == "passkey") takagi.ru.monica.lansync.DevicePasskeyShape.withRecord(
+                                "native_${databaseId}_${sha256Hex(item.objectId.toByteArray()).take(12)}", item.title) {
+                                takagi.ru.monica.lansync.DevicePasskeyShape.preparePayload(appContext, source)
+                                takagi.ru.monica.lansync.DeviceVaultShape.normalize(source, item.title, folder, item.objectTypeId).also {
+                                    takagi.ru.monica.lansync.DevicePasskeyShape.verify(it)
+                                }
+                            }
                             else takagi.ru.monica.lansync.DeviceVaultShape.normalize(source, item.title, folder, item.objectTypeId)
                             val assets = mutableListOf<takagi.ru.monica.lansync.DeviceVaultAsset>()
                             if(!purged) {
@@ -644,6 +647,12 @@ class Mdbx2Repository(
                 val projectId = if(path != null && path.length() > 0) path.getJSONObject(path.length()-1).getString("id") else if (folder.isEmpty()) root else projects.firstOrNull { it.title == folder }?.collectionId
                     ?: UUID.nameUUIDFromBytes("device-folder:$root:$folder".toByteArray()).toString()
                 val payload = takagi.ru.monica.lansync.DeviceVaultShape.applyNative(data, existing, id, projectId.takeUnless { it == root })
+                if (data.getString("entry_type") == "passkey" && before?.objectTypeId == "passkey" && existing != null)
+                    takagi.ru.monica.lansync.DevicePasskeyShape.withRecord(
+                        "native_${databaseId}_${sha256Hex(id.toByteArray()).take(12)}", before.title) {
+                        takagi.ru.monica.lansync.DevicePasskeyShape.retainNativeKey(appContext, payload, JSONObject(existing))
+                        payload
+                    }
                 val commands = buildList {
                     if (vault.getCollectionSummary(root) == null) add(MdbxWriteCommand.CreateProject(root, Mdbx2VaultSessionExecutor.ROOT_PROJECT_TITLE))
                     if ((path == null || path.length() == 0) && projectId != root && projects.none { it.collectionId == projectId }) add(MdbxWriteCommand.CreateProjectWithParent(projectId, folder, root))

@@ -38,11 +38,7 @@ internal object DeviceVaultShape {
             val payload = data.getJSONObject("payload"); val type = data.getString("entry_type")
             if(payload.length() == 0) throw LanSyncException("invalid_vault_payload")
             if(type in listOf("note","totp","card","document-ref","billing-address","payment-account")) text(payload,"item_data")
-            if(type == "passkey") {
-                listOf("credential_id","rp_id","user_id","public_key","private_key_alias","key_status").forEach { text(payload,it) }
-                if(payload.getString("credential_id").isBlank() || payload.getString("rp_id").isBlank() || payload.getString("public_key").isBlank() ||
-                    payload.opt("public_key_algorithm") !is Number || payload.getString("key_status") !in listOf("portable","reference")) throw LanSyncException("invalid_passkey_material")
-            }
+            if(type == "passkey") DevicePasskeyShape.validateMetadata(payload)
             if(type in listOf("folder","vault-metadata")) {
                 if(type == "folder") path(payload.opt("path"))
                 else if(payload.optJSONArray("tags") == null) throw LanSyncException("invalid_vault_payload")

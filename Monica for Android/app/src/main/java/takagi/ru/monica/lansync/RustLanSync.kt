@@ -2,7 +2,7 @@ package takagi.ru.monica.lansync
 
 import org.json.JSONObject
 
-internal class LanSyncException @JvmOverloads constructor(val code: String, val operation: String = "") : java.io.IOException("LAN synchronization failed ($code)")
+internal class LanSyncException @JvmOverloads constructor(val code: String, val operation: String = "", val recordName: String = "") : java.io.IOException("LAN synchronization failed ($code)")
 
 internal object RustLanSync {
     private val available = runCatching {

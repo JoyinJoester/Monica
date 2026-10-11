@@ -3,6 +3,12 @@
     <string name="device_sync_diagnostics">连接诊断</string>
     <string name="device_sync_copy_diagnostics">复制诊断信息</string>
     <string name="device_sync_diagnostic_format">阶段：%1$s · 错误：%2$s · 类型：%3$s · 已尝试地址：%4$d · 操作：%5$s</string>
+    <string name="device_sync_build_diagnostic">版本：%1$s · 构建：%2$s · Android：%3$d · 用户空间：%4$d</string>
+    <string name="device_sync_version">当前版本：%1$s</string>
+    <string name="device_sync_passkey_failed">本机通行密钥准备失败，同步尚未完成。诊断中的操作会标明记录和失败原因；不会修改本机密钥。</string>
+    <string name="device_sync_failed_record">失败的通行密钥：%1$s</string>
+    <string name="device_sync_preparation_failed_status">已配对 · 准备同步失败</string>
+    <string name="device_sync_first_pending">已配对 · 首次同步未完成</string>
     <string name="device_sync_connection_failed">无法连接到对方设备，已自动尝试二维码中的地址。请保持对方连接页面打开；若仍失败，可复制下方诊断信息。</string>
     <string name="device_sync_pairing_failed">已找到设备，但配对验证未通过。请在对方重新生成二维码后扫码。</string>
     <string name="device_sync_prepare_failed">准备设备同步失败，尚未开始连接。请查看下方诊断信息。</string>
@@ -23,7 +29,7 @@
     <string name="device_sync_devices">已配对设备</string>
     <string name="device_sync_no_devices">添加一台设备，即可开始自动同步。</string>
     <string name="device_sync_syncing">正在同步修改…</string>
-    <string name="device_sync_online">已连接 · 已同步</string>
+    <string name="device_sync_online">最近一次同步成功</string>
     <string name="device_sync_scheduled">有修改，等待下次同步</string>
     <string name="device_sync_paused">同步已暂停</string>
     <string name="device_sync_locked">等待解锁</string>
@@ -38,7 +44,7 @@
     <string name="device_sync_connect">连接设备</string>
     <string name="device_sync_autofilled">已自动识别设备地址和配对码。</string>
     <string name="device_sync_scan_other">请在另一台设备上扫描此二维码。</string>
-    <string name="device_sync_paired">配对完成，后续修改将自动同步。</string>
+    <string name="device_sync_paired">设备已配对。首次内容同步完成后会显示同步时间。</string>
     <string name="device_sync_qr_invalid">请将另一台设备的 Monica 更新后，使用“附近设备同步”生成的配对二维码或链接。</string>
     <string name="device_sync_same_device">请扫描另一台设备的二维码。</string>
     <string name="device_sync_limit">最多支持配对 8 台设备。</string>
