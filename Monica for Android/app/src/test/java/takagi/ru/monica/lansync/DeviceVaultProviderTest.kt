@@ -64,6 +64,27 @@ class DeviceVaultProviderTest {
             File(context.filesDir,"fixture-${UUID.randomUUID()}.replica"))
     }
 
+    @Test fun locally_created_spki_passkey_can_prepare() = runBlocking { withTimeout(60000) {
+        SessionManager.markUnlocked()
+        val (database, provider) = vault()
+        try {
+            val context = RuntimeEnvironment.getApplication()
+            val pair = java.security.KeyPairGenerator.getInstance("EC").apply {
+                initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+            }.generateKeyPair()
+            val entry = takagi.ru.monica.passkey.PasskeyPrivateKeyStore.protectPasskey(context, PasskeyEntry(
+                credentialId = UUID.randomUUID().toString(), rpId = "example.test", rpName = "Local registration",
+                userId = "Zml4dHVyZQ==", userName = "fixture", userDisplayName = "Fixture",
+                publicKey = Base64.getEncoder().encodeToString(pair.public.encoded),
+                privateKeyAlias = Base64.getEncoder().encodeToString(pair.private.encoded)))
+            assertTrue(takagi.ru.monica.passkey.PasskeyPrivateKeyStore.isProtectedReference(entry.privateKeyAlias))
+            database.passkeyDao().insert(entry)
+            val outgoing = provider.prepare(File(context.filesDir, "spki-${UUID.randomUUID()}"))
+            assertTrue(outgoing.contentKey.isNotEmpty())
+            assertEquals(entry.publicKey, database.passkeyDao().getAllPasskeysSync().single().publicKey)
+        } finally { provider.pause() }
+    } }
+
     @Test fun standalone_items_history_links_and_trash_survive_real_native_exchange() = runBlocking { withTimeout(60000) {
         SessionManager.markUnlocked()
         val (a, first) = vault(); val (b, second) = vault()
@@ -76,9 +97,9 @@ class DeviceVaultProviderTest {
             a.passwordEntryDao().insertPasswordEntry(PasswordEntry(title="Trash login",website="",username="",password="synthetic-trash",categoryId=category,isDeleted=true))
             val context = RuntimeEnvironment.getApplication()
             val material = java.security.KeyPairGenerator.getInstance("EC").apply { initialize(java.security.spec.ECGenParameterSpec("secp256r1")) }.generateKeyPair()
-            val portable = takagi.ru.monica.credentialexchange.CxfPasskeyMaterial.decode(material.private.encoded,-7)!!
+            // Registration stores X.509 SPKI, whereas imported credentials can store COSE.
             a.passkeyDao().insert(PasskeyEntry(credentialId=UUID.randomUUID().toString(),rpId="example.test",rpName="Fixture passkey",
-                userId=Base64.getEncoder().encodeToString("fixture".toByteArray()),userName="fixture",userDisplayName="Fixture",publicKey=portable.cosePublicKey,
+                userId=Base64.getEncoder().encodeToString("fixture".toByteArray()),userName="fixture",userDisplayName="Fixture",publicKey=Base64.getEncoder().encodeToString(material.public.encoded),
                 privateKeyAlias=Base64.getEncoder().encodeToString(material.private.encoded),boundPasswordId=password,categoryId=category))
             val binary = ByteArray(700017).also { java.security.SecureRandom().nextBytes(it) }
             val storage = takagi.ru.monica.attachments.storage.AttachmentStorage(context)

@@ -34,7 +34,7 @@ internal object DevicePasskeyShape {
         if(key.isEmpty()) { if(p.optString("key_status") != "reference") throw LanSyncException("passkey_key_unavailable"); return }
         val derived = CxfPasskeyMaterial.decode(Base64.getDecoder().decode(key), p.getInt("public_key_algorithm"))
             ?: throw LanSyncException("invalid_passkey_material")
-        if(derived.algorithm != p.getInt("public_key_algorithm") || !MessageDigest.isEqual(Base64.getDecoder().decode(derived.cosePublicKey),
+        if(derived.algorithm != p.getInt("public_key_algorithm") || !CxfPasskeyMaterial.matchesPublicKey(derived,
                 Base64.getDecoder().decode(p.getString("public_key")))) throw LanSyncException("invalid_passkey_material")
     }
     fun import(context: Context, data: JSONObject, id: Long): PasskeyEntry {

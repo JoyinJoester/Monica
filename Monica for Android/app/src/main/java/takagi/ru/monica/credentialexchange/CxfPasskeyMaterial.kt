@@ -2,12 +2,18 @@ package takagi.ru.monica.credentialexchange
 
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
 import org.bouncycastle.asn1.sec.SECNamedCurves
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
 import org.bouncycastle.crypto.params.ECPrivateKeyParameters
+import org.bouncycastle.crypto.params.ECPublicKeyParameters
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
+import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.crypto.params.RSAPrivateCrtKeyParameters
+import org.bouncycastle.crypto.params.RSAKeyParameters
 import org.bouncycastle.crypto.util.PrivateKeyFactory
+import org.bouncycastle.crypto.util.PublicKeyFactory
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
+import java.security.MessageDigest
 import java.util.Base64
 
 /** Validates PKCS#8 and derives the original public key; never generates a replacement key. */
@@ -53,6 +59,37 @@ object CxfPasskeyMaterial {
         }
         Material(algorithm, Base64.getEncoder().encodeToString(encodeCose(fields)))
     }.getOrNull()
+
+    /** Local registration stores SPKI; credential exchange stores COSE for the same public key. */
+    fun matchesPublicKey(material: Material, encoded: ByteArray): Boolean = runCatching {
+        val expected = Base64.getDecoder().decode(material.cosePublicKey)
+        if (MessageDigest.isEqual(expected, encoded)) return true
+
+        // Parsing the entire DER object also rejects trailing bytes.
+        val info = SubjectPublicKeyInfo.getInstance(encoded)
+        val fields: Map<Int, Any> = when (val key = PublicKeyFactory.createKey(info)) {
+            is ECPublicKeyParameters -> {
+                val p256 = SECNamedCurves.getByName("secp256r1")
+                require(material.algorithm == -7 && key.parameters.n == p256.n &&
+                    key.parameters.curve == p256.curve && key.parameters.g == p256.g)
+                val point = key.q.normalize()
+                linkedMapOf(1 to 2, 3 to material.algorithm, -1 to 1,
+                    -2 to point.affineXCoord.encoded, -3 to point.affineYCoord.encoded)
+            }
+            is RSAKeyParameters -> {
+                require(material.algorithm in listOf(-257, -37) && !key.isPrivate &&
+                    info.algorithm.algorithm.id == "1.2.840.113549.1.1.1")
+                linkedMapOf(1 to 3, 3 to material.algorithm,
+                    -1 to unsigned(key.modulus), -2 to unsigned(key.exponent))
+            }
+            is Ed25519PublicKeyParameters -> {
+                require(material.algorithm == -8)
+                linkedMapOf(1 to 1, 3 to material.algorithm, -1 to 6, -2 to key.encoded)
+            }
+            else -> return false
+        }
+        MessageDigest.isEqual(expected, encodeCose(fields))
+    }.getOrDefault(false)
 
     private fun unsigned(value: BigInteger): ByteArray = value.toByteArray().let {
         if (it.size > 1 && it[0] == 0.toByte()) it.copyOfRange(1, it.size) else it
