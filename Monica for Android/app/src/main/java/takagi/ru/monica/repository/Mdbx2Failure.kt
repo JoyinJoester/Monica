@@ -1,6 +1,7 @@
 package takagi.ru.monica.repository
 
 import java.io.IOException
+import android.database.sqlite.SQLiteDatabaseCorruptException
 import uniffi.mdbx_ffi.MdbxFfiException
 
 enum class Mdbx2FailureKind {
@@ -48,6 +49,8 @@ internal object Mdbx2ErrorMapper {
             .orEmpty()
             .lowercase()
         val kind = when {
+            cause is SQLiteDatabaseCorruptException -> Mdbx2FailureKind.CORRUPT_VAULT
+
             detail.contains("incorrect credential") ||
                 detail.contains("authentication failed") ||
                 detail.contains("key is wrong") ||

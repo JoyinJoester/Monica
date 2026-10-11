@@ -87,6 +87,8 @@ class Mdbx2HardeningInstrumentedTest {
             }
             assertEquals(Mdbx2FailureKind.CORRUPT_VAULT, corruptFailure.kind)
             assertSanitized(corruptFailure, corruptFile.absolutePath, correctPassword)
+            org.junit.Assert.assertArrayEquals("A rejected file must remain available for recovery",
+                ByteArray(512) { index -> (index * 31).toByte() }, corruptFile.readBytes())
         } finally {
             databaseIds.forEach { databaseDao.deleteDatabaseById(it) }
             repository.deleteOwnedVaultFile(vaultFile)

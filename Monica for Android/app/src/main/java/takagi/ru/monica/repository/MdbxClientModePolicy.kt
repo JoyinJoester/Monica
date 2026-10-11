@@ -28,7 +28,10 @@ internal object MdbxClientModePolicy {
     /** Read only the public format marker before native open, migration or password derivation. */
     fun requireSupportedFile(context: Context, file: File) {
         SQLiteDatabase.openDatabase(file.absolutePath, null,
-            SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use { db ->
+            SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
+            // Android's default corruption handler deletes files even for read-only opens.
+            // A format probe must preserve the user's original database for recovery.
+            { _ -> }).use { db ->
             db.rawQuery("SELECT default_tiga_mode FROM vault_meta LIMIT 1", null).use { cursor ->
                 if (cursor.moveToFirst() && cursor.getString(0).equals("glitter", ignoreCase = true)) {
                     unsupported(context)
