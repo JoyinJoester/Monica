@@ -9,6 +9,10 @@ import android.content.Context
  * All task queries concern only this application's own tasks; no polling service is needed.
  */
 object MainTaskSessionGuard {
+    @Suppress("DEPRECATION")
+    private fun taskId(info: ActivityManager.RecentTaskInfo): Int =
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) info.taskId else info.id
+
     private val lock = Any()
     private val mainTaskIds = mutableSetOf<Int>()
 
@@ -22,7 +26,7 @@ object MainTaskSessionGuard {
                     context.packageManager.getActivityInfo(component,
                         android.content.pm.PackageManager.MATCH_DISABLED_COMPONENTS).targetActivity ==
                         "takagi.ru.monica.MainActivity")
-            }.map { it.taskInfo.taskId }
+            }.map { taskId(it.taskInfo) }
         }.getOrDefault(emptyList())
         synchronized(lock) { mainTaskIds.addAll(existing) }
     }
@@ -43,7 +47,7 @@ object MainTaskSessionGuard {
         val tracked = synchronized(lock) { mainTaskIds.toSet() }
         if (tracked.isEmpty()) return false
         val current = runCatching {
-            context.getSystemService(ActivityManager::class.java).appTasks.map { it.taskInfo.taskId }.toSet()
+            context.getSystemService(ActivityManager::class.java).appTasks.map { taskId(it.taskInfo) }.toSet()
         }.getOrDefault(emptySet())
         val removed = tracked - current
         if (removed.isEmpty()) return false

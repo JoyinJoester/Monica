@@ -11,6 +11,9 @@ on:
       - 'Monica for Android/**/*.gradle.kts'
       - 'Monica for Android/**/*.kts'
       - 'Monica for Android/**/jniLibs/**/*.so'
+      - 'Monica for Android/rust-jni/**'
+      - 'Monica for Android/rust-lan-sync/**'
+      - 'Monica for Android/rust-crypto/**'
       - 'Monica for Android/gradle/**'
       - 'Monica for Android/gradlew'
       - 'Monica for Android/gradlew.bat'
@@ -25,6 +28,9 @@ on:
       - 'Monica for Android/**/*.gradle.kts'
       - 'Monica for Android/**/*.kts'
       - 'Monica for Android/**/jniLibs/**/*.so'
+      - 'Monica for Android/rust-jni/**'
+      - 'Monica for Android/rust-lan-sync/**'
+      - 'Monica for Android/rust-crypto/**'
       - 'Monica for Android/gradle/**'
       - 'Monica for Android/gradlew'
       - 'Monica for Android/gradlew.bat'
@@ -87,6 +93,26 @@ jobs:
           fi
 
           exit "$lint_status"
+
+      - name: Build native libraries for nearby sync tests and debug APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android armv7-linux-androideabi
+          cargo install cargo-ndk --version 4.1.2 --locked
+          cargo build --manifest-path rust-jni/Cargo.toml --release --locked
+          (
+            cd rust-jni
+            cargo ndk -t arm64-v8a -t armeabi-v7a -o ../app/src/main/jniLibs build --release --locked
+          )
+          test -f rust-jni/target/release/libmonica_rust_jni.so
+          test -f app/src/main/jniLibs/arm64-v8a/libmonica_rust_jni.so
+          test -f app/src/main/jniLibs/armeabi-v7a/libmonica_rust_jni.so
+
+      - name: Verify nearby sync with real Room and host JNI
+        run: ./gradlew :app:testDebugUnitTest --tests 'takagi.ru.monica.lansync.*' --stacktrace --no-daemon
 
       - name: Run unit tests (diagnostic)
         continue-on-error: true

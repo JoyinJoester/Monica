@@ -2,6 +2,8 @@ package takagi.ru.monica.lansync
 
 import android.app.Application
 import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.room.InvalidationTracker
 import androidx.room.withTransaction
@@ -123,7 +125,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
             local += withLocalAssets(DevicePasswordSnapshot(address, vaultIds[address].orEmpty(), "secure", DevicePasskeyShape.guard(data) + ":" + item.isDeleted, item.isDeleted, data),
                 attachments.getAllBySecureItem(item.id).filter { !it.isDeleted || item.isDeleted })
         }
-        passkeys.getAllPasskeysSync().filter { it.mdbxDatabaseId == null && it.bitwardenVaultId == null && it.keepassDatabaseId == null }.forEach { item ->
+        passkeys.getAllPasskeysSync().filter { it.isDeviceSyncLocal() }.forEach { item ->
             val data = localPasskey(item)
             val address = "passkey:${item.id}"
             local += DevicePasswordSnapshot(address, vaultIds[address] ?: DevicePasskeyShape.identity(item), "passkeys", DevicePasskeyShape.guard(data), false, data)
@@ -368,7 +370,13 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
             if(previous != null && DevicePasskeyShape.guard(localPasskey(previous)) != expected) return@withTransaction null
             if(previous == null && !expected.isNullOrEmpty()) return@withTransaction null
             if(deleted) {
-                previous?.let { passkeys.deleteByRecordId(it.id); takagi.ru.monica.passkey.PasskeyPrivateKeyStore.removeIfProtectedReference(app, it.privateKeyAlias) }
+                previous?.let { removed ->
+                    passkeys.deleteByRecordId(removed.id)
+                    // Copies in other vaults can share the same protected key reference.
+                    if (passkeys.countByPrivateKeyAlias(removed.privateKeyAlias) == 0) {
+                        takagi.ru.monica.passkey.PasskeyPrivateKeyStore.removeIfProtectedReference(app, removed.privateKeyAlias)
+                    }
+                }
                 return@withTransaction DevicePasswordSnapshot(mapped.orEmpty(), globalId, scope, "", true, JSONObject())
             }
             var incoming = DevicePasskeyShape.import(app, data, localId ?: 0).copy(boundPasswordId = metadata.localPassword(data.getJSONObject("payload").optString("bound_password_entry_id")),
@@ -387,10 +395,12 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
                 if(incoming.privateKeyAlias.isEmpty()) incoming = incoming.copy(privateKeyAlias = previous.privateKeyAlias,
                     isBackedUp = previous.isBackedUp, syncStatus = previous.syncStatus)
             }
-            val duplicate = passkeys.getPasskeysByCredentialId(incoming.credentialId).firstOrNull { it.rpId == incoming.rpId && it.id != localId }
+            val duplicate = passkeys.getPasskeysByCredentialId(incoming.credentialId).firstOrNull {
+                it.isDeviceSyncLocal() && it.rpId == incoming.rpId && it.id != localId
+            }
             if(duplicate != null) throw LanSyncException("passkey_conflict")
             if(previous == null) passkeys.insert(incoming) else passkeys.update(incoming)
-            val saved = passkeys.getPasskeysByCredentialId(incoming.credentialId).first { it.rpId == incoming.rpId && it.mdbxDatabaseId == null }
+            val saved = passkeys.getPasskeysByCredentialId(incoming.credentialId).first { it.rpId == incoming.rpId && it.isDeviceSyncLocal() }
             metadata.save("passkey:${saved.id}", data)
             actual = localPasskey(saved); guard = DevicePasskeyShape.guard(actual); savedAddress = "passkey:${saved.id}"
         } else {
@@ -436,9 +446,11 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     private suspend fun refreshProjections() {
         if (pendingProjections.isNotEmpty() && SessionManager.isUnlocked.value) {
             val vm = projection ?: withContext(Dispatchers.Main) {
-                MdbxViewModel(app as Application, database.localMdbxDatabaseDao(), database.mdbxRemoteSourceDao(), passwords,
-                    database.secureItemDao(), database.passkeyDao(), database.attachmentDao(), fields, security, backgroundOnly = true)
-                    .also { viewModels.put("device-sync", it); projection = it }
+                ViewModelProvider(viewModels, object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                        modelClass.cast(MdbxViewModel(app as Application, database.localMdbxDatabaseDao(), database.mdbxRemoteSourceDao(), passwords,
+                    database.secureItemDao(), database.passkeyDao(), database.attachmentDao(), fields, security, backgroundOnly = true))
+                })["device-sync", MdbxViewModel::class.java].also { projection = it }
             }
             pendingProjections.toList().forEach { id ->
                 if (SessionManager.isUnlocked.value) { vm.refreshDeviceSyncProjection(id); pendingProjections.remove(id) }
@@ -509,6 +521,9 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
         }
         return actual
     }
+
+    private fun PasskeyEntry.isDeviceSyncLocal(): Boolean =
+        mdbxDatabaseId == null && bitwardenVaultId == null && keepassDatabaseId == null
 
     private suspend fun localPasskey(item: PasskeyEntry): JSONObject {
         val current = DevicePasskeyShape.withRecord("room_${item.id}", item.rpName.ifBlank { item.rpId }) { DevicePasskeyShape.export(app, item) }

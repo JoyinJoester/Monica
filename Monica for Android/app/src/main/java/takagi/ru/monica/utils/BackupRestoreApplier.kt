@@ -204,7 +204,9 @@ object BackupRestoreApplier {
                     passwordSkipped++
                 }
             } catch (e: Exception) {
-                if (e is CancellationException || restoreResult.overwriteLocal) throw e
+                if (e is CancellationException || restoreResult.overwriteLocal) {
+                    throw e
+                }
                 passwordFailed++
                 val detail = "${password.title} (${password.username}): ${e.message}"
                 failedPasswordDetails.add(detail)
@@ -246,7 +248,9 @@ object BackupRestoreApplier {
                         }
                     }
                 } catch (e: Exception) {
-                if (e is CancellationException || restoreResult.overwriteLocal) throw e
+                    if (e is CancellationException || restoreResult.overwriteLocal) {
+                        throw e
+                    }
                     android.util.Log.w(logTag, "Failed to update ssoRefEntryId: ${e.message}")
                 }
             }
@@ -275,7 +279,9 @@ object BackupRestoreApplier {
                             customFieldCount++
                         }
                     } catch (e: Exception) {
-                if (e is CancellationException || restoreResult.overwriteLocal) throw e
+                        if (e is CancellationException || restoreResult.overwriteLocal) {
+                            throw e
+                        }
                         supplementalFailure()
                     android.util.Log.w(logTag, "Failed to restore custom fields for password $originalId -> $newId: ${e.message}")
                     }
@@ -329,7 +335,9 @@ object BackupRestoreApplier {
                     attachmentRestored++
                 } catch (e: Exception) {
                     supplementalFailure()
-                if (e is CancellationException || restoreResult.overwriteLocal) throw e
+                    if (e is CancellationException || restoreResult.overwriteLocal) {
+                        throw e
+                    }
                     android.util.Log.w(
                         logTag,
                         "Portable attachment restore failed for ${entry.payloadPath} -> parent $mappedParentId: ${e.message}"
@@ -382,7 +390,9 @@ object BackupRestoreApplier {
                     attachmentRestored++
                 } catch (e: Exception) {
                     supplementalFailure()
-                if (e is CancellationException || restoreResult.overwriteLocal) throw e
+                    if (e is CancellationException || restoreResult.overwriteLocal) {
+                        throw e
+                    }
                     android.util.Log.w(
                         logTag,
                         "Legacy attachment upsert failed for ${entry.localPath} -> parent $mappedParentId: ${e.message}"
@@ -416,7 +426,9 @@ object BackupRestoreApplier {
                     )
                     historyCount++
                 } catch (e: Exception) {
-                if (e is CancellationException || restoreResult.overwriteLocal) throw e
+                    if (e is CancellationException || restoreResult.overwriteLocal) {
+                        throw e
+                    }
                     android.util.Log.w(
                         logTag,
                         "Failed to restore password history for password ${historyEntry.entryId} -> $mappedEntryId: ${e.message}"
@@ -541,7 +553,9 @@ object BackupRestoreApplier {
                     secureItemSkipped++
                 }
             } catch (e: Exception) {
-                if (e is CancellationException || restoreResult.overwriteLocal) throw e
+                if (e is CancellationException || restoreResult.overwriteLocal) {
+                    throw e
+                }
                 secureItemFailed++
                 val detail = "${exportItem.title} (${exportItem.itemType}): ${e.message}"
                 failedSecureItemDetails.add(detail)
@@ -592,7 +606,9 @@ object BackupRestoreApplier {
                         passkeySkipped++
                     }
                 } catch (e: Exception) {
-                if (e is CancellationException || restoreResult.overwriteLocal) throw e
+                    if (e is CancellationException || restoreResult.overwriteLocal) {
+                        throw e
+                    }
                     if (e is CancellationException || restoreResult.overwriteLocal) throw e
                     passkeyFailed++
                     android.util.Log.e(
@@ -626,7 +642,9 @@ object BackupRestoreApplier {
                     else destinationWriter.insertSteam(payload)
                     steamAccountImported++
                 } catch (e: Exception) {
-                if (e is CancellationException || restoreResult.overwriteLocal) throw e
+                    if (e is CancellationException || restoreResult.overwriteLocal) {
+                        throw e
+                    }
                     if (e is CancellationException || restoreResult.overwriteLocal) throw e
                     steamAccountFailed++
                     android.util.Log.e(

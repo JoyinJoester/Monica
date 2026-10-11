@@ -207,6 +207,7 @@ jobs:
 
           test_classes=(
             takagi.ru.monica.VerifySmokeTest
+            takagi.ru.monica.lansync.NearbySyncNativeInstrumentedTest
             takagi.ru.monica.ui.TotpListInteractionTest
             takagi.ru.monica.repository.Mdbx2CreationInstrumentedTest
             takagi.ru.monica.repository.Mdbx2FeatureParityInstrumentedTest

@@ -2,6 +2,8 @@ package takagi.ru.monica.workers
 
 import android.app.Application
 import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.work.*
 import java.util.concurrent.TimeUnit
@@ -36,10 +38,13 @@ class MdbxAutoSyncWorker(context: Context, params: WorkerParameters) : Coroutine
         val store = ViewModelStore()
         return try {
             val vm = withContext(Dispatchers.Main) {
-                MdbxViewModel(applicationContext as Application, db.localMdbxDatabaseDao(),
+                ViewModelProvider(store, object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                        modelClass.cast(MdbxViewModel(applicationContext as Application, db.localMdbxDatabaseDao(),
                     db.mdbxRemoteSourceDao(), db.passwordEntryDao(), db.secureItemDao(),
                     db.passkeyDao(), db.attachmentDao(), db.customFieldDao(),
-                    SecurityManager(applicationContext), backgroundOnly = true).also { store.put("sync", it) }
+                    SecurityManager(applicationContext), backgroundOnly = true))
+                })["sync", MdbxViewModel::class.java]
             }
             when (vm.syncAutomatically(id)) {
                 is SyncTaskAwaitResult.Completed -> {

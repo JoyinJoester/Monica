@@ -4696,4 +4696,6 @@
     <string name="local_recovery_save_failed">Could not safely save the master password. Original data has been preserved.</string>
     <string name="autofill_keep_unlocked">Keep unlocked for two minutes</string>
     <string name="autofill_keep_unlocked_desc">Reuse verification only within the same app and website. Turning this off, locking the screen or clearing Monica from recent apps ends access. Monica itself stays locked.</string>
+    <string name="storage_picker_edit_multi_append_hint">Select additional save locations for this item.</string>
+    <string name="qr_image_read_failed">Could not read the QR code image.</string>
 </resources>

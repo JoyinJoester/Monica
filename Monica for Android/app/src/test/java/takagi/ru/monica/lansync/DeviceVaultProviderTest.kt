@@ -205,6 +205,42 @@ class DeviceVaultProviderTest {
         } finally { first.pause(); second.pause() }
     } }
 
+    @Test fun external_passkey_copy_does_not_conflict_and_keeps_its_key_after_remote_deletion() = runBlocking { withTimeout(60000) {
+        SessionManager.markUnlocked()
+        val (a, first) = vault(); val (b, second) = vault()
+        try {
+            val context = RuntimeEnvironment.getApplication()
+            val pair = java.security.KeyPairGenerator.getInstance("EC").apply {
+                initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+            }.generateKeyPair()
+            val privateKey = Base64.getEncoder().encodeToString(pair.private.encoded)
+            val original = takagi.ru.monica.passkey.PasskeyPrivateKeyStore.protectPasskey(context, PasskeyEntry(
+                credentialId = UUID.randomUUID().toString(), rpId = "example.test", rpName = "Shared credential",
+                userId = "Zml4dHVyZQ==", userName = "fixture", userDisplayName = "Fixture",
+                publicKey = Base64.getEncoder().encodeToString(pair.public.encoded), privateKeyAlias = privateKey))
+            a.passkeyDao().insert(original)
+            b.passkeyDao().insert(original.copy(keepassDatabaseId = 42, notes = "External copy"))
+            suspend fun sync() {
+                // Flush Room's asynchronous invalidation before asking for the next snapshot.
+                a.invalidationTracker.refreshVersionsSync()
+                val outgoing = first.prepare(File(context.filesDir, "copy-sync-${UUID.randomUUID()}"))
+                second.apply(outgoing.directory, JSONObject().put("pairing", JSONObject().put("content_key", outgoing.contentKey)))
+            }
+            sync()
+            assertEquals(2, b.passkeyDao().getAllPasskeysSync().size)
+            val source = a.passkeyDao().getAllPasskeysSync().single()
+            a.passkeyDao().update(source.copy(notes = "Updated local credential"))
+            sync()
+            assertEquals("Updated local credential", b.passkeyDao().getAllPasskeysSync().single { it.keepassDatabaseId == null }.notes)
+            assertEquals("External copy", b.passkeyDao().getAllPasskeysSync().single { it.keepassDatabaseId == 42L }.notes)
+            a.passkeyDao().deleteByRecordId(source.id)
+            sync()
+            val remaining = b.passkeyDao().getAllPasskeysSync().single()
+            assertEquals(42L, requireNotNull(remaining.keepassDatabaseId))
+            assertEquals(privateKey, takagi.ru.monica.passkey.PasskeyPrivateKeyStore.resolve(context, remaining.privateKeyAlias))
+        } finally { first.pause(); second.pause() }
+    } }
+
     @Test fun standalone_items_history_links_and_trash_survive_real_native_exchange() = runBlocking { withTimeout(60000) {
         SessionManager.markUnlocked()
         val (a, first) = vault(); val (b, second) = vault()

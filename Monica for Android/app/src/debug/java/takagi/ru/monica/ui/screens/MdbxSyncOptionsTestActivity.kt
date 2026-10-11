@@ -25,8 +25,14 @@ class MdbxSyncOptionsTestActivity : ComponentActivity() {
         databaseId = savedInstanceState?.getLong("database")
             ?: (9_900_000L + System.nanoTime() % 100_000L)
         manualCalls = savedInstanceState?.getInt("manualCalls") ?: 0
-        setShowWhenLocked(true)
-        setTurnScreenOn(true)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
             MonicaTheme {
