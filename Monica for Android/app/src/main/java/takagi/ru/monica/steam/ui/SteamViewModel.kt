@@ -10,6 +10,8 @@ import java.io.BufferedReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +38,8 @@ import takagi.ru.monica.steam.data.SteamKeePassAccountStore
 import takagi.ru.monica.steam.data.SteamMaFileTransferAction
 import takagi.ru.monica.steam.data.SteamMdbxAccountRecord
 import takagi.ru.monica.steam.data.SteamMdbxAccountStore
+import takagi.ru.monica.steam.data.SteamStorageTarget
+import takagi.ru.monica.steam.data.executeSteamTransfer
 import takagi.ru.monica.steam.data.SteamStorageSource
 import takagi.ru.monica.steam.diagnostics.SteamDiagLogger
 import takagi.ru.monica.steam.importer.SteamMaFileBackupCodec
@@ -135,6 +139,7 @@ private data class SteamSellOutcome(
 
 data class SteamUiState(
     val storageSource: SteamStorageSource = SteamStorageSource.Local,
+    val folderId: String? = null,
     val accounts: List<SteamAccount> = emptyList(),
     val selectedAccountId: Long? = null,
     val currentCode: String = "",
@@ -191,8 +196,12 @@ class SteamViewModel(
     private val inventoryService: SteamInventoryService = SteamInventoryService(),
     private val marketService: SteamMarketService = SteamMarketService()
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(SteamUiState())
+    private val _uiState = MutableStateFlow(SteamUiState(
+        folderId = readSteamFolderId(appContext, SteamStorageSource.Local)
+    ))
     val uiState: StateFlow<SteamUiState> = _uiState.asStateFlow()
+    private var sourceLoadJob: Job? = null
+    private var transferInProgress = false
     private var pendingLoginPollJob: Job? = null
     private val mdbxAccountStore = mdbxRepository?.let { SteamMdbxAccountStore(it, parser) }
     private var localAccounts: List<SteamAccount> = emptyList()
@@ -242,15 +251,26 @@ class SteamViewModel(
         }
     }
 
+    internal fun selectFolderFilter(filter: SteamFolderFilter) {
+        if (transferInProgress) return
+        selectStorageSource(filter.source)
+        saveSteamFolderId(appContext, filter.source, filter.folderId)
+        _uiState.value = _uiState.value.copy(folderId = filter.folderId)
+    }
+
     fun selectStorageSource(
         source: SteamStorageSource,
         persist: Boolean = true,
         forceRefresh: Boolean = false
     ) {
+        if (transferInProgress) return
         if (!forceRefresh && source == _uiState.value.storageSource) return
+        sourceLoadJob?.cancel()
         if (persist) saveSteamStorageSource(appContext, source)
+        _uiState.value = _uiState.value.copy(folderId = readSteamFolderId(appContext, source))
         when (source) {
             SteamStorageSource.Local -> {
+                setLoading(false)
                 mdbxAccountRecords = emptyList()
                 keepassAccountRecords = emptyList()
                 bitwardenAccountRecords = emptyList()
@@ -262,7 +282,7 @@ class SteamViewModel(
                 )
             }
             is SteamStorageSource.Mdbx -> {
-                viewModelScope.launch {
+                sourceLoadJob = viewModelScope.launch {
                     keepassAccountRecords = emptyList()
                     bitwardenAccountRecords = emptyList()
                     val store = mdbxAccountStore
@@ -292,6 +312,7 @@ class SteamViewModel(
                             clearAccountScopedState = true
                         )
                     }.onFailure { error ->
+                        if (error is kotlinx.coroutines.CancellationException) throw error
                         mdbxAccountRecords = emptyList()
                         _uiState.value = _uiState.value.copy(accounts = emptyList())
                         setMessage(error.message ?: appContext.getString(R.string.steam_cannot_load_mdbx_accounts))
@@ -300,7 +321,7 @@ class SteamViewModel(
                 }
             }
             is SteamStorageSource.KeePass -> {
-                viewModelScope.launch {
+                sourceLoadJob = viewModelScope.launch {
                     mdbxAccountRecords = emptyList()
                     bitwardenAccountRecords = emptyList()
                     _uiState.value = _uiState.value.copy(
@@ -327,6 +348,7 @@ class SteamViewModel(
                             clearAccountScopedState = true
                         )
                     }.onFailure { error ->
+                        if (error is kotlinx.coroutines.CancellationException) throw error
                         keepassAccountRecords = emptyList()
                         _uiState.value = _uiState.value.copy(accounts = emptyList())
                         setMessage(error.message ?: appContext.getString(R.string.steam_cannot_load_keepass_accounts))
@@ -335,7 +357,7 @@ class SteamViewModel(
                 }
             }
             is SteamStorageSource.Bitwarden -> {
-                viewModelScope.launch {
+                sourceLoadJob = viewModelScope.launch {
                     mdbxAccountRecords = emptyList()
                     keepassAccountRecords = emptyList()
                     _uiState.value = _uiState.value.copy(
@@ -364,6 +386,7 @@ class SteamViewModel(
                             clearAccountScopedState = true
                         )
                     }.onFailure { error ->
+                        if (error is kotlinx.coroutines.CancellationException) throw error
                         bitwardenAccountRecords = emptyList()
                         _uiState.value = _uiState.value.copy(accounts = emptyList())
                         setMessage(error.message ?: appContext.getString(R.string.steam_cannot_load_bitwarden_accounts))
@@ -800,43 +823,64 @@ class SteamViewModel(
         }
     }
 
+    fun getTransferMdbxFolders(databaseId: Long) = kotlinx.coroutines.flow.flow {
+        emit(requireNotNull(mdbxRepository).listFolders(databaseId))
+    }.flowOn(Dispatchers.IO).catch { error ->
+        setMessage(error.message ?: appContext.getString(R.string.steam_transfer_mafile_failed))
+        emit(emptyList())
+    }
+
+    fun getTransferKeePassGroups(databaseId: Long) = kotlinx.coroutines.flow.flow {
+        emit(requireNotNull(keepassAccountStore).listGroups(databaseId))
+    }.flowOn(Dispatchers.IO).catch { error ->
+        setMessage(error.message ?: appContext.getString(R.string.steam_transfer_mafile_failed))
+        emit(emptyList())
+    }
+
     fun transferAccounts(
         accountIds: List<Long>,
-        targetSource: SteamStorageSource,
+        target: SteamStorageTarget,
         action: SteamMaFileTransferAction
     ) {
         val source = _uiState.value.storageSource
-        if (accountIds.isEmpty() || source == targetSource) return
+        if (accountIds.isEmpty() || _uiState.value.loading || transferInProgress) return
+        transferInProgress = true
         viewModelScope.launch {
             setLoading(true)
-            runCatching {
-                val accounts = accountIds.distinct().mapNotNull(::accountById)
-                require(accounts.isNotEmpty()) {
-                    appContext.getString(R.string.steam_transfer_mafile_failed)
-                }
-                withContext(Dispatchers.IO) {
-                    writeAccountsToStorageSource(accounts, targetSource)
-                    if (action == SteamMaFileTransferAction.MOVE) {
-                        deleteAccountsFromStorageSource(source, accounts.map { it.id })
+            try {
+                runCatching {
+                    val accounts = accountIds.distinct().mapNotNull(::accountById)
+                    require(accounts.isNotEmpty()) {
+                        appContext.getString(R.string.steam_transfer_mafile_failed)
                     }
-                }
-                if (action == SteamMaFileTransferAction.MOVE) {
-                    when (source) {
-                        SteamStorageSource.Local -> Unit
-                        is SteamStorageSource.Mdbx ->
-                            reloadMdbxAccounts(source, clearAccountScopedState = true)
-                        is SteamStorageSource.KeePass ->
-                            reloadKeePassAccounts(source, clearAccountScopedState = true)
-                        is SteamStorageSource.Bitwarden ->
-                            reloadBitwardenAccounts(source, clearAccountScopedState = true)
+                    withContext(Dispatchers.IO) {
+                        executeSteamTransfer(
+                            sameDatabase = source == target.source, action = action,
+                            writeTarget = { relocate -> writeAccountsToStorageSource(accounts, target, relocate) },
+                            deleteSource = { deleteAccountsFromStorageSource(source, accounts.map { it.id }) }
+                        )
                     }
+                    if (action == SteamMaFileTransferAction.MOVE || source == target.source) {
+                        when (source) {
+                            SteamStorageSource.Local -> Unit
+                            is SteamStorageSource.Mdbx ->
+                                reloadMdbxAccounts(source, clearAccountScopedState = true)
+                            is SteamStorageSource.KeePass ->
+                                reloadKeePassAccounts(source, clearAccountScopedState = true)
+                            is SteamStorageSource.Bitwarden ->
+                                reloadBitwardenAccounts(source, clearAccountScopedState = true)
+                        }
+                    }
+                }.onSuccess {
+                    setMessage(R.string.steam_transfer_mafile_done)
+                }.onFailure { error ->
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    setMessage(error.message ?: appContext.getString(R.string.steam_transfer_mafile_failed))
                 }
-            }.onSuccess {
-                setMessage(R.string.steam_transfer_mafile_done)
-            }.onFailure { error ->
-                setMessage(error.message ?: appContext.getString(R.string.steam_transfer_mafile_failed))
+            } finally {
+                transferInProgress = false
+                setLoading(false)
             }
-            setLoading(false)
         }
     }
 
@@ -2125,54 +2169,35 @@ class SteamViewModel(
     }
 
     private suspend fun writeAccountsToStorageSource(
-        accounts: List<SteamAccount>,
-        targetSource: SteamStorageSource
+        accounts: List<SteamAccount>, target: SteamStorageTarget, relocate: Boolean
     ) {
-        when (targetSource) {
-            SteamStorageSource.Local -> {
-                accounts.forEach { account ->
-                    repository.upsertFromMaFile(account.toCompleteMaFilePayload())
-                }
+        when (val targetSource = target.source) {
+            SteamStorageSource.Local -> accounts.forEach { account ->
+                if (relocate) repository.moveToCategory(account.id, target.categoryId)
+                else repository.insertCopy(account, target.categoryId)
             }
             is SteamStorageSource.Mdbx -> {
-                val store = mdbxAccountStore
-                    ?: throw IllegalStateException(appContext.getString(R.string.steam_cannot_load_mdbx_accounts))
-                val existingBySteamId = store.loadAccounts(targetSource.databaseId)
-                    .associateBy { it.account.steamId }
+                val store = requireNotNull(mdbxAccountStore)
                 accounts.forEach { account ->
-                    store.upsertAccount(
-                        databaseId = targetSource.databaseId,
-                        entryId = existingBySteamId[account.steamId]?.entryId,
-                        account = account
-                    )
+                    val entryId = if (relocate) requireNotNull(mdbxAccountRecords.firstOrNull { it.account.id == account.id }).entryId
+                        else "steam_mafile:${java.util.UUID.randomUUID()}"
+                    store.upsertAccount(targetSource.databaseId, entryId, account, target.folderId, relocate = true)
                 }
             }
             is SteamStorageSource.KeePass -> {
-                val store = keepassAccountStore
-                    ?: throw IllegalStateException(appContext.getString(R.string.steam_keepass_storage_unavailable))
-                val existingBySteamId = store.loadAccounts(targetSource.databaseId)
-                    .associateBy { it.account.steamId }
+                val store = requireNotNull(keepassAccountStore)
                 accounts.forEach { account ->
-                    val existing = existingBySteamId[account.steamId]
-                    store.upsertAccount(
-                        databaseId = targetSource.databaseId,
-                        entryUuid = existing?.entryUuid,
-                        groupPath = existing?.groupPath,
-                        account = account
-                    )
+                    val uuid = if (relocate) requireNotNull(keepassAccountRecords.firstOrNull { it.account.id == account.id }).entryUuid else null
+                    if (relocate) store.moveToGroup(targetSource.databaseId, requireNotNull(uuid), target.groupPath)
+                    else store.upsertAccount(targetSource.databaseId, null, target.groupPath, account)
                 }
             }
             is SteamStorageSource.Bitwarden -> {
-                val store = bitwardenAccountStore
-                    ?: throw IllegalStateException(appContext.getString(R.string.steam_bitwarden_storage_unavailable))
-                val existingBySteamId = store.loadAccounts(targetSource.vaultId)
-                    .associateBy { it.account.steamId }
+                val store = requireNotNull(bitwardenAccountStore)
                 accounts.forEach { account ->
-                    store.upsertAccount(
-                        vaultId = targetSource.vaultId,
-                        existingPasswordEntryId = existingBySteamId[account.steamId]?.passwordEntryId,
-                        account = account
-                    )
+                    val entryId = if (relocate) requireNotNull(bitwardenAccountRecords.firstOrNull { it.account.id == account.id }).passwordEntryId else null
+                    if (relocate) store.moveToFolder(targetSource.vaultId, requireNotNull(entryId), target.folderId)
+                    else store.upsertAccount(targetSource.vaultId, null, account, target.folderId, relocate = true, forceNew = true)
                 }
             }
         }

@@ -25,7 +25,9 @@ data class VaultOverviewConfig(
     val pinnedItems: List<String> = emptyList(),
     val recommendCards: Boolean = true,
     val recommendItems: Boolean = true,
-    val scope: String = "local",
+    // Older settings omit the default scope. Include synced vaults when it is absent;
+    // an explicitly saved local/database scope still survives decoding and round trips.
+    val scope: String = "all",
     val excludedFrequentItems: Set<String> = emptySet(),
 ) {
     fun normalized(): VaultOverviewConfig {

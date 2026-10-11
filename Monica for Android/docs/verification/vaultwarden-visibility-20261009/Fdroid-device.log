@@ -1,0 +1,166 @@
+
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest:
+INSTRUMENTATION_STATUS: test=upgradedVaultwardenOnlyAccountShowsPasswordsAndSearchResults
+INSTRUMENTATION_STATUS_CODE: 1
+s_glBindAttribLocation: bind attrib 0 name position
+s_glBindAttribLocation: bind attrib 1 name localCoord
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=upgradedVaultwardenOnlyAccountShowsPasswordsAndSearchResults
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 10.746
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest:
+INSTRUMENTATION_STATUS: test=explicitLocalScopeReproducesFeedbackAndSelectingAllRestoresPasswords
+INSTRUMENTATION_STATUS_CODE: 1
+s_glBindAttribLocation: bind attrib 0 name position
+s_glBindAttribLocation: bind attrib 1 name localCoord
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=explicitLocalScopeReproducesFeedbackAndSelectingAllRestoresPasswords
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 8.983
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest:
+INSTRUMENTATION_STATUS: test=typeNavigationUsesTheRealListAndBackRestoresTheOverview
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=typeNavigationUsesTheRealListAndBackRestoresTheOverview
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 5.955
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest:
+INSTRUMENTATION_STATUS: test=bitwardenOverviewNavigationUsesTheClassicList
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=bitwardenOverviewNavigationUsesTheClassicList
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 8.183
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest:
+INSTRUMENTATION_STATUS: test=bitwardenOverviewNavigationUsesTheHierarchicalList
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=bitwardenOverviewNavigationUsesTheHierarchicalList
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 8.025
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest:
+INSTRUMENTATION_STATUS: test=sharedTopBarSearchKeepsResultsAfterImeActionAndRestoresTheOverview
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=sharedTopBarSearchKeepsResultsAfterImeActionAndRestoresTheOverview
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 5.976
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest:
+INSTRUMENTATION_STATUS: test=disablingOverviewRestoresSavedClassicScopeAndContent
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=disablingOverviewRestoresSavedClassicScopeAndContent
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 4.631
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1

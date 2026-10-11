@@ -101,7 +101,9 @@ class SteamBitwardenAccountStore(
             .mapNotNull { entry ->
                 when (val result = loadEntry(vault, entry)) {
                     EntryLoadResult.NotSteamEntry -> null
-                    is EntryLoadResult.Loaded -> result.record
+                    is EntryLoadResult.Loaded -> result.record.copy(
+                        account = result.record.account.copy(storageFolderId = entry.bitwardenFolderId)
+                    )
                     is EntryLoadResult.Failed -> {
                         failedSteamEntries++
                         SteamDiagLogger.append(
@@ -292,7 +294,10 @@ class SteamBitwardenAccountStore(
     suspend fun upsertAccount(
         vaultId: Long,
         existingPasswordEntryId: Long?,
-        account: SteamAccount
+        account: SteamAccount,
+        folderId: String? = null,
+        relocate: Boolean = false,
+        forceNew: Boolean = false
     ): SteamBitwardenAccountRecord {
         val vault = vaultDao.getVaultById(vaultId)
             ?: throw IllegalStateException("Bitwarden vault not found")
@@ -304,7 +309,7 @@ class SteamBitwardenAccountStore(
                 passwordDao.getPasswordEntryById(entryId)
                     ?.takeIf { it.bitwardenVaultId == vaultId }
             }
-            ?: account.steamId.takeIf(String::isNotBlank)?.let { steamId ->
+            ?: account.steamId.takeIf { it.isNotBlank() && !forceNew }?.let { steamId ->
                 findSteamEntryBySteamId(vaultId, steamId)
             }
         val existingFields = resolvedExisting?.let { entry ->
@@ -334,6 +339,7 @@ class SteamBitwardenAccountStore(
             username = account.steamId.ifBlank { account.accountName },
             password = "",
             updatedAt = now,
+            bitwardenFolderId = if (relocate) folderId else resolvedExisting?.bitwardenFolderId,
             bitwardenVaultId = vaultId,
             isDeleted = false,
             deletedAt = null,
@@ -376,7 +382,7 @@ class SteamBitwardenAccountStore(
         requireSteamBitwardenSyncSuccess(syncResult, operation = "steam-mafile-upsert")
         val syncedEntry = passwordDao.getPasswordEntryById(entryId)
             ?.takeIf { !it.bitwardenCipherId.isNullOrBlank() }
-            ?: account.steamId.takeIf(String::isNotBlank)?.let { steamId ->
+            ?: account.steamId.takeIf { it.isNotBlank() && !forceNew }?.let { steamId ->
                 findSteamEntryBySteamId(vaultId, steamId)
             }
                 ?.takeIf { !it.bitwardenCipherId.isNullOrBlank() }
@@ -471,6 +477,7 @@ class SteamBitwardenAccountStore(
         val record = SteamBitwardenAccountRecord(
             account = account.copy(
                 id = runtimeAccountId(vaultId, syncedEntry.id),
+                storageFolderId = syncedEntry.bitwardenFolderId,
                 updatedAt = System.currentTimeMillis()
             ),
             passwordEntryId = syncedEntry.id,
@@ -482,6 +489,16 @@ class SteamBitwardenAccountStore(
             attachmentKey = newAttachment.bitwardenFileKeyEnc
         )
         return record
+    }
+
+    suspend fun moveToFolder(vaultId: Long, passwordEntryId: Long, folderId: String?) {
+        check(bitwardenRepository.isVaultUnlocked(vaultId)) { "Bitwarden vault is locked" }
+        val entry = requireNotNull(passwordDao.getPasswordEntryById(passwordEntryId))
+        require(entry.bitwardenVaultId == vaultId)
+        passwordDao.updatePasswordEntry(entry.copy(bitwardenFolderId = folderId,
+            bitwardenLocalModified = true, updatedAt = Date()))
+        requireSteamBitwardenSyncSuccess(bitwardenRepository.syncForUserVisibleRequest(
+            vaultId = vaultId, requestIdPrefix = "steam-mafile-move"), operation = "steam-mafile-move")
     }
 
     suspend fun deleteAccount(vaultId: Long, passwordEntryId: Long) {

@@ -60,7 +60,7 @@ class VaultOverviewPaneTest {
     private var openedPassword: Long? = null
     private var darkTheme by mutableStateOf(false)
     private var keyboardVisible = false
-    private var testBitwardenVaults: List<BitwardenVault> = emptyList()
+    private var testBitwardenVaults by mutableStateOf<List<BitwardenVault>>(emptyList())
 
     @Before fun prepareVault(): Unit = runBlocking {
         originalSettings = settings.exportPageAdjustmentSettings()
@@ -84,7 +84,7 @@ class VaultOverviewPaneTest {
         database.close()
     }
 
-    private fun showPane(followOverviewSettings: Boolean = false, expectedOverviewCount: Int = 24) {
+    private fun showPane(followOverviewSettings: Boolean = false, expectedOverviewCount: Int? = 24) {
         val security = SecurityManager(context)
         val passwords = PasswordRepository(database.passwordEntryDao(), categoryDao = database.categoryDao(),
             bitwardenFolderDao = database.bitwardenFolderDao(), passwordArchiveSyncMetaDao = database.passwordArchiveSyncMetaDao())
@@ -124,7 +124,10 @@ class VaultOverviewPaneTest {
                     modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
             }
         }
-        compose.waitUntil(15_000) { state.overviewSnapshot?.items?.size == expectedOverviewCount }
+        compose.waitUntil(15_000) {
+            runCatching { compose.onNodeWithTag("vault_overview_screen").assertExists() }.isSuccess
+        }
+        compose.waitUntil(15_000) { state.overviewSnapshot?.let { expectedOverviewCount == null || it.items.size == expectedOverviewCount } == true }
         compose.onNodeWithTag("vault_overview_screen").assertIsDisplayed()
     }
 
@@ -165,7 +168,80 @@ class VaultOverviewPaneTest {
         compose.runOnIdle { assertEquals(1L, openedPassword); assertEquals("PASSWORD", state.overviewItemType) }
         Espresso.pressBack()
         compose.onNodeWithTag("vault_overview_screen").assertIsDisplayed()
-        compose.runOnIdle { assertFalse(state.overviewListOpen); assertEquals("local", state.storageFilterType) }
+        compose.runOnIdle { assertFalse(state.overviewListOpen); assertEquals("all", state.storageFilterType) }
+    }
+
+    private fun prepareVaultwardenFeedbackFixture(config: VaultOverviewConfig) {
+        val vault = BitwardenVault(id = 136, email = "feedback@example.test", displayName = "Test Vaultwarden",
+            serverUrl = "https://vaultwarden.example.test", isLocked = false, syncEnabled = false)
+        runBlocking {
+            database.passwordEntryDao().deleteAllPasswordEntries()
+            database.bitwardenVaultDao().insert(vault)
+            repeat(515) { index ->
+                database.passwordEntryDao().insertPasswordEntry(PasswordEntry(id = 1000L + index,
+                    title = "Vaultwarden login $index", username = "fixture", website = "", password = "",
+                    bitwardenVaultId = vault.id, bitwardenCipherId = "fixture-$index"))
+            }
+            repeat(5) { index ->
+                database.secureItemDao().insertItem(SecureItem(id = index + 1L, itemType = ItemType.DOCUMENT,
+                    title = "Fixture document $index", itemData = "{}",
+                    bitwardenVaultId = vault.id.takeIf { index > 0 },
+                    bitwardenCipherId = "document-$index".takeIf { index > 0 }))
+            }
+            settings.updateVaultOverviewConfig { config }
+        }
+        testBitwardenVaults = listOf(vault)
+        appSettings = appSettings.copy(vaultOverviewConfig = config)
+    }
+
+    @Test fun upgradedVaultwardenOnlyAccountShowsPasswordsAndSearchResults() {
+        prepareVaultwardenFeedbackFixture(VaultOverviewConfig.decode("{}"))
+        showPane(expectedOverviewCount = null)
+        compose.runOnIdle {
+            assertEquals(515, state.overviewSnapshot?.typeCounts?.get(VaultV2ItemType.PASSWORD))
+            assertEquals(5, state.overviewSnapshot?.typeCounts?.get(VaultV2ItemType.DOCUMENT))
+        }
+        openOverviewNode("overview_type_PASSWORD")
+        awaitListText("Vaultwarden login 0")
+        Espresso.pressBack()
+        compose.onNodeWithTag("overview_search").performClick()
+        compose.onNode(hasSetTextAction()).performTextInput("Vaultwarden login 514")
+        compose.onNode(hasSetTextAction()).performImeAction()
+        compose.waitUntil(5_000) { !keyboardVisible }
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithTag("vault_item_password:1514").fetchSemanticsNodes().isNotEmpty() &&
+                compose.onAllNodesWithTag("vault_item_password:1000").fetchSemanticsNodes().isEmpty()
+        }
+        sortScreenshot("vaultwarden-search.png")
+        compose.onNodeWithTag("vault_item_password:1514").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals(1514L, openedPassword) }
+    }
+
+    @Test fun explicitLocalScopeReproducesFeedbackAndSelectingAllRestoresPasswords() {
+        prepareVaultwardenFeedbackFixture(VaultOverviewConfig(scope = "local"))
+        showPane(followOverviewSettings = true, expectedOverviewCount = 1)
+        compose.runOnIdle {
+            assertEquals(0, state.overviewSnapshot?.typeCounts?.get(VaultV2ItemType.PASSWORD))
+            assertEquals(1, state.overviewSnapshot?.typeCounts?.get(VaultV2ItemType.DOCUMENT))
+        }
+        compose.onNodeWithTag("overview_search").performClick()
+        compose.onNode(hasSetTextAction()).performTextInput("Vaultwarden login 514")
+        compose.onNode(hasSetTextAction()).performImeAction()
+        compose.waitUntil(5_000) { !keyboardVisible }
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText(context.getString(R.string.no_results)).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("vault_item_password:1514").assertDoesNotExist()
+        compose.onNodeWithContentDescription(context.getString(R.string.topbar_close_search)).performClick()
+        compose.onNodeWithTag("overview_scope").performClick()
+        compose.onNodeWithText(context.getString(R.string.category_all)).performClick()
+        compose.waitUntil(15_000) { state.overviewSnapshot?.items?.size == 520 }
+        assertEquals("all", runBlocking { settings.settingsFlow.first().vaultOverviewConfig.scope })
+        compose.onNodeWithTag("overview_modules").performScrollToNode(hasTestTag("overview_type_PASSWORD"))
+        sortScreenshot("vaultwarden-all.png")
+        compose.runOnIdle { testBitwardenVaults = testBitwardenVaults.map { it.copy(isLocked = true) } }
+        compose.waitUntil(15_000) { state.overviewSnapshot?.items?.size == 1 }
+        compose.runOnIdle { assertEquals(0, state.overviewSnapshot?.typeCounts?.get(VaultV2ItemType.PASSWORD)) }
     }
 
     @Test fun bitwardenOverviewNavigationUsesTheClassicList() = verifyBitwardenNavigation(VaultV2LayoutMode.CLASSIC)
@@ -290,7 +366,7 @@ class VaultOverviewPaneTest {
         compose.onNodeWithTag("overview_more").assertIsDisplayed()
         compose.runOnIdle {
             assertFalse(state.overviewListOpen)
-            assertEquals("local", state.storageFilterType)
+            assertEquals("all", state.storageFilterType)
             assertEquals(position, state.overviewScrollIndex to state.overviewScrollOffset)
         }
     }

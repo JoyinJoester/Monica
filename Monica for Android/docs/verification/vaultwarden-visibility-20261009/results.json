@@ -1,0 +1,58 @@
+{
+  "date": "2026-10-09",
+  "avd": "Monica_Issue136_API_32",
+  "emulatorStartedByThisTask": false,
+  "fixturePasswords": 515,
+  "fixtureLocalDocuments": 1,
+  "fixtureRemoteDocuments": 4,
+  "Main": {
+    "device": {
+      "oldUser": "0",
+      "edition": "Main",
+      "oldProxy": ":0",
+      "completed": true,
+      "classes": "takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#upgradedVaultwardenOnlyAccountShowsPasswordsAndSearchResults,takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#explicitLocalScopeReproducesFeedbackAndSelectingAllRestoresPasswords,takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#typeNavigationUsesTheRealListAndBackRestoresTheOverview,takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#bitwardenOverviewNavigationUsesTheClassicList,takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#bitwardenOverviewNavigationUsesTheHierarchicalList,takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#sharedTopBarSearchKeepsResultsAfterImeActionAndRestoresTheOverview,takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#disablingOverviewRestoresSavedClassicScopeAndContent",
+      "appHash": "B6A3AB4D75234CAAFE928780BE27B69C469FCFEE6E950368015108C2DEFE223F",
+      "tests": 7.0,
+      "processIsolation": "one instrumentation process per class",
+      "testHash": "980EFE819F16D679356AF70FC70F0E66DA67718396C18CD7B906FF184682ECBA"
+    },
+    "unit": [
+      {
+        "suite": "takagi.ru.monica.data.VaultOverviewConfigTest",
+        "tests": 9,
+        "failures": 0
+      },
+      {
+        "suite": "takagi.ru.monica.ui.vaultv2.VaultOverviewProjectionTest",
+        "tests": 8,
+        "failures": 0
+      }
+    ]
+  },
+  "Fdroid": {
+    "device": {
+      "classes": "takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#upgradedVaultwardenOnlyAccountShowsPasswordsAndSearchResults,takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#explicitLocalScopeReproducesFeedbackAndSelectingAllRestoresPasswords,takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#typeNavigationUsesTheRealListAndBackRestoresTheOverview,takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#bitwardenOverviewNavigationUsesTheClassicList,takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#bitwardenOverviewNavigationUsesTheHierarchicalList,takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#sharedTopBarSearchKeepsResultsAfterImeActionAndRestoresTheOverview,takagi.ru.monica.ui.vaultv2.VaultOverviewPaneTest#disablingOverviewRestoresSavedClassicScopeAndContent",
+      "oldUser": "0",
+      "testHash": "CE58B15482B442A1C36129D598BFAF6BE8C58A63B40FB34B83E9B41364FBFE49",
+      "completed": true,
+      "processIsolation": "one instrumentation process per class",
+      "appHash": "09CC718DC4A42A539CCBF339B51F66D2A98F983E456E1F1CED544541CBF98815",
+      "oldProxy": ":0",
+      "edition": "Fdroid",
+      "tests": 7.0
+    },
+    "unit": [
+      {
+        "suite": "takagi.ru.monica.data.VaultOverviewConfigTest",
+        "tests": 9,
+        "failures": 0
+      },
+      {
+        "suite": "takagi.ru.monica.ui.vaultv2.VaultOverviewProjectionTest",
+        "tests": 8,
+        "failures": 0
+      }
+    ]
+  }
+}

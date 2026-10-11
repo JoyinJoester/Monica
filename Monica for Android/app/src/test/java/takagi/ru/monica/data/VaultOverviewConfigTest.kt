@@ -7,10 +7,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VaultOverviewConfigTest {
+    @Test fun missingScopeIncludesSyncedVaultsAfterUpgrade() {
+        for (saved in listOf(null, "{}", """{"hidden":["RECENT"],"recommendItems":false}""")) {
+            assertEquals("all", VaultOverviewConfig.decode(saved).scope)
+        }
+        assertEquals(setOf("RECENT"), VaultOverviewConfig.decode("""{"hidden":["RECENT"]}""").hidden)
+    }
+
+    @Test fun explicitScopesSurviveSavingAndReloadingIncludingLocal() {
+        for (scope in listOf("local", "all", "bitwarden:136", "keepass:3", "mdbx:5")) {
+            val restored = VaultOverviewConfig.decode("""{"scope":"$scope"}""")
+            assertEquals(scope, restored.scope)
+            assertEquals(scope, VaultOverviewConfig.decode(restored.encode()).scope)
+        }
+    }
+
     @Test fun defaultsEnableOverviewWithoutChangingListLayout() {
         val settings = AppSettings()
         assertTrue(settings.vaultOverviewEnabled)
-        assertEquals("local", settings.vaultOverviewConfig.scope)
+        assertEquals("all", settings.vaultOverviewConfig.scope)
         assertEquals(9, settings.vaultOverviewConfig.order.size)
         assertEquals(listOf("CARDS", "RECENT", "ITEMS"), settings.vaultOverviewConfig.order.take(3))
         val oldOrder = VaultOverviewModule.defaultOrder.filterNot { it == "RECENT" }

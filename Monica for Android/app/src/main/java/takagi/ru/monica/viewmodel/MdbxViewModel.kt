@@ -4415,7 +4415,11 @@ class MdbxViewModel(
             privateKeyAlias = localKey,
             transports = payload.optString("transports", "internal"),
             aaguid = payload.optString("aaguid"),
-            signCount = 0L,
+            signCount = payload.optLong("sign_count", 0L),
+            backupEligible = takagi.ru.monica.passkey.PasskeyBackupFlags.mergeEligibility(
+                existing?.backupEligible, takagi.ru.monica.passkey.PasskeyBackupFlags.readBoolean(payload, "backup_eligible"),
+                hasExistingCredential = existing != null),
+            backupState = takagi.ru.monica.passkey.PasskeyBackupFlags.readBoolean(payload, "backup_state") ?: existing?.backupState,
             notes = payload.optString("notes"),
             passkeyMode = payload.optString("passkey_mode", PasskeyEntry.MODE_LEGACY),
             mdbxDatabaseId = databaseId,
