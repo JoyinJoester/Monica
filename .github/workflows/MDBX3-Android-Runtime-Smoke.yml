@@ -10,6 +10,7 @@ on:
       - 'Monica for Android/app/src/main/java/takagi/ru/monica/ui/components/TotpCodeCard.kt'
       - 'Monica for Android/mdbx-engine/**'
       - 'Monica for Android/rust-jni/**'
+      - 'Monica for Android/rust-lan-sync/**'
       - 'Monica for Android/rust-crypto/**'
   workflow_dispatch:
 

@@ -2,6 +2,125 @@ use super::*;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[test]
+fn device_direction_limits_real_bundle_and_asset_transmission() {
+    let _guard = serial_sessions();
+    let modes = [
+        Some("send_only"),
+        Some("bidirectional"),
+        Some("receive_only"),
+        None,
+    ];
+    for host_mode in modes {
+        for peer_mode in modes {
+            let root = TestDirectory::new();
+            let host_out = root.directory("host-out");
+            let peer_out = root.directory("peer-out");
+            let host_in = root.directory("host-in");
+            let peer_in = root.directory("peer-in");
+            for (path, bundle, asset) in [
+                (
+                    &host_out,
+                    b"synthetic host vault".as_slice(),
+                    b"synthetic host attachment".as_slice(),
+                ),
+                (
+                    &peer_out,
+                    b"synthetic peer vault".as_slice(),
+                    b"synthetic peer attachment".as_slice(),
+                ),
+            ] {
+                std::fs::write(path.join("changes.mdbxsync"), bundle).unwrap();
+                std::fs::write(path.join("assets.monica"), asset).unwrap();
+            }
+            let device = |id, mode: Option<&str>| {
+                let mut value = json!({"device_id":id,"name":id,"content_type":"vault","vault_content_version":2});
+                if let Some(mode) = mode {
+                    value["sync_mode"] = json!(mode);
+                }
+                value
+            };
+            let host = call(
+                json!({"operation":"start","protocol":2,"listen_address":"127.0.0.1",
+                "vault_id":"shared","outgoing_directory":host_out,"incoming_directory":host_in,
+                "content_key":peering::random_key(),"device":device("host",host_mode)}),
+            );
+            let invitation = format!(
+                "monica-lan:2:127.0.0.1:{}:{}",
+                host["port"],
+                host["code"].as_str().unwrap()
+            );
+            let peer = call(
+                json!({"operation":"connect","protocol":2,"invitation":invitation,
+                "vault_id":"shared","outgoing_directory":peer_out,"incoming_directory":peer_in,
+                "content_key":peering::random_key(),"device":device("peer",peer_mode)}),
+            );
+            let handles = [
+                host["handle"].as_u64().unwrap(),
+                peer["handle"].as_u64().unwrap(),
+            ];
+            let results = [wait(handles[0]), wait(handles[1])];
+            for handle in handles {
+                call(json!({"operation":"release","handle":handle}));
+            }
+            let host_mode_name = host_mode.unwrap_or("bidirectional");
+            let peer_mode_name = peer_mode.unwrap_or("bidirectional");
+            let send = host_mode_name != "receive_only" && peer_mode_name != "send_only";
+            let receive = host_mode_name != "send_only" && peer_mode_name != "receive_only";
+            let unsupported = (host_mode.is_none() && peer_mode_name != "bidirectional")
+                || (peer_mode.is_none() && host_mode_name != "bidirectional");
+            let expected_error = if unsupported {
+                Some("sync_direction_unsupported")
+            } else if !send && !receive {
+                Some("sync_direction_conflict")
+            } else {
+                None
+            };
+            for result in &results {
+                assert_eq!(result.error, expected_error, "{host_mode:?}/{peer_mode:?}");
+                assert_eq!(
+                    result.phase,
+                    if expected_error.is_some() {
+                        "failed"
+                    } else {
+                        "completed"
+                    }
+                );
+            }
+            for (source, destination, allowed) in
+                [(&host_out, &peer_in, send), (&peer_out, &host_in, receive)]
+            {
+                for name in ["changes.mdbxsync", "assets.monica"] {
+                    if expected_error.is_none() && allowed {
+                        assert_eq!(
+                            std::fs::read(source.join(name)).unwrap(),
+                            std::fs::read(destination.join(name)).unwrap()
+                        );
+                    } else {
+                        assert!(
+                            !destination.join(name).exists(),
+                            "forbidden {name}: {host_mode:?}/{peer_mode:?}"
+                        );
+                    }
+                }
+            }
+            if expected_error.is_none() {
+                for (result, sent, received) in
+                    [(&results[0], send, receive), (&results[1], receive, send)]
+                {
+                    let info = serde_json::to_value(result.peer.as_ref().unwrap()).unwrap();
+                    // Earlier clients omit these fields and remain bidirectional.
+                    assert_eq!(info["send_content"], json!(sent));
+                    assert_eq!(info["receive_content"], json!(received));
+                    if !received {
+                        assert_eq!(info["pairing"]["content_key"], "");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn qr_invitation_tries_the_next_interface_when_the_first_is_unreachable() {
     let _guard = serial_sessions();
     let root = TestDirectory::new();

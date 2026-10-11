@@ -32,6 +32,7 @@ import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
 import takagi.ru.monica.lansync.DeviceSyncCoordinator
 import takagi.ru.monica.lansync.DeviceSyncDiagLogger
+import takagi.ru.monica.lansync.DeviceSyncMode
 import takagi.ru.monica.lansync.LanPairingForm
 import takagi.ru.monica.lansync.LanPairingInvitation
 import takagi.ru.monica.viewmodel.MdbxViewModel
@@ -113,6 +114,18 @@ fun LanSyncScreen(vaults: MdbxViewModel, onNavigateBack: () -> Unit, onManageVau
                         Text(stringResource(R.string.device_sync_automatic), modifier = Modifier.weight(1f).padding(top = 12.dp))
                         Switch(checked = state.enabled, onCheckedChange = coordinator::setEnabled)
                     }
+                    Text(stringResource(R.string.device_sync_direction), style = MaterialTheme.typography.titleSmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DeviceSyncMode.entries.forEach { mode ->
+                            FilterChip(selected = state.mode == mode, onClick = { coordinator.setMode(mode) }, enabled = !state.pairing,
+                                label = { Text(stringResource(when (mode) {
+                                    DeviceSyncMode.BIDIRECTIONAL -> R.string.device_sync_bidirectional
+                                    DeviceSyncMode.SEND_ONLY -> R.string.device_sync_send_only
+                                    DeviceSyncMode.RECEIVE_ONLY -> R.string.device_sync_receive_only
+                                })) })
+                        }
+                    }
+                    Text(stringResource(R.string.device_sync_direction_hint), style = MaterialTheme.typography.bodySmall)
                     Text(stringResource(R.string.device_sync_frequency), style = MaterialTheme.typography.titleSmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(0, 60, 300, 900, 1800).forEach { seconds ->
@@ -215,6 +228,8 @@ fun LanSyncScreen(vaults: MdbxViewModel, onNavigateBack: () -> Unit, onManageVau
                     "native_unavailable", "device_sync_unavailable" -> R.string.lan_unavailable
                     "invalid_password_payload", "invalid_record" -> R.string.device_sync_invalid_data
                     "invalid_passkey_material", "passkey_key_unavailable" -> R.string.device_sync_passkey_failed
+                    "sync_direction_conflict" -> R.string.device_sync_direction_conflict
+                    "sync_direction_unsupported" -> R.string.device_sync_direction_unsupported
                     else -> when {
                         error.startsWith("storage_") -> R.string.device_sync_storage_failed
                         state.failureStage == "preparing" -> R.string.device_sync_prepare_failed
@@ -228,6 +243,7 @@ fun LanSyncScreen(vaults: MdbxViewModel, onNavigateBack: () -> Unit, onManageVau
                 val diagnostics = stringResource(R.string.device_sync_build_diagnostic,
                     takagi.ru.monica.BuildConfig.VERSION_NAME, takagi.ru.monica.BuildConfig.GIT_SHA,
                     android.os.Build.VERSION.SDK_INT, android.os.Process.myUid() / 100000) + "\n" +
+                    stringResource(R.string.device_sync_direction_diagnostic, state.mode.wireName) + "\n" +
                     stringResource(R.string.device_sync_diagnostic_format, state.failureStage, error,
                         state.failureKind, state.connectionAttempts, state.failureOperation.ifEmpty { "-" })
                 TextButton(onClick = { showDiagnostics = !showDiagnostics }) { Text(stringResource(R.string.device_sync_diagnostics)) }

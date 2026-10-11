@@ -278,7 +278,9 @@ fn hash_file(path: &Path, job: &Job) -> Result<String> {
 
 fn manifest(prepared: &Prepared, job: &Job) -> Result<Manifest> {
     let mut files = Vec::new();
-    if let Some(directory) = &prepared.outgoing {
+    let may_send = prepared.device.as_ref().and_then(|device| device.sync_mode)
+        != Some(peering::SyncMode::ReceiveOnly);
+    if let Some(directory) = prepared.outgoing.as_ref().filter(|_| may_send) {
         for name in FILE_NAMES {
             let path = directory.join(name);
             if path.is_file() {
@@ -355,6 +357,17 @@ fn exchange(channel: &mut Channel<'_>, prepared: Prepared, job: &Job, host: bool
     if local.version != remote.version {
         return Err("unsupported_protocol");
     }
+    let flow = if prepared.protocol == 2 {
+        peering::SyncFlow::negotiate(
+            local.device.as_ref().and_then(|device| device.sync_mode),
+            remote.device.as_ref().and_then(|device| device.sync_mode),
+        )?
+    } else {
+        peering::SyncFlow {
+            send: true,
+            receive: true,
+        }
+    };
     let different = !local.vault_id.is_empty()
         && !remote.vault_id.is_empty()
         && local.vault_id != remote.vault_id;
@@ -362,6 +375,9 @@ fn exchange(channel: &mut Channel<'_>, prepared: Prepared, job: &Job, host: bool
         || (different && prepared.protocol == 2 && remote.vault_id < local.vault_id);
     let remote_needs_bootstrap = remote.vault_id.is_empty()
         || (different && prepared.protocol == 2 && local.vault_id < remote.vault_id);
+    if (!flow.send || !flow.receive) && (needs_bootstrap || remote_needs_bootstrap) {
+        return Err("sync_direction_unsupported");
+    }
     if different && prepared.protocol == 1 {
         return Err("different_vault");
     }
@@ -402,6 +418,9 @@ fn exchange(channel: &mut Channel<'_>, prepared: Prepared, job: &Job, host: bool
             return Err("different_device");
         }
         let mut outgoing = prepared.secrets.clone();
+        if !flow.send {
+            outgoing.content_key.clear();
+        }
         if !remote_needs_bootstrap {
             outgoing.vault_password.clear();
         }
@@ -422,7 +441,8 @@ fn exchange(channel: &mut Channel<'_>, prepared: Prepared, job: &Job, host: bool
         }
         let received: peering::PairSecrets =
             serde_json::from_slice(&incoming).map_err(|_| "invalid_device")?;
-        if device.content_type == "passwords" || device.vault_content_version == 2 {
+        if flow.receive && (device.content_type == "passwords" || device.vault_content_version == 2)
+        {
             let _ = peering::secret_key(&received.content_key)?;
         }
         if received.vault_password.len() > 4096
@@ -446,13 +466,19 @@ fn exchange(channel: &mut Channel<'_>, prepared: Prepared, job: &Job, host: bool
         } else {
             String::new()
         };
-        pairing.content_key = received.content_key.clone();
+        pairing.content_key = if flow.receive {
+            received.content_key.clone()
+        } else {
+            String::new()
+        };
         job.update(|progress| {
             progress.peer = Some(peering::PeerInfo {
                 device,
                 pairing,
                 vault_id: remote.vault_id.clone(),
                 needs_bootstrap,
+                send_content: flow.send,
+                receive_content: flow.receive,
             })
         });
         if needs_bootstrap {
@@ -461,6 +487,12 @@ fn exchange(channel: &mut Channel<'_>, prepared: Prepared, job: &Job, host: bool
         if remote_needs_bootstrap {
             remote.files.clear();
         }
+    }
+    if !flow.send {
+        local.files.clear();
+    }
+    if !flow.receive {
+        remote.files.clear();
     }
     job.update(|p| {
         p.total = local

@@ -8,13 +8,20 @@ import takagi.ru.monica.security.SecurityManager
 import java.security.SecureRandom
 import java.util.UUID
 
+internal enum class DeviceSyncMode(val wireName: String) {
+    BIDIRECTIONAL("bidirectional"), SEND_ONLY("send_only"), RECEIVE_ONLY("receive_only");
+    companion object {
+        fun fromWire(value: String): DeviceSyncMode? = entries.firstOrNull { it.wireName == value }
+    }
+}
+
 internal data class SavedSyncPeer(
     val deviceId: String, var name: String, val pairId: String, val trustedKey: String,
     var lastSyncedAt: Long = 0, var lastSentRevision: String = "", var lastReceivedRevision: String = "", var lastReceivedRequest: Long = 0,
     var address: String = ""
 ) { override fun toString() = "SavedSyncPeer($name)" }
 
-internal data class DeviceSyncPreferences(
+internal data class DeviceSyncPreferences @JvmOverloads constructor(
     val deviceId: String = UUID.randomUUID().toString().replace("-", ""),
     val replicaKey: String = randomKey(),
     var enabled: Boolean = true,
@@ -22,7 +29,8 @@ internal data class DeviceSyncPreferences(
     var settingsVersion: Long = 0,
     var settingsWriter: String = "",
     val peers: MutableList<SavedSyncPeer> = mutableListOf(),
-    var syncRequest: Long = 0
+    var syncRequest: Long = 0,
+    var mode: DeviceSyncMode = DeviceSyncMode.BIDIRECTIONAL
 ) {
     fun setInterval(seconds: Int) {
         require(seconds == 0 || seconds in 60..86400)
@@ -63,6 +71,7 @@ internal class DeviceSyncPreferenceStore(context: Context, private val security:
         require(result.deviceId.matches(Regex("[A-Za-z0-9_-]{1,64}")) && result.settingsVersion >= 0)
         require(LanPairingInvitation.parse("monica-lan:2:127.0.0.1:1:${result.replicaKey}") != null)
         result.syncRequest = json.optLong("sync_request")
+        result.mode = requireNotNull(DeviceSyncMode.fromWire(json.optString("sync_mode", "bidirectional")))
         val peers = json.getJSONArray("peers")
         require(peers.length() <= 8)
         for (index in 0 until peers.length()) {
@@ -83,6 +92,7 @@ internal class DeviceSyncPreferenceStore(context: Context, private val security:
         val json = JSONObject().put("version", 1).put("device_id", settings.deviceId).put("replica_key", settings.replicaKey)
             .put("enabled", settings.enabled).put("interval", settings.intervalSeconds).put("settings_version", settings.settingsVersion)
             .put("settings_writer", settings.settingsWriter).put("sync_request", settings.syncRequest).put("peers", peers)
+            .put("sync_mode", settings.mode.wireName)
         check(preferences.edit().putString("protected", security.encryptData(json.toString()))
             .putBoolean("enabled", settings.enabled).putInt("peer-count", settings.peers.size).commit())
     }

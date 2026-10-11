@@ -56,4 +56,12 @@
     <string name="device_sync_sending">正在发送保险库内容</string>
     <string name="device_sync_receiving">正在接收保险库内容</string>
     <string name="device_sync_transferring">正在传输保险库内容</string>
+    <string name="device_sync_direction">同步方向</string>
+    <string name="device_sync_bidirectional">双向同步</string>
+    <string name="device_sync_send_only">仅发送</string>
+    <string name="device_sync_receive_only">仅接收</string>
+    <string name="device_sync_direction_hint">仅接收不发送本机保险库内容；仅发送不保存对方内容。双方设置共同决定同步方向。</string>
+    <string name="device_sync_direction_conflict">双方都设为仅发送或仅接收，无法同步。请把一端改为双向，或为两端选择相反方向。</string>
+    <string name="device_sync_direction_unsupported">对方版本不支持单向同步。请更新两端应用，或改为双向同步。</string>
+    <string name="device_sync_direction_diagnostic">同步方向：%1$s</string>
 </resources>

@@ -12,6 +12,7 @@ on:
       - 'Monica for Android/gradle/**'
       - 'Monica for Android/rust-core/**'
       - 'Monica for Android/rust-jni/**'
+      - 'Monica for Android/rust-lan-sync/**'
   pull_request:
     branches: [ main, develop ]
     paths:
@@ -23,6 +24,7 @@ on:
       - 'Monica for Android/gradle/**'
       - 'Monica for Android/rust-core/**'
       - 'Monica for Android/rust-jni/**'
+      - 'Monica for Android/rust-lan-sync/**'
   workflow_dispatch:
 
 permissions:

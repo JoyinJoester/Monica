@@ -23,7 +23,8 @@ internal data class DeviceSyncState(
     val phase: String = "idle", val pairing: Boolean = false, val code: String = "",
     val invitations: List<String> = emptyList(), val error: String? = null,
     val failureStage: String = "", val connectionAttempts: Int = 0, val failureKind: String = "",
-    val failureOperation: String = "", val progress: DeviceSyncProgress? = null, val failureRecordName: String = ""
+    val failureOperation: String = "", val progress: DeviceSyncProgress? = null, val failureRecordName: String = "",
+    val mode: DeviceSyncMode = DeviceSyncMode.BIDIRECTIONAL
 )
 
 /** App-owned coordinator. Leaving settings does not cancel remembered-device synchronization. */
@@ -64,6 +65,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     private var multicastAttempted = false
     private var dataProgress: DeviceSyncProgress? = null
     private val activeHandles = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
+    private val receiveOnlyRevision = "receive-only-v1"
 
     init { DeviceSyncDiagLogger.initialize(app) }
 
@@ -106,11 +108,13 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         mutableState.value = DeviceSyncState(settings?.enabled ?: state.value.enabled,
             settings?.intervalSeconds ?: state.value.intervalSeconds,
             settings?.peers?.map {
+                val cached = statuses[it.deviceId] ?: "offline"
                 val status = if (error != null && failureStage == "preparing") "preparation_failed"
-                    else statuses[it.deviceId] ?: if (it.lastSyncedAt == 0L) "first_sync_pending" else "offline"
+                    else if (it.lastSyncedAt == 0L && cached in listOf("offline", "waiting")) "first_sync_pending" else cached
                 DeviceSyncPeerState(it.deviceId, it.name, status, it.lastSyncedAt)
             } ?: state.value.peers,
-            phase, pairing, code, invitations, error, failureStage, connectionAttempts, failureKind, failureOperation, dataProgress, failureRecordName)
+            phase, pairing, code, invitations, error, failureStage, connectionAttempts, failureKind, failureOperation, dataProgress, failureRecordName,
+            settings?.mode ?: state.value.mode)
         DeviceSyncService.update(app, mutableState.value)
     }
 
@@ -159,6 +163,20 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         store.save(settings())
     }
 
+    fun setMode(mode: DeviceSyncMode) = action {
+        val settings = settings()
+        if (settings.mode == mode) return@action
+        if (pairing) throw LanSyncException("device_sync_pairing_busy")
+        val nextRequest = Math.addExact(settings.syncRequest, 1)
+        transfers.values.toList().forEach { stop(it) }; transfers.clear()
+        settings.mode = mode; settings.syncRequest = nextRequest
+        snapshot = null; dataProgress = null; phase = "idle"; error = null; loadAfter = 0
+        failureStage = ""; failureKind = ""; failureOperation = ""; failureRecordName = ""; connectionAttempts = 0
+        settings.peers.forEach { force += it.deviceId; retry.remove(it.deviceId) }
+        store.save(settings)
+        cleanSnapshots()
+    }
+
     fun forget(deviceId: String) = action {
         transfers.remove(deviceId)?.let { stop(it) }
         settings().peers.removeAll { it.deviceId == deviceId }
@@ -205,11 +223,20 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         if (failureStage == "preparing") {
             error = null; failureStage = ""; failureKind = ""; failureOperation = ""; failureRecordName = ""
         }
-        val revision = data.revision()
-        snapshot?.takeIf { it.revision == revision }?.let { return it }
-        val directory = File(root, "out-${UUID.randomUUID()}").also { snapshots += it }
-        try { snapshot = data.prepare(directory) } finally { cleanSnapshots() }
-        return requireNotNull(snapshot)
+        try {
+            val receiveOnly = settings().mode == DeviceSyncMode.RECEIVE_ONLY
+            val revision = if (receiveOnly) receiveOnlyRevision else data.revision()
+            snapshot?.takeIf { it.revision == revision }?.let { return it }
+            val directory = File(root, "out-${UUID.randomUUID()}").also { snapshots += it }
+            snapshot = if (receiveOnly) {
+                check(directory.mkdirs() || directory.isDirectory)
+                DevicePasswordExport(revision, directory, "")
+            } else data.prepare(directory)
+            return requireNotNull(snapshot)
+        } finally {
+            cleanSnapshots()
+            if (dataProgress?.stage == "preparing") { dataProgress = null; if (phase == "preparing") phase = "idle" }
+        }
     }
 
     private suspend fun startTransfer(outgoing: DevicePasswordExport, peer: SavedSyncPeer?, invitation: String?, enrollment: Boolean): Transfer {
@@ -222,10 +249,12 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             .put("pair_id", peer?.pairId.orEmpty()).put("interval_seconds", settings.intervalSeconds)
             .put("settings_version", settings.settingsVersion).put("settings_writer", settings.settingsWriter)
             .put("sync_request", settings.syncRequest).put("revision", outgoing.revision).put("content_type", "vault").put("vault_content_version", 2)
+            .put("sync_mode", (if (enrollment) DeviceSyncMode.BIDIRECTIONAL else settings.mode).wireName)
         val parameters = JSONObject().put("operation", if (invitation == null) "start" else "connect").put("protocol", 2)
             .put("name", Build.MODEL.take(64)).put("device", device).put("revision", advertisement)
             .put("vault_id", "monica-passwords-v1").put("content_key", outgoing.contentKey)
-            .put("outgoing_directory", outgoing.directory.absolutePath).put("incoming_directory", directory.absolutePath)
+            .put("outgoing_directory", if (!enrollment && settings.mode == DeviceSyncMode.RECEIVE_ONLY) JSONObject.NULL else outgoing.directory.absolutePath)
+            .put("incoming_directory", directory.absolutePath)
         invitation?.let { parameters.put("invitation", it) }
         peer?.let {
             parameters.put("expected_device_id", it.deviceId)
@@ -334,13 +363,15 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         transfer.remoteAddress = progress.optString("remote_address", transfer.remoteAddress)
         if (transfer.enrollment) phase = next else if (next != "waiting") statuses[id] = "syncing"
         if (next == "waiting" && !transfer.enrollment) {
-            if (advertisement(data.revision()) != transfer.advertisement) { stop(transfer); transfers.remove(id) }
+            val revision = if (settings().mode == DeviceSyncMode.RECEIVE_ONLY) receiveOnlyRevision else data.revision()
+            if (advertisement(revision) != transfer.advertisement) { stop(transfer); transfers.remove(id) }
             return
         }
         if (next == "received" && !transfer.applyAttempted) {
             val remote = progress.getJSONObject("peer")
             val pairingOnly = transfer.enrollment && remote.optString("revision") == DevicePairingSnapshot.REVISION
-            if (!pairingOnly && DeviceSyncEditGate.isEditing) return
+            val receiveContent = !pairingOnly && settings().mode != DeviceSyncMode.SEND_ONLY && remote.optBoolean("receive_content", true)
+            if (receiveContent && DeviceSyncEditGate.isEditing) return
             transfer.applyAttempted = true
             transfer.stage = "applying"
             transfer.peer = remote
@@ -348,7 +379,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
                 currentCoroutineContext().ensureActive()
                 if (remote.getString("content_type") != "vault" || remote.optInt("vault_content_version") != 2) throw LanSyncException("unsupported_protocol")
                 if (remote.getString("device_id") == settings().deviceId) throw LanSyncException("same_device")
-                if (!pairingOnly) data.apply(transfer.directory, remote)
+                if (receiveContent) data.apply(transfer.directory, remote)
                 val settings = settings()
                 settings.acceptInterval(remote.getInt("interval_seconds"), remote.getLong("settings_version"), remote.getString("settings_writer"))
                 if (transfer.enrollment) {
@@ -409,7 +440,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         failureKind = failure.javaClass.simpleName
         failureOperation = (failure as? LanSyncException)?.operation.orEmpty()
         failureRecordName = (failure as? LanSyncException)?.recordName.orEmpty()
-        if (stage == "preparing") { phase = "failed"; dataProgress = null }
+        phase = "failed"; dataProgress = null
         connectionAttempts = attempts
         DeviceSyncDiagLogger.failure(stage, error.orEmpty(), failureKind, attempts, failureOperation)
     }

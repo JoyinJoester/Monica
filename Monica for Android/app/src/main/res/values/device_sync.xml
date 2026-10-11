@@ -56,4 +56,12 @@
     <string name="device_sync_sending">Sending vault contents</string>
     <string name="device_sync_receiving">Receiving vault contents</string>
     <string name="device_sync_transferring">Transferring vault contents</string>
+    <string name="device_sync_direction">Sync direction</string>
+    <string name="device_sync_bidirectional">Bidirectional</string>
+    <string name="device_sync_send_only">Send only</string>
+    <string name="device_sync_receive_only">Receive only</string>
+    <string name="device_sync_direction_hint">Receive only sends no local vault contents; send only saves no remote contents. Both devices determine the transfer direction.</string>
+    <string name="device_sync_direction_conflict">Both devices only send, or both only receive. Use bidirectional sync on one device or choose opposite directions.</string>
+    <string name="device_sync_direction_unsupported">The other device cannot honor one-way sync. Update both devices or use bidirectional sync.</string>
+    <string name="device_sync_direction_diagnostic">Sync direction: %1$s</string>
 </resources>
