@@ -62,7 +62,7 @@ class UnifiedSettingsInstrumentedTest {
         show {
             SyncBackupScreen({}, { events += "export" }, { events += "import" },
                 { events += "webdav" }, { events += "onedrive" }, { events += "dedup" },
-                { events += "keepass" }, { events += "mdbx" }, { events += "bitwarden" }, true)
+                { events += "keepass" }, { events += "mdbx" }, { events += "bitwarden" }, isPlusActivated = true)
         }
         capture("database-dark")
         listOf(R.string.mdbx_ui_manager_entry_title to "mdbx", R.string.local_keepass_database to "keepass",
