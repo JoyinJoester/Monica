@@ -14,7 +14,7 @@ import java.util.Base64
 object CxfPasskeyMaterial {
     data class Material(val algorithm: Int, val cosePublicKey: String)
 
-    fun decode(pkcs8: ByteArray): Material? = runCatching {
+    fun decode(pkcs8: ByteArray, requestedAlgorithm: Int? = null): Material? = runCatching {
         val info = PrivateKeyInfo.getInstance(pkcs8)
         val key = PrivateKeyFactory.createKey(info)
         val fields: Map<Int, Any>
@@ -40,7 +40,8 @@ object CxfPasskeyMaterial {
                 require(key.qInv.multiply(key.q).mod(key.p) == BigInteger.ONE)
                 val lambda = pMinusOne.divide(pMinusOne.gcd(qMinusOne)).multiply(qMinusOne)
                 require(key.exponent.multiply(key.publicExponent).mod(lambda) == BigInteger.ONE)
-                algorithm = -257
+                require(requestedAlgorithm == null || requestedAlgorithm in listOf(-257, -37))
+                algorithm = requestedAlgorithm ?: -257
                 fields = linkedMapOf(1 to 3, 3 to algorithm,
                     -1 to unsigned(key.modulus), -2 to unsigned(key.publicExponent))
             }

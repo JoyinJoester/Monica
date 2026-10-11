@@ -238,6 +238,7 @@ sealed class Screen(val route: String) {
     object PasswordListCustomization : Screen("password_list_customization") // 密码列表自定义
     object AddButtonCustomization : Screen("add_button_customization") // 兼容旧路由：已并入密码列表自定义
     object SyncBackup : Screen("sync_backup")  // 同步与备份页面路由
+    object LanSync : Screen("lan_sync")
     object LocalKeePass : Screen("local_keepass")  // 本地 KeePass 数据库页面
     object MonicaPlus : Screen("monica_plus") // Monica Plus 页面
     object Payment : Screen("payment") // 付款页面

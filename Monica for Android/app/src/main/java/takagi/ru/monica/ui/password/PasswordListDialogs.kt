@@ -39,6 +39,7 @@ import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.common.dialog.DeleteConfirmDialog
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.password.PasswordBatchDeleteGlobalProgressState
+import takagi.ru.monica.ui.password.PasswordBatchDeletePhase
 import takagi.ru.monica.ui.password.PasswordBatchDeleteProgressTracker
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.viewmodel.PasswordViewModel
@@ -72,7 +73,9 @@ internal enum class ManualStackDialogMode(
 
 internal data class PasswordBatchDeleteProgressUiState(
     val processed: Int,
-    val total: Int
+    val total: Int,
+    val phase: PasswordBatchDeletePhase = PasswordBatchDeletePhase.RUNNING,
+    val successCount: Int? = null
 ) {
     val progressFraction: Float
         get() = if (total <= 0) 0f else processed.toFloat() / total.toFloat()
@@ -84,7 +87,9 @@ internal data class PasswordBatchDeleteProgressUiState(
 internal fun PasswordBatchDeleteGlobalProgressState.toDialogUiState(): PasswordBatchDeleteProgressUiState =
     PasswordBatchDeleteProgressUiState(
         processed = processed,
-        total = total.coerceAtLeast(processed.coerceAtLeast(1))
+        total = total.coerceAtLeast(processed.coerceAtLeast(1)),
+        phase = phase,
+        successCount = successCount
     )
 
 // Isolates destructive-action dialogs so the main list composable stays focused on layout.
@@ -103,7 +108,6 @@ internal fun PasswordListDialogs(
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     onDeleteSelection: suspend (onProgress: (processed: Int, total: Int) -> Unit) -> Int,
     onBatchDeleteStarted: () -> Unit = {},
-    enableBatchDeleteProgress: Boolean,
     onSelectionCleared: () -> Unit,
     showBatchDeleteDialog: Boolean,
     onShowBatchDeleteDialogChange: (Boolean) -> Unit,
@@ -194,7 +198,7 @@ internal fun PasswordListDialogs(
     if (showBatchDeleteDialog) {
         suspend fun executeBatchDelete() {
             val shouldTrackProgress = selectedCount > 0
-            val notificationId = if (enableBatchDeleteProgress) {
+            val notificationId = if (shouldTrackProgress) {
                 PasswordBatchDeleteNotificationHelper.createNotificationId()
             } else {
                 null
@@ -250,28 +254,27 @@ internal fun PasswordListDialogs(
                     Toast.LENGTH_SHORT
                 ).show()
                 didFinishDeleteFlow = true
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                Toast.makeText(context, R.string.batch_delete_incomplete_title, Toast.LENGTH_LONG).show()
             } finally {
                 if (shouldTrackProgress) {
                     val finalTotal = batchDeleteTotal.coerceAtLeast(selectedCount.coerceAtLeast(1))
-                    val successCount = if (didFinishDeleteFlow) {
-                        deletedCountResult.coerceIn(0, finalTotal)
-                    } else {
-                        batchDeleteProcessed.coerceIn(0, finalTotal)
-                    }
+                    val successCount = deletedCountResult.coerceIn(0, finalTotal)
                     val failedCount = (finalTotal - successCount).coerceAtLeast(0)
 
                     notificationId?.let {
-                        PasswordBatchDeleteNotificationHelper.showCompleted(
-                            context = context,
-                            notificationId = it,
-                            successCount = successCount,
-                            failedCount = failedCount
-                        )
+                        if (didFinishDeleteFlow) {
+                            PasswordBatchDeleteNotificationHelper.showCompleted(context, it, successCount, failedCount)
+                        } else {
+                            PasswordBatchDeleteNotificationHelper.showInterrupted(context, it, batchDeleteProcessed, finalTotal)
+                        }
                     }
                     if (didFinishDeleteFlow) {
                         PasswordBatchDeleteProgressTracker.complete(successCount)
                     } else {
-                        PasswordBatchDeleteProgressTracker.clear()
+                        PasswordBatchDeleteProgressTracker.fail()
                     }
                 }
             }
@@ -408,12 +411,21 @@ internal fun PasswordBatchDeleteProgressDialog(
     onMoveToBackground: () -> Unit
 ) {
     AlertDialog(
-        onDismissRequest = {},
+        onDismissRequest = { if (state.phase != PasswordBatchDeletePhase.RUNNING) onMoveToBackground() },
         title = {
-            Text(text = stringResource(R.string.batch_delete_in_progress_title))
+            Text(text = stringResource(if (state.phase == PasswordBatchDeletePhase.RUNNING)
+                R.string.batch_delete_in_progress_title else if (state.phase == PasswordBatchDeletePhase.SUCCESS)
+                R.string.batch_delete_notification_done else R.string.batch_delete_incomplete_title))
         },
         text = {
             Column {
+                if (state.phase != PasswordBatchDeletePhase.RUNNING) {
+                    Text(text = if (state.successCount != null) {
+                        if (state.phase == PasswordBatchDeletePhase.SUCCESS)
+                            stringResource(R.string.batch_delete_notification_done_detail_success, state.successCount)
+                        else stringResource(R.string.batch_delete_notification_done_detail_partial, state.successCount, state.total - state.successCount)
+                    } else stringResource(R.string.batch_delete_interrupted_count, state.processed, state.total))
+                } else {
                 Text(text = stringResource(R.string.batch_delete_in_progress_message))
                 Spacer(modifier = androidx.compose.ui.Modifier.height(12.dp))
                 if (state.total > 0 && state.processed <= 0) {
@@ -434,11 +446,13 @@ internal fun PasswordBatchDeleteProgressDialog(
                         state.progressText
                     }
                 )
+                }
             }
         },
         confirmButton = {
             TextButton(onClick = onMoveToBackground) {
-                Text(text = stringResource(R.string.password_batch_transfer_continue_in_background))
+                Text(text = stringResource(if (state.phase == PasswordBatchDeletePhase.RUNNING)
+                    R.string.password_batch_transfer_continue_in_background else R.string.close))
             }
         }
     )

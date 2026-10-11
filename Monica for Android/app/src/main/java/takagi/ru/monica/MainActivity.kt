@@ -3880,6 +3880,14 @@ fun MonicaContent(
             )
         }
         
+        composable(Screen.LanSync.route) {
+            takagi.ru.monica.ui.screens.LanSyncScreen(
+                vaults = mdbxViewModel,
+                onNavigateBack = { navController.popBackStack() },
+                onManageVaults = { navController.navigate(Screen.MdbxManager.createRoute()) }
+            )
+        }
+
         composable(
             route = Screen.SyncBackup.route,
             enterTransition = { easyNotesScreenEnter() },
@@ -3921,6 +3929,7 @@ fun MonicaContent(
                 onNavigateToBitwarden = {
                     navController.navigate(Screen.BitwardenSettings.route)
                 },
+                onNavigateToLanSync = { navController.navigate(Screen.LanSync.route) },
                 isPlusActivated = settingsViewModel.settings.collectAsState().value.isPlusActivated
             )
             }

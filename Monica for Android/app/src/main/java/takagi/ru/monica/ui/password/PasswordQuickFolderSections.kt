@@ -154,7 +154,7 @@ internal fun PasswordQuickFolderBreadcrumbBanner(
         transferState?.phase == PasswordBatchTransferPhase.RUNNING -> PasswordQuickStatusMode.TRANSFER_RUNNING
         transferState?.phase == PasswordBatchTransferPhase.SUCCESS -> PasswordQuickStatusMode.TRANSFER_SUCCESS
         deleteState?.phase == PasswordBatchDeletePhase.RUNNING -> PasswordQuickStatusMode.DELETE_RUNNING
-        deleteState?.phase == PasswordBatchDeletePhase.SUCCESS -> PasswordQuickStatusMode.DELETE_SUCCESS
+        deleteState != null -> PasswordQuickStatusMode.DELETE_SUCCESS
         keePassSyncState != null -> PasswordQuickStatusMode.KEEPASS_SYNC
         bitwardenSyncState != null -> PasswordQuickStatusMode.BITWARDEN_SYNC
         else -> PasswordQuickStatusMode.BREADCRUMB
@@ -463,6 +463,7 @@ private fun PasswordBatchDeleteGlobalProgressState.toQuickStatusDeleteState(): Q
         phase = when (phase) {
             PasswordBatchDeletePhase.RUNNING -> QuickStatusDeletePhase.RUNNING
             PasswordBatchDeletePhase.SUCCESS -> QuickStatusDeletePhase.SUCCESS
+            PasswordBatchDeletePhase.FAILURE -> QuickStatusDeletePhase.FAILURE
         },
         successCount = successCount
     )

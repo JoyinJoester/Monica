@@ -58,6 +58,7 @@ class MonicaApplication : Application() {
         )
 
         SyncTaskRunner.installNetworkGate(AndroidSyncNetworkGate(this))
+        takagi.ru.monica.lansync.DeviceSyncService.install(this)
 
         // Logger initialization no longer performs file writes on this thread.
         MdbxDiagLogger.initialize(this)

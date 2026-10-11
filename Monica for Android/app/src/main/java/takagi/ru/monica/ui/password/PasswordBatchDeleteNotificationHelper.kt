@@ -90,7 +90,7 @@ internal object PasswordBatchDeleteNotificationHelper {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_key)
-            .setContentTitle(context.getString(R.string.batch_delete_notification_done))
+            .setContentTitle(context.getString(if (failedCount > 0) R.string.batch_delete_incomplete_title else R.string.batch_delete_notification_done))
             .setContentText(detailText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(detailText))
             .setPriority(if (failedCount > 0) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
@@ -103,6 +103,23 @@ internal object PasswordBatchDeleteNotificationHelper {
             NotificationManagerCompat.from(context).notify(notificationId, notification)
         } catch (_: SecurityException) {
         }
+    }
+
+    fun showInterrupted(context: Context, notificationId: Int, processed: Int, total: Int) {
+        ensureChannel(context)
+        if (!canPostNotification(context)) return
+        val detail = context.getString(R.string.batch_delete_interrupted_count, processed, total)
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_key)
+            .setContentTitle(context.getString(R.string.batch_delete_incomplete_title))
+            .setContentText(detail)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setAutoCancel(true)
+            .setContentIntent(buildMainActivityIntent(context))
+            .build()
+        try { NotificationManagerCompat.from(context).notify(notificationId, notification) }
+        catch (_: SecurityException) { }
     }
 
     private fun canPostNotification(context: Context): Boolean {

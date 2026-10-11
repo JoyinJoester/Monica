@@ -106,6 +106,7 @@ fun AddEditBillingAddressScreen(
     onEmbeddedSave: (suspend (takagi.ru.monica.attachments.EmbeddedWalletEditorResult) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    takagi.ru.monica.lansync.DeviceSyncEditorLease()
     val scope = rememberCoroutineScope()
     val database = remember { PasswordDatabase.getDatabase(context) }
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())

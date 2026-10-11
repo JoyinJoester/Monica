@@ -403,6 +403,7 @@ internal object DeveloperLogDebugHelper {
         runCatching { BitwardenDiagLogger.initialize(context.applicationContext) }
         runCatching { BitwardenSyncForensicsLogger.initialize(context.applicationContext) }
         runCatching { MdbxDiagLogger.initialize(context.applicationContext) }
+        runCatching { takagi.ru.monica.lansync.DeviceSyncDiagLogger.initialize(context.applicationContext) }
         runCatching { SecurityDiagLogger.initialize(context.applicationContext) }
         runCatching { SteamDiagLogger.initialize(context.applicationContext) }
         val autofillTagLogs = readAutofillTagLogs()
@@ -539,6 +540,9 @@ internal object DeveloperLogDebugHelper {
                 appendLine(persistedMdbxLogs.trim())
             }
             appendLine()
+            appendLine("=== Nearby Device Sync Logs ===")
+            appendLine(takagi.ru.monica.lansync.DeviceSyncDiagLogger.exportPersistedLogs())
+            appendLine()
             appendLine("=== Security Persisted Logs ===")
             if (persistedSecurityLogs.isBlank()) {
                 appendLine(context.getString(R.string.developer_no_logs))
@@ -592,6 +596,7 @@ internal object DeveloperLogDebugHelper {
         runCatching {
             MdbxDiagLogger.clear()
         }
+        runCatching { takagi.ru.monica.lansync.DeviceSyncDiagLogger.clear() }
         runCatching {
             SecurityDiagLogger.clear()
         }

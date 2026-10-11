@@ -15,6 +15,8 @@
     <!-- Network permissions for WebDAV backup -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     
     <!-- Storage permissions for saving images -->
@@ -34,6 +36,8 @@
     <!-- Foreground Service permissions for Notification Validator -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
@@ -272,6 +276,7 @@
             </intent-filter>
         </activity-alias>
 
+        <service android:name=".lansync.DeviceSyncService" android:exported="false" android:foregroundServiceType="connectedDevice" />
         <service
             android:name=".transfer.DatabaseExportService"
             android:exported="false"

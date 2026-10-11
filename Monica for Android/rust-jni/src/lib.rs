@@ -17,6 +17,21 @@ use search::{filter_metadata_batch, SearchQuery};
 const RUST_CORE_VERSION: &str = "monica-rust-jni/0.5.0-kdf";
 
 #[no_mangle]
+pub extern "system" fn Java_takagi_ru_monica_lansync_RustLanSync_nativeRequest(
+    mut env: JNIEnv,
+    _class: JClass,
+    input: JString,
+) -> jstring {
+    let request: String = match env.get_string(&input) {
+        Ok(value) => value.into(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+    env.new_string(monica_lan_sync::request_json(&request))
+        .map(|value| value.into_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[no_mangle]
 pub extern "system" fn Java_takagi_ru_monica_rustcore_RustPasswordGroupingCore_nativeProject(
     env: JNIEnv,
     _class: JClass,

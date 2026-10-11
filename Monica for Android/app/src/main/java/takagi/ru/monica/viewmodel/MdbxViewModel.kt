@@ -963,6 +963,50 @@ class MdbxViewModel(
         attachments.forEach { it.attachment.blob.fill(0) }
     }
 
+    internal suspend fun prepareLanSyncArtifacts(databaseId: Long, directory: File, includeBootstrap: Boolean): String =
+        mdbx2Repository.prepareLanSyncArtifacts(databaseId, directory, includeBootstrap)
+
+    internal suspend fun refreshDeviceSyncProjection(databaseId: Long) {
+        importEntriesFromVault(databaseId,orphanPolicy = MdbxImportOrphanPolicy.APPLY_REMOTE_STATE)
+        refreshAfterNativeManagement(databaseId)
+    }
+
+    internal suspend fun applyLanSyncArtifacts(databaseId: Long, directory: File): Int {
+        val bundle = File(directory, "changes.mdbxsync")
+        if (!bundle.isFile) return 0 // A first-time receiver has no local history to send back.
+        return try { mdbx2Repository.applyLanSyncFile(databaseId, bundle) }
+        finally { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { refreshManagerProjection(databaseId) } }
+    }
+
+    internal suspend fun importLanSyncVault(directory: File, password: String, name: String): Pair<Long, Int> = withContext(Dispatchers.IO) {
+        require(password.isNotBlank()) { "A vault password is required" }
+        val vaultDirectory = File(context.filesDir, "mdbx").apply { check(mkdirs() || isDirectory) }
+        val workingCopy = File(vaultDirectory, "lan-${UUID.randomUUID()}.mdbx")
+        File(directory, "vault.mdbx").copyTo(workingCopy, overwrite = false)
+        var databaseId: Long? = null
+        try {
+            val credential = buildCredential(MdbxUnlockMethod.MASTER_PASSWORD, password, null)
+            val mode = mdbx2Repository.validateVaultFile(workingCopy, credential)
+            val id = databaseDao.insertDatabase(LocalMdbxDatabase(
+                name = name.trim().ifBlank { "LAN vault" }, filePath = workingCopy.absolutePath,
+                storageLocation = MdbxStorageLocation.INTERNAL.name, sourceType = MdbxSourceType.LOCAL_INTERNAL.name,
+                engineType = MdbxEngineType.RUST_MDBX2.name, tigaMode = mode.name,
+                encryptedPassword = protectMdbxCredential(mode, credential),
+                unlockMethod = MdbxUnlockMethod.MASTER_PASSWORD.storedValue, kdfProfile = "argon2id-mdbx2",
+                workingCopyPath = workingCopy.absolutePath, cacheCopyPath = workingCopy.absolutePath,
+                isOfflineAvailable = true, lastSyncStatus = MdbxSyncStatus.LOCAL_ONLY.name
+            ))
+            databaseId = id
+            val conflicts = mdbx2Repository.applyLanSyncFile(id, File(directory, "changes.mdbxsync"))
+            refreshManagerProjection(id)
+            id to conflicts
+        } catch (error: Throwable) {
+            databaseId?.let { id -> runCatching { clearImportedEntries(id) }; runCatching { databaseDao.deleteDatabaseById(id) } }
+            runCatching { mdbx2Repository.deleteOwnedVaultFile(workingCopy) }
+            throw error
+        }
+    }
+
     fun importLocalVault(
         sourceUri: Uri,
         name: String?,
@@ -3461,7 +3505,7 @@ class MdbxViewModel(
             .toSet()
         val deletedPasskeyEntryIds = entries
             .filter { it.deleted && it.entryType == "passkey" }
-            .map { it.entryId }
+            .map { "passkey:${runCatching { JSONObject(it.payloadJson).optString("credential_id") }.getOrDefault("")}" }
             .toSet()
         val vaultActivePasswordEntryIds = entries
             .filter { !it.deleted && MdbxUnknownEntry.projectsAsPassword(it.entryType) }
@@ -3475,7 +3519,9 @@ class MdbxViewModel(
         val reconcileMs = measureTimeMillis {
         }
         val importMs = measureTimeMillis {
-            entries.filterNot { it.deleted }.forEach { stored ->
+            entries.filter { stored -> !stored.deleted || runCatching { JSONObject(stored.payloadJson).let {
+                !it.optBoolean("device_sync_staging") && it.optLong("deleted_at", -1) != 0L
+            } }.getOrDefault(false) }.forEach { stored ->
                 if (MdbxUnknownEntry.isUnknown(stored.entryType)) {
                     activePasswordEntryIds += stored.entryId
                     val existing = existingPasswordsByEntryId[stored.entryId]
@@ -3499,7 +3545,7 @@ class MdbxViewModel(
                 }
             }
 
-            entries.filterNot { it.deleted }.forEach { stored ->
+            entries.filter { it.entryId in payloadByEntryId }.forEach { stored ->
                 val payload = payloadByEntryId[stored.entryId] ?: return@forEach
                 when (stored.entryType) {
                     "note", "totp", "card", "document-ref", "billing-address", "payment-account" -> {
@@ -3514,12 +3560,14 @@ class MdbxViewModel(
                             ?.let { secureItemId -> importedSecureItemIds[stored.entryId] = secureItemId }
                     }
                     "passkey" -> {
-                        activePasskeyEntryIds += stored.entryId
+                        if(stored.deleted) return@forEach
+                        activePasskeyEntryIds += "passkey:${payload.optString("credential_id")}"
                         importPasskey(
                             databaseId = databaseId,
                             stored = stored,
                             payload = payload,
-                            existing = existingPasskeysByEntryId[stored.entryId]
+                            existing = existingPasskeysByEntryId["passkey:${payload.optString("credential_id")}"],
+                            importedPasswordIds = importedPasswordIds
                         )
                     }
                 }
@@ -4102,9 +4150,9 @@ class MdbxViewModel(
             },
             loginType = payload.optString("login_type", "PASSWORD"),
             sshKeyData = payload.readMdbxSshKeyData(existing?.sshKeyData.orEmpty()),
-            createdAt = existing?.createdAt ?: Date(),
+            createdAt = Date(payload.optLong("created_at", existing?.createdAt?.time ?: System.currentTimeMillis())),
             updatedAt = existing?.updatedAt ?: Date(),
-            isFavorite = existing?.isFavorite ?: false,
+            isFavorite = payload.optBoolean("is_favorite", existing?.isFavorite ?: false),
             sortOrder = if (payload.has("sort_order")) {
                 payload.optInt("sort_order", existing?.sortOrder ?: 0)
             } else {
@@ -4112,6 +4160,7 @@ class MdbxViewModel(
             },
             isGroupCover = existing?.isGroupCover ?: false
         ).let { takagi.ru.monica.repository.MdbxPasswordContentFields.readInto(payload, it, existing) }
+            .copy(isDeleted = stored.deleted, deletedAt = if(stored.deleted) existing?.deletedAt ?: Date() else null)
         val localPasswordId = if (existing != null) {
             if (!existing.matchesMdbxImport(entry, plainPassword)) {
                 passwordEntryDao.updatePasswordEntry(entry)
@@ -4122,7 +4171,24 @@ class MdbxViewModel(
         }
 
         restoreCustomFields(localPasswordId, payload)
+        restoreDeviceSyncHistory(localPasswordId,payload)
         return localPasswordId
+    }
+
+    private suspend fun restoreDeviceSyncHistory(entryId: Long, payload: JSONObject) {
+        val history = payload.optJSONArray("password_history") ?: return
+        val dao = takagi.ru.monica.data.PasswordDatabase.getDatabase(context).passwordHistoryDao()
+        val incoming = (0 until history.length()).map { index ->
+            val value = history.getJSONObject(index)
+            val timestamp = value.opt("lastUsedAt") ?: value.opt("last_used_at")
+            val millis = when(timestamp) { is Number -> timestamp.toLong(); is String -> java.time.OffsetDateTime.parse(timestamp).toInstant().toEpochMilli(); else -> 0 }
+            value.getString("password") to millis
+        }
+        val existing = dao.getHistoryByEntryIdSync(entryId).map { decryptMonicaCiphertextOrRaw(it.password) to it.lastUsedAt.time }
+        if(existing.toSet() == incoming.toSet()) return
+        dao.deleteByEntryId(entryId)
+        incoming.forEach { (password, millis) -> dao.insert(takagi.ru.monica.data.PasswordHistoryEntry(entryId = entryId,
+            password = securityManager.encryptDataLegacyCompat(password), lastUsedAt = Date(millis))) }
     }
 
     private fun PasswordEntry.matchesMdbxImport(
@@ -4234,14 +4300,16 @@ class MdbxViewModel(
             mdbxFolderId = payload.optMdbxFolderId(),
             replicaGroupId = stored.entryId,
             syncStatus = existing?.syncStatus ?: "NONE",
-            createdAt = existing?.createdAt ?: Date(),
+            createdAt = Date(payload.optLong("created_at", existing?.createdAt?.time ?: System.currentTimeMillis())),
             updatedAt = existing?.updatedAt ?: Date(),
-            isFavorite = existing?.isFavorite ?: false,
+            isFavorite = payload.optBoolean("is_favorite", existing?.isFavorite ?: false),
             sortOrder = if (payload.has("sort_order")) {
                 payload.optInt("sort_order", existing?.sortOrder ?: 0)
             } else {
                 existing?.sortOrder ?: 0
-            }
+            },
+            isDeleted = stored.deleted,
+            deletedAt = if(stored.deleted) existing?.deletedAt ?: Date() else null
         )
         if (existing != null) {
             if (!existing.matchesMdbxImport(item)) {
@@ -4267,11 +4335,8 @@ class MdbxViewModel(
             ?: return itemData
         val localPasswordId = importedPasswordIds[boundPasswordEntryId] ?: return itemData
         return runCatching {
-            val decoded = TotpDataResolver.parseStoredItemData(
-                itemData = itemData,
-                decryptIfNeeded = securityManager::decryptDataIfMonicaCiphertext
-            ) ?: return@runCatching itemData
-            val remappedJson = Json.encodeToString(decoded.copy(boundPasswordId = localPasswordId))
+            val remappedJson = JSONObject(securityManager.decryptDataIfMonicaCiphertext(itemData))
+                .put("boundPasswordId",localPasswordId).toString()
             if (securityManager.looksLikeMonicaCiphertext(itemData)) {
                 securityManager.encryptDataLegacyCompat(remappedJson)
             } else {
@@ -4322,12 +4387,16 @@ class MdbxViewModel(
         databaseId: Long,
         stored: MdbxStoredVaultEntry,
         payload: JSONObject,
-        existing: PasskeyEntry?
+        existing: PasskeyEntry?,
+        importedPasswordIds: Map<String,Long>
     ) {
         val credentialId = payload.optString("credential_id")
         if (credentialId.isBlank()) return
+        val prior = existing ?: passkeyDao.getPasskeysByCredentialId(credentialId).firstOrNull {
+            it.rpId == payload.optString("rp_id") && it.bitwardenVaultId == null && it.keepassDatabaseId == null && (it.mdbxDatabaseId == null || it.mdbxDatabaseId == databaseId) }
+        if(prior != null && (prior.publicKey != payload.optString("public_key") || prior.publicKeyAlgorithm != payload.optInt("public_key_algorithm",-7))) throw takagi.ru.monica.lansync.LanSyncException("passkey_conflict")
         val passkey = PasskeyPrivateKeyStore.protectPasskey(context, PasskeyEntry(
-            id = existing?.id ?: 0L,
+            id = prior?.id ?: 0L,
             credentialId = credentialId,
             rpId = payload.optString("rp_id"),
             rpName = payload.optString("rp_name").ifBlank { stored.title },
@@ -4336,27 +4405,28 @@ class MdbxViewModel(
             userDisplayName = payload.optString("user_display_name"),
             publicKeyAlgorithm = payload.optInt("public_key_algorithm", -7),
             publicKey = payload.optString("public_key"),
-            privateKeyAlias = payload.optString("private_key_alias"),
+            privateKeyAlias = payload.optString("private_key_alias").ifEmpty { prior?.privateKeyAlias.orEmpty() },
             transports = payload.optString("transports", "internal"),
             aaguid = payload.optString("aaguid"),
-            signCount = payload.optLong("sign_count", 0L),
+            signCount = 0L,
             notes = payload.optString("notes"),
             passkeyMode = payload.optString("passkey_mode", PasskeyEntry.MODE_LEGACY),
             mdbxDatabaseId = databaseId,
             mdbxFolderId = payload.optMdbxFolderId(),
-            createdAt = existing?.createdAt ?: System.currentTimeMillis(),
-            lastUsedAt = existing?.lastUsedAt ?: System.currentTimeMillis(),
-            useCount = existing?.useCount ?: 0,
-            iconUrl = existing?.iconUrl,
-            isDiscoverable = existing?.isDiscoverable ?: true,
-            isUserVerificationRequired = existing?.isUserVerificationRequired ?: true,
-            isBackedUp = existing?.isBackedUp ?: false,
-            boundPasswordId = existing?.boundPasswordId,
-            categoryId = existing?.categoryId,
+            createdAt = payload.optLong("created_at",existing?.createdAt ?: System.currentTimeMillis()),
+            lastUsedAt = maxOf(payload.optLong("last_used_at",0L),prior?.lastUsedAt ?: 0L),
+            useCount = maxOf(payload.optInt("use_count",0),prior?.useCount ?: 0),
+            iconUrl = if(payload.has("icon_url")) payload.optString("icon_url").takeUnless { it.isBlank() || it == "null" } else existing?.iconUrl,
+            isDiscoverable = payload.optBoolean("is_discoverable",existing?.isDiscoverable ?: true),
+            isUserVerificationRequired = payload.optBoolean("is_user_verification_required",existing?.isUserVerificationRequired ?: true),
+            isBackedUp = payload.optString("key_status") == "portable" || (existing?.isBackedUp ?: false),
+            boundPasswordId = if(payload.has("bound_password_entry_id")) importedPasswordIds[payload.optString("bound_password_entry_id")] else existing?.boundPasswordId,
+            categoryId = takagi.ru.monica.data.PasswordDatabase.getDatabase(context).categoryDao().getDeviceSyncCategories()
+                .firstOrNull { it.mdbxDatabaseId == databaseId }?.id,
             syncStatus = existing?.syncStatus ?: "NONE"
         ))
-        if (existing != null) {
-            if (existing != passkey) {
+        if (prior != null) {
+            if (prior != passkey) {
                 passkeyDao.update(passkey)
             }
         } else {

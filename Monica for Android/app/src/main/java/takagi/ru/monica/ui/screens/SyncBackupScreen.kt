@@ -36,6 +36,7 @@ fun SyncBackupScreen(
     onNavigateToLocalKeePass: () -> Unit = {},  // 本地 KeePass 数据库管理
     onNavigateToMdbx: () -> Unit = {},
     onNavigateToBitwarden: () -> Unit = {},  // Bitwarden 集成入口
+    onNavigateToLanSync: () -> Unit = {},
     isPlusActivated: Boolean = false
 ) {
     val scrollState = rememberScrollState()
@@ -86,6 +87,8 @@ fun SyncBackupScreen(
                     stringResource(R.string.dedup_engine_entry_desc), onNavigateToDedupEngine)
             }
             SyncBackupSection(title = stringResource(R.string.sync_backup_common_sync)) {
+                SyncBackupItem(Icons.Default.Wifi, stringResource(R.string.lan_title),
+                    stringResource(R.string.device_sync_description), onNavigateToLanSync)
                 SyncBackupItem(Icons.Default.Cloud, stringResource(R.string.webdav_backup),
                     stringResource(R.string.webdav_backup_description), onNavigateToWebDav)
                 SyncBackupItem(Icons.Default.CloudSync, stringResource(R.string.onedrive_backup_title),

@@ -56,6 +56,7 @@ import takagi.ru.monica.ui.common.pull.rememberPullToActionState
 import takagi.ru.monica.ui.main.navigation.SteamDockIcon
 import takagi.ru.monica.ui.password.PasswordBatchDeleteGlobalProgressState
 import takagi.ru.monica.ui.password.PasswordBatchDeleteProgressTracker
+import takagi.ru.monica.ui.password.PasswordBatchDeletePhase
 import takagi.ru.monica.ui.password.PasswordBatchTransferGlobalProgressState
 import takagi.ru.monica.ui.password.PasswordBatchTransferProgressTracker
 import takagi.ru.monica.ui.settings.SecurityAnalysisPullCard
@@ -1477,12 +1478,17 @@ private fun PasswordBatchDeleteProgressCard(
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onTertiaryContainer
             )
-            LinearProgressIndicator(
-                progress = { progress.progressFraction.coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth()
-            )
+            if (progress.phase == PasswordBatchDeletePhase.RUNNING) {
+                if (progress.processed <= 0) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                else LinearProgressIndicator(progress = { progress.progressFraction.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+            }
             Text(
-                text = if (progress.processed <= 0) {
+                text = if (progress.phase == PasswordBatchDeletePhase.FAILURE) {
+                    if (progress.successCount != null) stringResource(R.string.batch_delete_notification_done_detail_partial, progress.successCount, progress.total - progress.successCount)
+                    else stringResource(R.string.batch_delete_interrupted_count, progress.processed, progress.total)
+                } else if (progress.phase == PasswordBatchDeletePhase.SUCCESS) {
+                    stringResource(R.string.batch_delete_notification_done_detail_success, progress.successCount ?: progress.processed)
+                } else if (progress.processed <= 0) {
                     stringResource(R.string.batch_delete_in_progress_preparing)
                 } else {
                     stringResource(
