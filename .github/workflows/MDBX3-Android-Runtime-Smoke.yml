@@ -68,7 +68,7 @@ jobs:
               echo "sdkmanager not found under $ANDROID_SDK_ROOT/cmdline-tools" >&2
               exit 1
             fi
-            yes | "$sdkmanager_path" "ndk;$NDK_VERSION" >/dev/null
+            "$sdkmanager_path" "ndk;$NDK_VERSION" >/dev/null < <(yes 2>/dev/null)
           fi
           test -d "$ndk_path"
           echo "ANDROID_NDK_HOME=$ndk_path" >> "$GITHUB_ENV"

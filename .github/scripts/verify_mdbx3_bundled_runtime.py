@@ -31,6 +31,11 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def source_sha256(path: Path) -> str:
+    # Source descriptors and Kotlin bindings may be checked out with CRLF on Windows.
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def build_ids(data: bytes) -> list[str]:
     if data[:4] != b"\x7fELF" or len(data) < 20:
         raise ValueError("library is not a complete ELF shared object")
@@ -69,17 +74,32 @@ def build_ids(data: bytes) -> list[str]:
 def verify(root: Path) -> None:
     provenance_path = root / "Monica for Android/mdbx-engine/MDBX3_RUNTIME_PROVENANCE.json"
     provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
-    if provenance.get("schema") != "monica-mdbx3-runtime-provenance-v1":
+    schema = provenance.get("schema")
+    if schema == "monica-mdbx3-runtime-provenance-v1":
+        if provenance.get("status") != "preview":
+            raise ValueError("bundled MDBX3 runtime must remain marked preview")
+        if provenance.get("runtime", {}).get("native_library") != LIBRARY_NAME:
+            raise ValueError("unexpected MDBX3 native library name")
+        artifacts = provenance.get("artifacts", {})
+    elif schema == "monica-mdbx-glitter-portable-provenance-v2":
+        if provenance.get("status") != "portable-implemented-validation-in-progress":
+            raise ValueError("portable Glitter validation must remain marked in progress")
+        if provenance.get("historical_validation_applies_to_current_binary") is not False:
+            raise ValueError("historical validation must not be attributed to the current runtime")
+        if provenance.get("source_manifest") != "GLITTER_SOURCE_MANIFEST.json":
+            raise ValueError("unexpected portable source manifest")
+        engine_root = provenance_path.parent
+        if source_sha256(engine_root / "GLITTER_SOURCE_MANIFEST.json") != provenance.get("source_manifest_sha256"):
+            raise ValueError("portable source manifest SHA-256 mismatch")
+        binding = engine_root / "src/main/java/uniffi/mdbx_ffi/mdbx_ffi.kt"
+        if source_sha256(binding) != provenance.get("binding", {}).get("sha256"):
+            raise ValueError("portable Kotlin binding SHA-256 mismatch")
+        artifacts = provenance.get("main_native_artifacts", {})
+    else:
         raise ValueError("unexpected provenance schema")
-    if provenance.get("status") != "preview":
-        raise ValueError("bundled MDBX3 runtime must remain marked preview")
     runtime = provenance.get("runtime", {})
     if runtime.get("storage_format") != "MDBX-2":
         raise ValueError("MDBX3 bundled runtime must keep the MDBX-2 storage format")
-    if runtime.get("native_library") != LIBRARY_NAME:
-        raise ValueError("unexpected MDBX3 native library name")
-
-    artifacts = provenance.get("artifacts", {})
     if set(artifacts) != set(EXPECTED_MACHINES):
         raise ValueError("provenance must contain exactly the three Android ABIs")
 
