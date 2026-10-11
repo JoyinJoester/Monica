@@ -30,7 +30,8 @@ internal data class DevicePasswordExport(val revision: String, val directory: Fi
 }
 
 internal class DevicePasswordSyncProvider(context: Context, private val security: SecurityManager, private val preferences: DeviceSyncPreferenceStore,
-    suppliedDatabase: PasswordDatabase? = null, private val replicaPath: File? = null) {
+    suppliedDatabase: PasswordDatabase? = null, private val replicaPath: File? = null,
+    suppliedSteamDatabase: takagi.ru.monica.steam.data.SteamDatabase? = null) {
     private val app = context.applicationContext
     private val database = suppliedDatabase ?: PasswordDatabase.getDatabase(app)
     private val passwords = database.passwordEntryDao()
@@ -48,6 +49,10 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     private var preparedAssets: DeviceAssetTransfer? = null
     private var fallbackAssets: DeviceAssetTransfer? = null
     private val metadata = DeviceRoomVaultMetadata(database, security) { ids -> request("replica_local") { put("local_ids", JSONArray(ids)) } }
+    private val steamDatabase = suppliedSteamDatabase ?: takagi.ru.monica.steam.data.SteamDatabase.getDatabase(app)
+    private val steam = DeviceSteamSyncStore(steamDatabase, security) { categoryId ->
+        categoryId?.let { categories.getCategoryById(it) }?.takeIf { it.isMonicaLocalCategory() }?.let(metadata::folder)
+    }
     var onProgress: ((DeviceSyncProgress) -> Unit)? = null
     private val native = Mdbx2Repository(app, database.localMdbxDatabaseDao(), security, passwords, database.secureItemDao(), fields)
     private val gate = Mutex()
@@ -64,7 +69,13 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     private val observer = object : InvalidationTracker.Observer("password_entries", "custom_fields", "categories", "local_mdbx_databases", "secure_items", "passkeys", "password_history_entries", "attachments") {
         override fun onInvalidated(tables: Set<String>) { changes.incrementAndGet() }
     }
-    init { database.invalidationTracker.addObserver(observer) }
+    private val steamObserver = object : InvalidationTracker.Observer("steam_accounts") {
+        override fun onInvalidated(tables: Set<String>) { changes.incrementAndGet() }
+    }
+    init {
+        database.invalidationTracker.addObserver(observer)
+        steamDatabase.invalidationTracker.addObserver(steamObserver)
+    }
 
     private fun request(operation: String, block: JSONObject.() -> Unit = {}): JSONObject =
         RustLanSync.request(JSONObject().put("operation", operation).put("handle", handle).apply(block))
@@ -145,10 +156,11 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
             issues += exported.mapNotNull { entry -> DevicePasskeySyncIssue.from(entry) }
         }
         local += metadata.rootMetadata()
+        local += steam.snapshots()
         normalizeNativeReferences(local)
         assets = local.flatMap { it.assets }.distinctBy { it.id }
         primaryNativeId = nativeDatabases.firstOrNull { it.isDefault }?.id
-        request("replica_scan_begin") { put("scopes", JSONArray(listOf("local", "secure", "passkeys", "folders", "metadata") + nativeDatabases.map { "mdbx:${it.id}" })) }
+        request("replica_scan_begin") { put("scopes", JSONArray(listOf("local", "secure", "passkeys", "folders", "metadata", "steam") + nativeDatabases.map { "mdbx:${it.id}" })) }
         var batch = JSONArray()
         var bytes = 0
         fun flush() {
@@ -240,6 +252,13 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
                     metadata.applyRootMetadata(id,localId,expected,deleted,data)
                 } else if (localId?.startsWith("folder:") == true || ((!deleted || data.optBoolean("trashed")) && data.optString("entry_type") == "folder" && primaryNativeId == null)) {
                     applyLocalFolder(id, localId, expected, deleted, data)
+                } else if (localId?.startsWith("steam:") == true ||
+                    (localId == null && primaryNativeId == null && !deleted && data.optString("entry_type") == "steam-mafile")) {
+                    val category = if (deleted) null else metadata.localFolder(data) ?: data.optString("folder").takeIf { it.isNotEmpty() }?.let { name ->
+                        categories.getDeviceSyncCategories().firstOrNull { it.name == name && it.isMonicaLocalCategory() }?.id
+                            ?: categories.insert(Category(name = name))
+                    }
+                    steam.apply(id, localId, expected, deleted, data, category)
                 } else if (localId?.startsWith("secure:") == true || localId?.startsWith("passkey:") == true ||
                     (!deleted && data.optString("entry_type") == "passkey" && localId == null && primaryNativeId == null)) {
                     applyLocalVault(id, localId, expected, deleted, data)

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nearby_intro">同一 Wi-Fi，让设备上的内容保持一致。设备之间加密直连，无需云中转。</string>
+    <string name="nearby_add_device">添加设备</string>
+    <string name="nearby_generate_hint">生成二维码，也可复制配对链接</string>
+    <string name="nearby_scan_subtitle">连接另一台设备</string>
+    <string name="nearby_scan_hint">将另一台设备的配对二维码放入框内。</string>
+    <string name="nearby_paste_hint">粘贴另一台设备生成的链接</string>
+    <string name="nearby_pair_title">连接另一台设备</string>
+    <string name="nearby_share_hint">让另一台设备扫描二维码，或将配对链接复制给它。配对时请保持两台设备解锁。</string>
+    <string name="nearby_generating">正在生成配对二维码和链接…</string>
+    <string name="nearby_regenerate">重新生成</string>
+    <string name="nearby_cancel_pairing">取消配对</string>
+    <string name="nearby_no_devices_title">还没有配对设备</string>
+    <string name="nearby_settings">同步设置</string>
+    <string name="nearby_automatic_hint">解锁后自动连接已配对设备</string>
+    <string name="nearby_details">同步内容与连接诊断</string>
+    <string name="nearby_scope_summary">密码、验证器、Steam 令牌、通行密钥等</string>
+</resources>

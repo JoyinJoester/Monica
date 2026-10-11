@@ -1,0 +1,37 @@
+// Package the JNI bridge built from this checkout, including nearby-device sync.
+// Compile-only jobs (for example CodeQL) do not need Android native libraries.
+def nativeSource = new File(rootDir, 'rust-jni')
+def nativeOutput = new File(buildDir, 'monicaRustJniLibs')
+def nativeAbis = project.hasProperty('includeX86TestAbi')
+        ? ['arm64-v8a', 'armeabi-v7a', 'x86_64'] : ['arm64-v8a', 'armeabi-v7a']
+
+android.sourceSets.main.jniLibs.setSrcDirs([nativeOutput])
+
+def buildNative = tasks.register('buildMonicaRustJniFromSource') {
+    group = 'build'
+    description = 'Builds the current crypto and nearby-sync JNI bridge from source'
+    ['rust-jni', 'rust-crypto', 'rust-lan-sync'].each { component ->
+        inputs.file new File(rootDir, "${component}/Cargo.toml")
+        inputs.dir new File(rootDir, "${component}/src")
+    }
+    inputs.file new File(nativeSource, 'Cargo.lock')
+    inputs.property 'abis', nativeAbis
+    outputs.dir nativeOutput
+    doLast {
+        def command = ['cargo', 'ndk']
+        nativeAbis.each { command.addAll(['-t', it]) }
+        command.addAll(['-P', '26', '-o', nativeOutput.absolutePath, 'build', '--release', '--locked'])
+        def process = new ProcessBuilder(command).directory(nativeSource).redirectErrorStream(true).start()
+        process.inputStream.eachLine { println it }
+        if (process.waitFor() != 0) throw new GradleException('Building Monica Rust JNI from source failed')
+        nativeAbis.each { abi ->
+            if (!new File(nativeOutput, "${abi}/libmonica_rust_jni.so").isFile()) {
+                throw new GradleException("Missing generated Monica JNI library for ${abi}")
+            }
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name.startsWith('merge') && name.endsWith('JniLibFolders')) dependsOn buildNative
+}

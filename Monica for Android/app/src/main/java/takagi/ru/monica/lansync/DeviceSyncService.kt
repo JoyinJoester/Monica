@@ -100,7 +100,10 @@ class DeviceSyncService : Service() {
                 if (next == wanted) return@post
                 wanted = next
                 if (wanted) startIfVisible(context)
-                else if (running || starting) context.stopService(Intent(context, DeviceSyncService::class.java))
+                // A queued foreground start must reach onCreate/startForeground before it is stopped.
+                // Cancelling it here races Android's foreground deadline and can kill the app.
+                // onStartCommand observes wanted=false and stops the service after promotion.
+                else if (running && !starting) context.stopService(Intent(context, DeviceSyncService::class.java))
             }
         }
 

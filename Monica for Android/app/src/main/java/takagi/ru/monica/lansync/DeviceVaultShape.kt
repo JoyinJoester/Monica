@@ -39,6 +39,7 @@ internal object DeviceVaultShape {
             if(payload.length() == 0) throw LanSyncException("invalid_vault_payload")
             if(type in listOf("note","totp","card","document-ref","billing-address","payment-account")) text(payload,"item_data")
             if(type == "passkey") DevicePasskeyShape.validateMetadata(payload)
+            if(type == "steam-mafile") DeviceSteamSyncStore.parse(data)
             if(type in listOf("folder","vault-metadata")) {
                 if(type == "folder") path(payload.opt("path"))
                 else if(payload.optJSONArray("tags") == null) throw LanSyncException("invalid_vault_payload")

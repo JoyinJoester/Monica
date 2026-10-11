@@ -209,7 +209,9 @@ private fun QrCodeScanner(
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         }
     }
-    var showOverlay by remember { mutableStateOf(false) }
+    // A navigation destination already animates the complete screen.
+    val usesScreenTransition = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current != null
+    var showOverlay by remember { mutableStateOf(usesScreenTransition) }
     var invalidCandidateSeen by remember { mutableStateOf(false) }
 
     val acceptResult: (String?) -> Boolean = acceptResult@{ raw ->

@@ -161,7 +161,18 @@ class SteamAccountRepository(
         }
     }
 
-    private fun decryptEntity(entity: SteamAccountEntity): SteamAccount {
+    internal fun encryptEntity(account: SteamAccount): SteamAccountEntity = SteamAccountEntity(
+        id = account.id, steamId = encrypt(account.steamId), accountName = encrypt(account.accountName),
+        displayName = encrypt(account.displayName), deviceId = encrypt(account.deviceId),
+        sharedSecret = encrypt(account.sharedSecret), identitySecret = account.identitySecret?.let(::encrypt),
+        revocationCode = account.revocationCode?.let(::encrypt), tokenGid = account.tokenGid?.let(::encrypt),
+        accessToken = account.accessToken?.let(::encrypt), refreshToken = account.refreshToken?.let(::encrypt),
+        steamLoginSecure = account.steamLoginSecure?.let(::encrypt), rawSteamGuardJson = encrypt(account.rawSteamGuardJson),
+        selected = account.selected, sortOrder = account.sortOrder, createdAt = account.createdAt,
+        updatedAt = account.updatedAt, categoryId = account.categoryId
+    )
+
+    internal fun decryptEntity(entity: SteamAccountEntity): SteamAccount {
         return SteamAccount(
             id = entity.id,
             steamId = decrypt(entity.steamId).orEmpty(),

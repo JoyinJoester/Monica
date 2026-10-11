@@ -7,6 +7,9 @@ publish = false
 license = "GPL-3.0-only"
 description = "Android JNI bridge for Monica runtime and cryptographic cores"
 
+# Keep standalone Android builds independent of a parent checkout's Cargo workspace.
+[workspace]
+
 [lib]
 path = "src/lib.rs"
 crate-type = ["cdylib"]

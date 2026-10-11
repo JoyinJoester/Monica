@@ -206,6 +206,8 @@ android {
     }
 }
 
+apply from: rootProject.file('gradle/monica-rust-jni.gradle')
+
 configurations.configureEach {
     resolutionStrategy.force(
         "org.jetbrains.kotlin:kotlin-bom:2.1.20",

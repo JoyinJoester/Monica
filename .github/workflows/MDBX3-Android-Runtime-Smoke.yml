@@ -63,7 +63,7 @@ jobs:
           set -euo pipefail
           rustup toolchain install "$RUST_VERSION" --profile minimal
           rustup default "$RUST_VERSION"
-          rustup target add x86_64-linux-android
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 
           ndk_path="$ANDROID_SDK_ROOT/ndk/$NDK_VERSION"
           if [ ! -d "$ndk_path" ]; then

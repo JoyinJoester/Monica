@@ -1,5 +1,7 @@
 package takagi.ru.monica
 
+import takagi.ru.monica.navigation.nearbySyncDestinations
+
 import takagi.ru.monica.utils.AppLocaleStringResolver
 
 import takagi.ru.monica.R
@@ -3880,13 +3882,7 @@ fun MonicaContent(
             )
         }
         
-        composable(Screen.LanSync.route) {
-            takagi.ru.monica.ui.screens.LanSyncScreen(
-                vaults = mdbxViewModel,
-                onNavigateBack = { navController.popBackStack() },
-                onManageVaults = { navController.navigate(Screen.MdbxManager.createRoute()) }
-            )
-        }
+        nearbySyncDestinations(navController)
 
         composable(
             route = Screen.SyncBackup.route,

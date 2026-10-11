@@ -58,8 +58,9 @@ internal object DeviceSyncCadence {
         force || (changed && elapsedMillis >= (if (intervalSeconds == 0) 2L else intervalSeconds.toLong()) * 1000)
 }
 
-internal class DeviceSyncPreferenceStore(context: Context, private val security: SecurityManager) {
-    private val preferences = context.applicationContext.getSharedPreferences("monica-device-sync", Context.MODE_PRIVATE)
+internal class DeviceSyncPreferenceStore(context: Context, private val security: SecurityManager,
+    preferenceName: String = "monica-device-sync") {
+    private val preferences = context.applicationContext.getSharedPreferences(preferenceName, Context.MODE_PRIVATE)
     fun hasPeers(): Boolean = preferences.getBoolean("enabled", false) && preferences.getInt("peer-count", 0) > 0
     fun load(): DeviceSyncPreferences {
         val encrypted = preferences.getString("protected", null) ?: return DeviceSyncPreferences()

@@ -50,7 +50,7 @@
     <string name="device_sync_limit">最多支持配对 8 台设备。</string>
     <string name="device_sync_invalid_data">无法读取此次更新，请更新两端应用后重试。</string>
     <string name="device_sync_failed">此次同步未完成。请确保两台设备已解锁并在同一网络，已配对设备会自动重试。</string>
-    <string name="device_sync_scope">同步 Monica 密码、独立 2FA、通行密钥、笔记、钱包、文件夹、历史记录、回收站和附件。无法导出的通行密钥同步为需要重新设置的凭据信息。Bitwarden、KeePass 账户继续使用各自的同步。</string>
+    <string name="device_sync_scope">同步 Monica 密码、独立 2FA、Steam 令牌、通行密钥、笔记、钱包、文件夹、历史记录、回收站和附件。无法导出的通行密钥同步为需要重新设置的凭据信息。Bitwarden、KeePass 账户继续使用各自的同步。</string>
     <string name="device_sync_preparing">正在准备保险库条目</string>
     <string name="device_sync_applying">正在保存保险库条目</string>
     <string name="device_sync_sending">正在发送保险库内容</string>
