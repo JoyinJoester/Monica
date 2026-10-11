@@ -55,9 +55,11 @@ class DeviceVaultProviderTest {
     @Before fun dispatchers() { Dispatchers.setMain(Dispatchers.Unconfined) }
     @After fun close() { databases.forEach { it.close() }; SessionManager.markLocked(); Dispatchers.resetMain() }
 
-    private fun vault(): Pair<PasswordDatabase, DevicePasswordSyncProvider> {
+    private fun vault(synchronousInvalidation: Boolean = false): Pair<PasswordDatabase, DevicePasswordSyncProvider> {
         val context = RuntimeEnvironment.getApplication()
-        val database = Room.inMemoryDatabaseBuilder(context, PasswordDatabase::class.java).allowMainThreadQueries().build()
+        val builder = Room.inMemoryDatabaseBuilder(context, PasswordDatabase::class.java).allowMainThreadQueries()
+        if (synchronousInvalidation) builder.setQueryExecutor { it.run() }
+        val database = builder.build()
         databases += database
         val security = SecurityManager(context)
         return database to DevicePasswordSyncProvider(context,security,DeviceSyncPreferenceStore(context,security),database,
@@ -207,7 +209,7 @@ class DeviceVaultProviderTest {
 
     @Test fun external_passkey_copy_does_not_conflict_and_keeps_its_key_after_remote_deletion() = runBlocking { withTimeout(60000) {
         SessionManager.markUnlocked()
-        val (a, first) = vault(); val (b, second) = vault()
+        val (a, first) = vault(synchronousInvalidation = true); val (b, second) = vault(synchronousInvalidation = true)
         try {
             val context = RuntimeEnvironment.getApplication()
             val pair = java.security.KeyPairGenerator.getInstance("EC").apply {
@@ -221,8 +223,6 @@ class DeviceVaultProviderTest {
             a.passkeyDao().insert(original)
             b.passkeyDao().insert(original.copy(keepassDatabaseId = 42, notes = "External copy"))
             suspend fun sync() {
-                // Flush Room's asynchronous invalidation before asking for the next snapshot.
-                a.invalidationTracker.refreshVersionsSync()
                 val outgoing = first.prepare(File(context.filesDir, "copy-sync-${UUID.randomUUID()}"))
                 second.apply(outgoing.directory, JSONObject().put("pairing", JSONObject().put("content_key", outgoing.contentKey)))
             }
