@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
     paths:
       - '.github/workflows/MDBX3-Android-Runtime-Smoke.yml'
+      - '.github/scripts/prepare_mdbx_runtime_source.py'
       - 'Monica for Android/app/src/androidTest/**'
       - 'Monica for Android/app/src/main/java/takagi/ru/monica/ui/totp/**'
       - 'Monica for Android/app/src/main/java/takagi/ru/monica/ui/components/TotpCodeCard.kt'
@@ -18,7 +19,7 @@ permissions:
   contents: read
 
 env:
-  MDBX_COMMIT: d1d3cc4fdff4e33fcb70099b3e7df36eeae43ba4
+  MDBX_COMMIT: 5cf8af697727095654884e0a76bec6ca12d0ce6b
   RUST_VERSION: 1.86.0
   CARGO_NDK_VERSION: 4.1.2
   NDK_VERSION: 28.2.13676358
@@ -47,6 +48,9 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+
+      - name: Reconstruct and verify the current Android runtime source
+        run: python3 monica/.github/scripts/prepare_mdbx_runtime_source.py --source mdbx
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -81,9 +85,9 @@ jobs:
           set -euo pipefail
           cargo ndk \
             -t x86_64 \
-            -P 21 \
+            -P 26 \
             -o "$GITHUB_WORKSPACE/mdbx3-jniLibs" \
-            build -p mdbx-ffi --profile mdbx3-release
+            build -p mdbx-ffi --profile mdbx3-release --locked
 
           candidate="$GITHUB_WORKSPACE/mdbx3-jniLibs/x86_64/libmdbx_ffi.so"
           test -f "$candidate"
@@ -208,8 +212,10 @@ jobs:
           test_classes=(
             takagi.ru.monica.VerifySmokeTest
             takagi.ru.monica.lansync.NearbySyncNativeInstrumentedTest
+            takagi.ru.monica.lansync.NearbyPasskeyPreflightTest
             takagi.ru.monica.ui.TotpListInteractionTest
             takagi.ru.monica.repository.Mdbx2CreationInstrumentedTest
+            takagi.ru.monica.repository.MdbxClientModePolicyTest
             takagi.ru.monica.repository.Mdbx2FeatureParityInstrumentedTest
             takagi.ru.monica.repository.Mdbx2HardeningInstrumentedTest
             takagi.ru.monica.repository.Mdbx2MigrationInstrumentedTest

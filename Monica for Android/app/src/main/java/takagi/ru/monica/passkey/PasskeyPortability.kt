@@ -8,13 +8,17 @@ internal enum class PasskeyPortability {
     PORTABLE, DEVICE_ONLY, KEY_UNAVAILABLE, BACKUP_RESTRICTED, COUNTER_HISTORY, ALGORITHM_RESTRICTED, INVALID_FLAGS, UNKNOWN;
 
     companion object {
-        fun classify(entry: PasskeyEntry, usable: Boolean, exportable: Boolean): PasskeyPortability = when {
+        fun classify(entry: PasskeyEntry, usable: Boolean, exportable: Boolean): PasskeyPortability = classify(
+            entry.backupEligible, entry.backupState, entry.signCount, entry.publicKeyAlgorithm, usable, exportable)
+
+        fun classify(backupEligible: Boolean?, backupState: Boolean?, signCount: Long, algorithm: Int,
+            usable: Boolean, exportable: Boolean): PasskeyPortability = when {
             !usable -> KEY_UNAVAILABLE
             !exportable -> DEVICE_ONLY
-            entry.backupEligible == false && entry.backupState == true -> INVALID_FLAGS
-            entry.backupEligible == false -> BACKUP_RESTRICTED
-            entry.signCount > 0 -> COUNTER_HISTORY
-            entry.publicKeyAlgorithm != PasskeyEntry.ALGORITHM_ES256 -> ALGORITHM_RESTRICTED
+            backupEligible == false && backupState == true -> INVALID_FLAGS
+            backupEligible == false -> BACKUP_RESTRICTED
+            signCount > 0 -> COUNTER_HISTORY
+            algorithm != PasskeyEntry.ALGORITHM_ES256 -> ALGORITHM_RESTRICTED
             else -> PORTABLE
         }
 

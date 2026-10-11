@@ -67,7 +67,8 @@ jobs:
           queries: security-extended
 
       - name: Build for CodeQL
-        run: ./gradlew :app:assembleDebug --console=plain --stacktrace --no-daemon
+        # CodeQL needs compiled Java/Kotlin, not dex merging or APK packaging.
+        run: ./gradlew :app:compileDebugKotlin :app:compileDebugJavaWithJavac --console=plain --stacktrace --no-daemon
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4

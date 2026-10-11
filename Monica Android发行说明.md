@@ -4,6 +4,7 @@
 
 ## 中文
 
+- 附近设备同步发送前复用通行密钥迁移弹窗，逐项说明仅本地和跨平台受限的原因，可取消同步或了解后继续。检查覆盖配对后的首次自动同步及后续发送；同一应用进程内已确认的限制不重复提醒，新增受限条目或新设备会重新确认，仅接收模式无需确认本机发送限制。
 - 新增“附近设备同步”：同一可互通 Wi-Fi／局域网中的设备扫码配对后，可自动或手动同步 Monica 本地保险库及附件，支持密码、独立验证器、通行密钥、笔记、卡片、文件夹、标签和关联信息。包括验证器和 MDBX 中的 Steam 类型内容；Steam 页面独立的本地账户库暂不参与，Bitwarden／Vaultwarden 与 KeePass 外部库继续使用各自的同步方式。
 - 附近设备同步默认双向，也可设为本机仅发送或仅接收；传输遵守双方方向设置，方向冲突或旧客户端不支持单向时明确提示。配对与传输经过加密，锁定或编辑期间暂停接收保存，校验及保存完成后才记录成功时间，离线冲突保留副本。
 - 附近设备同步保留通行密钥的原始密钥、算法与 WebAuthn 备份标志；可导出私钥在接收端重新加密保存，不可导出的系统／硬件密钥仅同步凭据信息。其他数据库中的副本不会被误判为本地冲突，远端删除保留副本仍引用的受保护私钥。跨端使用需双方安装兼容版本。
@@ -27,6 +28,7 @@
 
 ## English
 
+- Nearby sync reuses the Passkey transfer dialog before sending to explain local-only and cross-platform restrictions per entry, with options to cancel sync or continue after review. This also covers the first automatic sync after pairing. Confirmed restrictions are remembered for the current app process; new restricted entries or devices require review again. Receive-only mode does not require review of local sending restrictions.
 - Added Nearby device sync: pair devices by QR code on the same reachable Wi-Fi/LAN to sync Monica's local vault and attachments automatically or manually, including passwords, standalone authenticators, Passkeys, notes, cards, folders, tags and relationships. Steam entries in authenticators and MDBX are included; the Steam page's separate local account database is not yet included. External Bitwarden/Vaultwarden and KeePass vaults continue to use their own sync mechanisms.
 - Nearby sync defaults to bidirectional, with send-only and receive-only options. Transfers respect both devices' direction settings and report conflicting directions or unsupported older clients. Pairing and transfers are encrypted; incoming saves pause while locked or editing, success is recorded after validation and saving, and offline conflicts retain copies.
 - Nearby sync preserves original Passkey keys, algorithms and WebAuthn backup flags. Exportable private keys are encrypted again on the receiving device; non-exportable system/hardware keys sync credential metadata only. Copies in other vaults do not cause false local conflicts, and remote deletion preserves protected private keys still referenced by copies. Both devices need compatible app versions.

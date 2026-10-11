@@ -24,7 +24,8 @@ import takagi.ru.monica.viewmodel.MdbxViewModel
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 
-internal data class DevicePasswordExport(val revision: String, val directory: File, val contentKey: String) {
+internal data class DevicePasswordExport(val revision: String, val directory: File, val contentKey: String,
+    val passkeyIssues: List<DevicePasskeySyncIssue> = emptyList()) {
     override fun toString() = "DevicePasswordExport($revision)"
 }
 
@@ -42,6 +43,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     private val attachmentKeys = takagi.ru.monica.attachments.storage.AttachmentKeyVault(security)
     private val images = takagi.ru.monica.util.ImageManager(app)
     private var assets: List<DeviceVaultAsset> = emptyList()
+    private var passkeyIssues: List<DevicePasskeySyncIssue> = emptyList()
     private var incomingAssets: DeviceAssetTransfer? = null
     private var preparedAssets: DeviceAssetTransfer? = null
     private var fallbackAssets: DeviceAssetTransfer? = null
@@ -125,16 +127,23 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
             local += withLocalAssets(DevicePasswordSnapshot(address, vaultIds[address].orEmpty(), "secure", DevicePasskeyShape.guard(data) + ":" + item.isDeleted, item.isDeleted, data),
                 attachments.getAllBySecureItem(item.id).filter { !it.isDeleted || item.isDeleted })
         }
+        val issues = mutableListOf<DevicePasskeySyncIssue>()
         passkeys.getAllPasskeysSync().filter { it.isDeviceSyncLocal() }.forEach { item ->
             val data = localPasskey(item)
             val address = "passkey:${item.id}"
-            local += DevicePasswordSnapshot(address, vaultIds[address] ?: DevicePasskeyShape.identity(item), "passkeys", DevicePasskeyShape.guard(data), false, data)
+            val exported = DevicePasswordSnapshot(address, vaultIds[address] ?: DevicePasskeyShape.identity(item), "passkeys", DevicePasskeyShape.guard(data), false, data)
+            local += exported
+            DevicePasskeySyncIssue.from(exported, item.signCount)?.let(issues::add)
         }
         categories.getDeviceSyncCategories().filter { it.mdbxDatabaseId == null && it.bitwardenVaultId == null }.forEach { category ->
             val data = metadata.folder(category)
             local += DevicePasswordSnapshot("folder:${category.id}", metadata.global("folder:${category.id}").orEmpty(), "folders", DevicePasskeyShape.guard(data), false, data)
         }
-        nativeDatabases.forEach { local += native.deviceSyncPasswords(it.id) }
+        nativeDatabases.forEach {
+            val exported = native.deviceSyncPasswords(it.id)
+            local += exported
+            issues += exported.mapNotNull { entry -> DevicePasskeySyncIssue.from(entry) }
+        }
         local += metadata.rootMetadata()
         normalizeNativeReferences(local)
         assets = local.flatMap { it.assets }.distinctBy { it.id }
@@ -156,12 +165,15 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
         }
         flush()
         request("replica_scan_end")
+        passkeyIssues = issues.toList()
         sourceRevision = marker
     }
 
     private fun revisionStamp(result: JSONObject): String = result.getString("revision") + if (result.optBoolean("pending")) "~pending" else ""
 
     suspend fun revision(): String = gate.withLock { reconcile(); revisionStamp(request("replica_revision")) }
+
+    suspend fun currentPasskeyIssues(): List<DevicePasskeySyncIssue> = gate.withLock { reconcile(); passkeyIssues }
 
     suspend fun prepare(directory: File): DevicePasswordExport = gate.withLock {
         reconcile()
@@ -176,7 +188,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
             completed += asset.size
         }
         preparedAssets = transfer
-        DevicePasswordExport(revisionStamp(result), directory, result.getString("content_key"))
+        DevicePasswordExport(revisionStamp(result), directory, result.getString("content_key"), passkeyIssues)
     }
 
     suspend fun apply(directory: File, peer: JSONObject): Int = gate.withLock {
@@ -633,6 +645,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     suspend fun pause() = gate.withLock {
         handle?.let { request("replica_close") }
         handle = null; sourceRevision = null; primaryNativeId = null; preparedAssets = null; incomingAssets = null; fallbackAssets = null
+        passkeyIssues = emptyList()
         withContext(Dispatchers.Main) { viewModels.clear(); projection = null }
     }
 }

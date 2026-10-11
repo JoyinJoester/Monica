@@ -36,6 +36,7 @@ import takagi.ru.monica.lansync.DeviceSyncMode
 import takagi.ru.monica.lansync.LanPairingForm
 import takagi.ru.monica.lansync.LanPairingInvitation
 import takagi.ru.monica.viewmodel.MdbxViewModel
+import takagi.ru.monica.ui.components.NearbyPasskeyPreflightDialog
 import java.text.DateFormat
 import java.util.Date
 
@@ -75,6 +76,10 @@ fun LanSyncScreen(vaults: MdbxViewModel, onNavigateBack: () -> Unit, onManageVau
             onDiagnostic = DeviceSyncDiagLogger::scanner
         )
         return
+    }
+    state.passkeyReview?.let { review ->
+        NearbyPasskeyPreflightDialog(review, onCancel = coordinator::cancelPasskeySync,
+            onContinue = { coordinator.confirmPasskeySync(review) })
     }
     if (custom) {
         val value = minutes.toIntOrNull()

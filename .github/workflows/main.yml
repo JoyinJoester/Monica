@@ -48,7 +48,7 @@ jobs:
   android-ci:
     name: Lint, test diagnostics, and debug build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     defaults:
       run:
         working-directory: "Monica for Android"

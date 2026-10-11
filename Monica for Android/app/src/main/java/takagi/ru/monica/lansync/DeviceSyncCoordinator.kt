@@ -24,7 +24,8 @@ internal data class DeviceSyncState(
     val invitations: List<String> = emptyList(), val error: String? = null,
     val failureStage: String = "", val connectionAttempts: Int = 0, val failureKind: String = "",
     val failureOperation: String = "", val progress: DeviceSyncProgress? = null, val failureRecordName: String = "",
-    val mode: DeviceSyncMode = DeviceSyncMode.BIDIRECTIONAL
+    val mode: DeviceSyncMode = DeviceSyncMode.BIDIRECTIONAL,
+    val passkeyReview: DevicePasskeySyncReview? = null
 )
 
 /** App-owned coordinator. Leaving settings does not cancel remembered-device synchronization. */
@@ -66,6 +67,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     private var dataProgress: DeviceSyncProgress? = null
     private val activeHandles = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
     private val receiveOnlyRevision = "receive-only-v1"
+    private val passkeyConsent = DevicePasskeySyncConsent()
 
     init { DeviceSyncDiagLogger.initialize(app) }
 
@@ -114,7 +116,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
                 DeviceSyncPeerState(it.deviceId, it.name, status, it.lastSyncedAt)
             } ?: state.value.peers,
             phase, pairing, code, invitations, error, failureStage, connectionAttempts, failureKind, failureOperation, dataProgress, failureRecordName,
-            settings?.mode ?: state.value.mode)
+            settings?.mode ?: state.value.mode, passkeyConsent.pending)
         DeviceSyncService.update(app, mutableState.value)
     }
 
@@ -163,12 +165,20 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         store.save(settings())
     }
 
+    fun confirmPasskeySync(review: DevicePasskeySyncReview) = action {
+        passkeyConsent.confirm(review)
+        if (passkeyConsent.pending == null) phase = "idle"
+    }
+
+    fun cancelPasskeySync() = setEnabled(false)
+
     fun setMode(mode: DeviceSyncMode) = action {
         val settings = settings()
         if (settings.mode == mode) return@action
         if (pairing) throw LanSyncException("device_sync_pairing_busy")
         val nextRequest = Math.addExact(settings.syncRequest, 1)
         transfers.values.toList().forEach { stop(it) }; transfers.clear()
+        passkeyConsent.clearPending()
         settings.mode = mode; settings.syncRequest = nextRequest
         snapshot = null; dataProgress = null; phase = "idle"; error = null; loadAfter = 0
         failureStage = ""; failureKind = ""; failureOperation = ""; failureRecordName = ""; connectionAttempts = 0
@@ -178,6 +188,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     }
 
     fun forget(deviceId: String) = action {
+        passkeyConsent.forget(deviceId)
         transfers.remove(deviceId)?.let { stop(it) }
         settings().peers.removeAll { it.deviceId == deviceId }
         force.remove(deviceId); retry.remove(deviceId); statuses.remove(deviceId)
@@ -226,7 +237,8 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         try {
             val receiveOnly = settings().mode == DeviceSyncMode.RECEIVE_ONLY
             val revision = if (receiveOnly) receiveOnlyRevision else data.revision()
-            snapshot?.takeIf { it.revision == revision }?.let { return it }
+            val issues = if (receiveOnly) emptyList() else data.currentPasskeyIssues()
+            snapshot?.takeIf { it.revision == revision && it.passkeyIssues == issues }?.let { return it }
             val directory = File(root, "out-${UUID.randomUUID()}").also { snapshots += it }
             snapshot = if (receiveOnly) {
                 check(directory.mkdirs() || directory.isDirectory)
@@ -317,6 +329,12 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         val outgoing = currentSnapshot()
         var discovery: JSONObject? = null
         val settings = settings()
+        // Pairing exchanges no vault data. Every actual send, including the first
+        // automatic send after enrollment, must pass this review before JNI starts.
+        if (passkeyConsent.review(outgoing.passkeyIssues, settings.peers.map { it.deviceId }.toSet()) != null) {
+            phase = "passkey_review"; dataProgress = null
+            return
+        }
         for (peer in settings.peers.toList()) {
             currentCoroutineContext().ensureActive()
             if (peer.deviceId in transfers || (retry[peer.deviceId]?.second ?: 0) > SystemClock.elapsedRealtime()) continue
@@ -435,6 +453,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     }
 
     private fun recordFailure(failure: Exception, stage: String, attempts: Int = 0) {
+        if (stage == "preparing") passkeyConsent.clearPending()
         error = errorCode(failure)
         failureStage = stage
         failureKind = failure.javaClass.simpleName
@@ -451,6 +470,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             retiring.values.toList().forEach { stop(it) }
             if (!paused && dataProvider.isInitialized()) data.pause()
             snapshot = null; cleanSnapshots()
+            passkeyConsent.clearPending()
             pairing = false; code = ""; invitations = emptyList(); phase = if (locked) "locked" else "paused"
             preferences?.peers?.forEach { statuses[it.deviceId] = phase; force += it.deviceId }
             publish()

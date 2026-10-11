@@ -12,37 +12,56 @@ import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.passkey.PasskeyTransferPlan
 
+internal data class PasskeyPreflightIssue(val account: String, val relyingParty: String, val reason: Int)
+
 @Composable
 internal fun PasskeyTransferPreflightDialog(
     plan: PasskeyTransferPlan, action: UnifiedMoveAction, onCancel: () -> Unit, onSkip: () -> Unit
 ) {
     val copying = action == UnifiedMoveAction.COPY
+    PasskeyPreflightDialog(
+        title = stringResource(if (copying) R.string.passkey_copy_blocked_title else R.string.passkey_move_blocked_title),
+        summary = stringResource(R.string.passkey_transfer_preflight_summary, plan.issues.size, plan.eligible.size),
+        issues = plan.issues.map { PasskeyPreflightIssue(it.account, it.relyingParty, it.reason.messageRes()) },
+        cancelText = stringResource(if (copying) R.string.passkey_cancel_copy else R.string.passkey_cancel_move),
+        confirmText = stringResource(R.string.passkey_transfer_skip, plan.issues.size),
+        confirmEnabled = plan.eligible.isNotEmpty(), tag = "passkey_transfer",
+        onCancel = onCancel, onConfirm = onSkip)
+}
+
+/** Shared preflight layout for moving/copying credentials and nearby sync. */
+@Composable
+internal fun PasskeyPreflightDialog(
+    title: String, summary: String, issues: List<PasskeyPreflightIssue>,
+    cancelText: String, confirmText: String, confirmEnabled: Boolean = true,
+    tag: String, onCancel: () -> Unit, onConfirm: () -> Unit
+) {
     AlertDialog(
-        modifier = Modifier.testTag("passkey_transfer_preflight"),
+        modifier = Modifier.testTag("${tag}_preflight"),
         onDismissRequest = onCancel,
-        title = { Text(stringResource(if (copying) R.string.passkey_copy_blocked_title else R.string.passkey_move_blocked_title)) },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.passkey_transfer_preflight_summary, plan.issues.size, plan.eligible.size))
+                Text(summary)
                 LazyColumn(Modifier.heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(plan.issues) { issue ->
+                    items(issues) { issue ->
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(issue.account.ifBlank { issue.relyingParty }, style = MaterialTheme.typography.titleSmall)
                             if (issue.relyingParty.isNotBlank()) Text(issue.relyingParty, style = MaterialTheme.typography.bodySmall)
-                            Text(stringResource(issue.reason.messageRes()), style = MaterialTheme.typography.bodyMedium)
+                            Text(stringResource(issue.reason), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
             }
         },
         dismissButton = {
-            TextButton(onClick = onCancel, modifier = Modifier.testTag("passkey_transfer_cancel")) {
-                Text(stringResource(if (copying) R.string.passkey_cancel_copy else R.string.passkey_cancel_move))
+            TextButton(onClick = onCancel, modifier = Modifier.testTag("${tag}_cancel")) {
+                Text(cancelText)
             }
         },
         confirmButton = {
-            TextButton(onClick = onSkip, enabled = plan.eligible.isNotEmpty(), modifier = Modifier.testTag("passkey_transfer_skip")) {
-                Text(stringResource(R.string.passkey_transfer_skip, plan.issues.size))
+            TextButton(onClick = onConfirm, enabled = confirmEnabled, modifier = Modifier.testTag("${tag}_skip")) {
+                Text(confirmText)
             }
         }
     )

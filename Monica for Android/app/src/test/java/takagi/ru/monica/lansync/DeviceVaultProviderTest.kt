@@ -83,6 +83,7 @@ class DeviceVaultProviderTest {
             database.passkeyDao().insert(entry)
             val outgoing = provider.prepare(File(context.filesDir, "spki-${UUID.randomUUID()}"))
             assertTrue(outgoing.contentKey.isNotEmpty())
+            assertTrue(outgoing.passkeyIssues.isEmpty())
             assertEquals(entry.publicKey, database.passkeyDao().getAllPasskeysSync().single().publicKey)
         } finally { provider.pause() }
     } }
@@ -239,6 +240,51 @@ class DeviceVaultProviderTest {
             assertEquals(42L, requireNotNull(remaining.keepassDatabaseId))
             assertEquals(privateKey, takagi.ru.monica.passkey.PasskeyPrivateKeyStore.resolve(context, remaining.privateKeyAlias))
         } finally { first.pause(); second.pause() }
+    } }
+
+    @Test fun coordinator_blocks_first_send_for_restricted_room_keys_but_receive_only_skips_local_export() = runBlocking { withTimeout(60000) {
+        SessionManager.markUnlocked()
+        val (database, provider) = vault(synchronousInvalidation = true)
+        val context = RuntimeEnvironment.getApplication()
+        val coordinator = ReflectionHelpers.callConstructor(DeviceSyncCoordinator::class.java,
+            ClassParameter.from(Context::class.java, context))
+        ReflectionHelpers.setField(coordinator, "dataProvider", lazyOf(provider))
+        val settings = DeviceSyncPreferences(peers = mutableListOf(SavedSyncPeer("peer", "Fixture", "pair", "unused")))
+        ReflectionHelpers.setField(coordinator, "preferences", settings)
+        suspend fun invoke(name: String): Any? = kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn { continuation ->
+            val method = DeviceSyncCoordinator::class.java.getDeclaredMethod(name, kotlin.coroutines.Continuation::class.java)
+            method.isAccessible = true
+            method.invoke(coordinator, continuation)
+        }
+        try {
+            val pair = java.security.KeyPairGenerator.getInstance("EC").apply {
+                initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+            }.generateKeyPair()
+            val entry = takagi.ru.monica.passkey.PasskeyPrivateKeyStore.protectPasskey(context, PasskeyEntry(
+                credentialId = UUID.randomUUID().toString(), rpId = "example.test", rpName = "Local registration",
+                userId = "Zml4dHVyZQ==", userName = "fixture", userDisplayName = "Fixture", signCount = 7,
+                publicKey = Base64.getEncoder().encodeToString(pair.public.encoded),
+                privateKeyAlias = Base64.getEncoder().encodeToString(pair.private.encoded)))
+            database.passkeyDao().insert(entry)
+            database.passkeyDao().insert(entry.copy(credentialId = "external", keepassDatabaseId = 9, backupEligible = false))
+            invoke("maintainConnections")
+            val consent = ReflectionHelpers.getField<DevicePasskeySyncConsent>(coordinator, "passkeyConsent")
+            val review = requireNotNull(consent.pending)
+            assertEquals(1, review.issues.size) // External vault copies stay outside nearby sync.
+            assertEquals(takagi.ru.monica.passkey.PasskeyPortability.COUNTER_HISTORY, review.issues.single().portability)
+            assertTrue(ReflectionHelpers.getField<Map<*, *>>(coordinator, "transfers").isEmpty())
+            assertEquals("passkey_review", ReflectionHelpers.getField<String>(coordinator, "phase"))
+            settings.mode = DeviceSyncMode.RECEIVE_ONLY
+            val receiving = invoke("currentSnapshot") as DevicePasswordExport
+            assertTrue(receiving.passkeyIssues.isEmpty())
+            assertEquals("", receiving.contentKey)
+            assertEquals(7L, database.passkeyDao().getAllPasskeysSync().first { it.keepassDatabaseId == null }.signCount)
+        } finally {
+            provider.pause()
+            val root = ReflectionHelpers.getField<File>(coordinator, "root")
+            assertEquals(File(context.cacheDir, "device-sync").canonicalFile, root.canonicalFile.parentFile)
+            root.deleteRecursively()
+        }
     } }
 
     @Test fun standalone_items_history_links_and_trash_survive_real_native_exchange() = runBlocking { withTimeout(60000) {

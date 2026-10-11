@@ -30,7 +30,9 @@ import takagi.ru.monica.viewmodel.MdbxViewModel
 class Mdbx2CreationInstrumentedTest {
     @Test
     fun defaultEngineCreatesRoutedMdbx2Vault() = runBlocking {
-        for (mode in MdbxTigaMode.entries) {
+        // Glitter is format-compatible but intentionally unsupported by Android.
+        // MdbxClientModePolicyTest covers its rejection without changing data.
+        for (mode in listOf(MdbxTigaMode.POWER, MdbxTigaMode.MULTI, MdbxTigaMode.SKY)) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val application = context.applicationContext as Application
         val room = PasswordDatabase.getDatabase(context)
@@ -138,6 +140,7 @@ class Mdbx2CreationInstrumentedTest {
             )
             passwordEntryId = 0L
         } finally {
+            viewModel.viewModelScope.cancel()
             if (passwordEntryId > 0L) room.passwordEntryDao().deletePasswordEntryById(passwordEntryId)
             if (databaseId > 0L) databaseDao.deleteDatabaseById(databaseId)
             vaultFile?.delete()
