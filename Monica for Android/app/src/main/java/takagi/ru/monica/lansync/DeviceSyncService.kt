@@ -96,7 +96,7 @@ class DeviceSyncService : Service() {
         internal fun update(context: Context, state: DeviceSyncState) {
             main.post {
                 val next = SessionManager.isUnlocked.value && state.phase != "locked" &&
-                    (state.pairing || state.manualSync || state.enabled && state.peers.isNotEmpty())
+                    (state.pairing || state.manualSync || state.activeConnections > 0 || state.enabled && state.peers.isNotEmpty())
                 if (next == wanted) return@post
                 wanted = next
                 if (wanted) startIfVisible(context)

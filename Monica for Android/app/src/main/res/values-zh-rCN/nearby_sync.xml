@@ -22,7 +22,7 @@
     <string name="nearby_database_hint">仅发送所选数据库，也将接收内容保存到这里。两台设备可以选择不同的目标库。</string>
     <string name="nearby_database_scope">Bitwarden、KeePass 使用各自的同步。更换选择不会删除已有内容。</string>
     <string name="nearby_database_unavailable">所选数据库不可用，请重新选择。</string>
-    <string name="nearby_manual_hint">已关闭 · 仅在点击后同步</string>
+    <string name="nearby_manual_hint">已关闭 · 当前传输会完成，后续需手动同步</string>
     <string name="nearby_auto_frequency">自动同步频率</string>
     <string name="nearby_frequency_disabled">开启自动同步后可设置</string>
     <string name="nearby_wait_manual">等待手动同步</string>

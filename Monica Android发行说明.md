@@ -4,6 +4,8 @@
 
 ## 中文
 
+- 修复附近自动同步开关在准备、传输或保存期间无法及时切换的问题；设置立即保存且不会被进度刷新覆盖。关闭后停止发起新一轮自动同步，正在传输的内容正常完成，手动同步与配对仍可使用。
+
 - 修复空文件附件导致附近同步打包失败的问题；空附件仍经过加密和完整性校验。
 - 修复附近同步首次接收回收站中的笔记、验证码、卡片等条目时报 `invalid_password_payload` 的问题。接收端保存失败会先回传拒绝结果，发送端提示查看对方诊断，避免只显示连接断开；密码格式诊断补充不含凭据内容的字段原因。
 - 通行密钥确认弹窗中的“跳过并继续”会跳过所有签名计数非零的 Passkey，继续同步其他条目；本地密钥和计数、对方已有副本保持不变，缓存及冲突副本也遵守跳过规则。
@@ -44,6 +46,8 @@
 - 修复仅绑定 Bitwarden／Vaultwarden 时密码库首页和搜索可能看不到已同步条目：未保存数据库范围时默认显示“全部”，旧版省略范围的设置同步采用该默认值；明确保存的本地库或具体数据库选择继续保留，锁定库仍不参与展示与搜索。
 
 ## English
+
+- Fixed the nearby automatic-sync switch waiting for preparation, transfer or saving to finish. Changes persist immediately and survive progress updates. Turning it off prevents new automatic rounds while allowing the current transfer to finish; manual sync and pairing remain available.
 
 - Fixed empty file attachments aborting Nearby bundle preparation; empty attachments remain encrypted and authenticated.
 - Fixed `invalid_password_payload` when Nearby sync first receives trashed notes, authenticators, cards and other items. Failed receiver saves send a rejection before closing; the sender directs users to the receiver diagnostics. Password validation reports field reasons without credential contents.

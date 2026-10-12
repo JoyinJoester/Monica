@@ -4,6 +4,10 @@ import android.app.Application
 import android.content.Context
 import androidx.room.Room
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
@@ -51,6 +55,7 @@ class DeviceManualSyncTest {
             method.isAccessible = true; method.invoke(coordinator, continuation)
         }
         suspend fun close() {
+            ReflectionHelpers.getField<CoroutineScope>(coordinator, "scope").cancel()
             kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn<Any?> { continuation ->
                 val method = DeviceSyncCoordinator::class.java.getDeclaredMethod("pause", Boolean::class.javaPrimitiveType, kotlin.coroutines.Continuation::class.java)
                 method.isAccessible = true; method.invoke(coordinator, false, continuation)
@@ -174,6 +179,36 @@ class DeviceManualSyncTest {
             assertTrue(ReflectionHelpers.getField<Map<String, Any>>(sender.coordinator, "transfers").isEmpty())
         } finally {
             sender.close(); SessionManager.markLocked(); Dispatchers.resetMain()
+        }
+    }
+
+    @Test fun automatic_toggle_is_immediate_and_persisted_while_sync_holds_the_gate() = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined); SessionManager.markUnlocked()
+        val context = RuntimeEnvironment.getApplication()
+        val fixture = Fixture(context, "z-toggle", "a-toggle", DeviceSyncMode.SEND_ONLY)
+        // Drive the real action API, but hold the same gate as a long export/import.
+        ReflectionHelpers.setField(fixture.coordinator, "running", Job())
+        val gate = ReflectionHelpers.getField<Mutex>(fixture.coordinator, "gate")
+        gate.lock()
+        try {
+            for (phase in listOf("preparing", "sending", "applying", "confirming", "failed", "waiting")) {
+                ReflectionHelpers.setField(fixture.coordinator, "phase", phase)
+                ReflectionHelpers.callInstanceMethod<Void>(fixture.coordinator, "publish")
+                for (enabled in listOf(true, false, true, false)) {
+                    fixture.coordinator.setEnabled(enabled)
+                    assertEquals("Switch must update during $phase", enabled, fixture.coordinator.state.value.enabled)
+                    assertEquals("Setting must persist during $phase", enabled, fixture.store.load().enabled)
+                    // Progress updates and saves of the older snapshot must not undo a tap.
+                    fixture.store.save(fixture.settings)
+                    ReflectionHelpers.callInstanceMethod<Void>(fixture.coordinator, "publish")
+                    assertEquals(enabled, fixture.coordinator.state.value.enabled)
+                    assertEquals(enabled, fixture.store.load().enabled)
+                    assertEquals(phase, fixture.coordinator.state.value.phase)
+                }
+            }
+        } finally {
+            ReflectionHelpers.getField<CoroutineScope>(fixture.coordinator, "scope").cancel()
+            gate.unlock(); fixture.close(); SessionManager.markLocked(); Dispatchers.resetMain()
         }
     }
 }

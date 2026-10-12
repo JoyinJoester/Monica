@@ -2,6 +2,7 @@ package takagi.ru.monica.lansync
 
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -20,6 +21,39 @@ class NearbyManualControlsTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     @After fun lock() { SessionManager.markLocked() }
     private fun text(id: Int) = compose.activity.getString(id)
+
+    @Test fun automatic_switch_changes_while_the_coordinator_is_busy() {
+        SessionManager.markUnlocked()
+        val context = compose.activity
+        val name = "automatic-ui-${java.util.UUID.randomUUID()}"
+        val store = DeviceSyncPreferenceStore(context, takagi.ru.monica.security.SecurityManager(context), name)
+        store.save(DeviceSyncPreferences())
+        val coordinator = DeviceSyncCoordinator::class.java.getDeclaredConstructor(android.content.Context::class.java)
+            .apply { isAccessible = true }.newInstance(context)
+        fun set(field: String, value: Any?) { DeviceSyncCoordinator::class.java.getDeclaredField(field).apply { isAccessible = true }.set(coordinator, value) }
+        set("store\$delegate", lazyOf(store)); set("running", kotlinx.coroutines.Job())
+        val gate = DeviceSyncCoordinator::class.java.getDeclaredField("gate").apply { isAccessible = true }.get(coordinator) as kotlinx.coroutines.sync.Mutex
+        assertTrue(gate.tryLock())
+        try {
+            compose.setContent { MonicaTheme { NearbySyncContent(coordinator.state.collectAsState().value,
+                NearbySyncActions(enabled = coordinator::setEnabled), emptyList()) } }
+            for (phase in listOf("preparing", "sending", "applying", "confirming", "failed", "waiting")) {
+                compose.runOnIdle {
+                    set("phase", phase); set("pairing", phase == "waiting")
+                    DeviceSyncCoordinator::class.java.getDeclaredMethod("publish").apply { isAccessible = true }.invoke(coordinator)
+                }
+                val toggle = compose.onNodeWithText(text(R.string.device_sync_automatic))
+                toggle.performScrollTo().assertIsEnabled().assertIsOn().performClick().assertIsOff()
+                compose.runOnIdle { assertFalse(store.load().enabled) }
+                toggle.performClick().assertIsOn()
+                compose.runOnIdle { assertTrue(store.load().enabled) }
+            }
+        } finally {
+            val scope = DeviceSyncCoordinator::class.java.getDeclaredField("scope").apply { isAccessible = true }.get(coordinator) as kotlinx.coroutines.CoroutineScope
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+            gate.unlock(); context.deleteSharedPreferences(name)
+        }
+    }
     private fun capture(name: String) {
         if (InstrumentationRegistry.getArguments().getString("capture") != "true") return
         val runner = InstrumentationRegistry.getInstrumentation()

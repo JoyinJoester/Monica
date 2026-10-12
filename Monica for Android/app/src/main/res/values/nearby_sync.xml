@@ -22,7 +22,7 @@
     <string name="nearby_database_hint">Send only the selected database and save received contents here. Each device can choose its own destination.</string>
     <string name="nearby_database_scope">Bitwarden and KeePass use their own sync. Changing this selection does not delete existing contents.</string>
     <string name="nearby_database_unavailable">The selected database is unavailable. Choose another database.</string>
-    <string name="nearby_manual_hint">Off · Sync only when requested</string>
+    <string name="nearby_manual_hint">Off · Current transfer can finish; future syncs are manual</string>
     <string name="nearby_auto_frequency">Automatic sync frequency</string>
     <string name="nearby_frequency_disabled">Available when automatic sync is on</string>
     <string name="nearby_wait_manual">Waiting for manual sync</string>

@@ -8,6 +8,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
@@ -121,12 +122,12 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         val settings = preferences
         val now = SystemClock.elapsedRealtime()
         val retryAt = maxOf(loadAfter, retry.values.map { it.second }.filter { it > now }.minOrNull() ?: 0)
-        mutableState.value = DeviceSyncState(settings?.enabled ?: state.value.enabled,
+        val next = DeviceSyncState(automaticSyncEnabled(),
             settings?.intervalSeconds ?: state.value.intervalSeconds,
             settings?.peers?.map {
                 val cached = statuses[it.deviceId] ?: "offline"
                 val status = if (error != null && failureStage == "preparing") "preparation_failed"
-                    else if (!settings.enabled && manualPeers.isEmpty()) "manual"
+                    else if (!automaticSyncEnabled() && it.deviceId !in manualPeers && it.deviceId !in transfers) "manual"
                     else if (it.lastSyncedAt == 0L && cached in listOf("offline", "waiting")) "first_sync_pending" else cached
                 DeviceSyncPeerState(it.deviceId, it.name, status, it.lastSyncedAt)
             } ?: state.value.peers,
@@ -138,9 +139,13 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             activeConnections = transfers.values.count { it.stage in setOf("authenticating", "checking", "sending", "receiving", "transferring", "received", "applying", "remembering", "confirming") },
             listeningPeers = transfers.values.count { it.stage == "waiting" },
             lastAttemptAt = lastAttemptAt, lastDiscoveryAt = lastDiscoveryAt, discoveredPeers = discoveredPeers,
-            retryInSeconds = if (settings?.enabled == true) ((retryAt - now).coerceAtLeast(0) + 999).div(1000).toInt() else 0)
+            retryInSeconds = if (automaticSyncEnabled()) ((retryAt - now).coerceAtLeast(0) + 999).div(1000).toInt() else 0)
+        // Re-read inside the CAS loop so a concurrent tap wins over old progress.
+        mutableState.update { next.copy(enabled = automaticSyncEnabled()) }
         DeviceSyncService.update(app, mutableState.value)
     }
+
+    private fun automaticSyncEnabled(): Boolean = store.automaticSyncEnabled(preferences?.enabled ?: state.value.enabled)
 
     private fun updateProgress(progress: DeviceSyncProgress) { dataProgress = progress; phase = progress.stage; publish() }
 
@@ -150,11 +155,11 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             throw CancellationException("device_sync_locked")
         }
         check(SessionManager.isUnlocked.value) { "device_sync_locked" }
-        return preferences ?: store.load().also { loaded ->
+        return (preferences ?: store.load().also { loaded ->
             preferences = loaded
             if (phase == "locked") phase = "idle"
             if (loaded.enabled) loaded.peers.forEach { force += it.deviceId }
-        }
+        }).also { it.enabled = automaticSyncEnabled() }
     }
 
     private fun action(block: suspend () -> Unit) {
@@ -175,10 +180,17 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         store.save(settings())
     }
 
-    fun setEnabled(enabled: Boolean) = action {
-        settings().enabled = enabled
-        store.save(settings())
-        if (enabled) { phase = "idle"; settings().peers.forEach { force += it.deviceId } } else pause(locked = false)
+    fun setEnabled(enabled: Boolean) {
+        if (!SessionManager.isUnlocked.value) return
+        store.setAutomaticSyncEnabled(enabled)
+        mutableState.update { it.copy(enabled = automaticSyncEnabled()) }
+        action {
+            // Queued rescheduling always uses the latest choice.
+            if (settings().enabled) {
+                loadAfter = 0; retry.clear()
+                settings().peers.forEach { force += it.deviceId }
+            }
+        }
     }
 
     fun syncNow() = action { beginManualSync() }
@@ -227,7 +239,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         }
     }
 
-    fun cancelPasskeySync() = setEnabled(false)
+    fun cancelPasskeySync() { setEnabled(false); cancelSync() }
 
     fun setMode(mode: DeviceSyncMode) = action {
         val settings = settings()
@@ -359,7 +371,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             cleanSnapshots()
             if (SystemClock.elapsedRealtime() < loadAfter) return
             val settings = settings()
-            if (!settings.enabled && manualPeers.isEmpty() && !pairing) {
+            if (!settings.enabled && manualPeers.isEmpty() && !pairing && transfers.isEmpty()) {
                 if (!paused) pause(locked = false)
                 return
             }
@@ -403,6 +415,8 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         val peers = settings.peers.filter { settings.enabled || it.deviceId in manualPeers }
         if (peers.isEmpty()) return
         val outgoing = currentSnapshot()
+        // Recheck after potentially long preparation, before consent/network work.
+        if (!automaticSyncEnabled() && manualPeers.isEmpty()) return
         var discovery: JSONObject? = null
         // Pairing exchanges no vault data. Every actual send, including the first
         // automatic send after enrollment, must pass this review before JNI starts.
@@ -412,6 +426,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         }
         for (peer in peers) {
             currentCoroutineContext().ensureActive()
+            if (!automaticSyncEnabled() && peer.deviceId !in manualPeers) continue
             if (peer.deviceId in transfers || (retry[peer.deviceId]?.second ?: 0) > SystemClock.elapsedRealtime()) continue
             if (settings.deviceId > peer.deviceId) {
                 transfers[peer.deviceId] = startTransfer(outgoing, peer, null, false)
@@ -447,6 +462,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             val candidates = (listOf(found.getString("address")) + alternatives?.let { (0 until it.length()).map(it::getString) }.orEmpty())
                 .distinct().take(8).joinToString(",")
             val link = "monica-lan:2:$candidates:${found.getInt("port")}:${peer.trustedKey}"
+            if (!automaticSyncEnabled() && peer.deviceId !in manualPeers) continue
             transfers[peer.deviceId] = startTransfer(outgoing, peer, link, false)
             attempts[peer.deviceId] = SystemClock.elapsedRealtime()
             statuses[peer.deviceId] = "syncing"
@@ -456,6 +472,12 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     private suspend fun poll(id: String, transfer: Transfer) {
         val progress = request("progress", transfer.handle)
         val next = progress.getString("phase")
+        // Stop idle automatic connections; established transfers finish applying
+        // and exchanging receipts even after automatic scheduling is disabled.
+        if (!transfer.enrollment && !automaticSyncEnabled() && id !in manualPeers && next in listOf("waiting", "connecting")) {
+            stop(transfer); transfers.remove(id); statuses[id] = "manual"
+            return
+        }
         transfer.applyFailure?.let { failure ->
             // Let the worker send its authenticated rejection receipt before cleanup.
             // Lock/cancellation still cancels immediately; an unresponsive peer is bounded.

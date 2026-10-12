@@ -72,13 +72,20 @@ internal class DeviceSyncPreferenceStore(context: Context, private val security:
         }
         return selection
     }
-    fun hasPeers(): Boolean = preferences.getBoolean("enabled", false) && preferences.getInt("peer-count", 0) > 0
+    // A local scheduling preference, separate from encrypted peer snapshots so
+    // a long export/import or a stale snapshot save cannot block or undo a tap.
+    fun automaticSyncEnabled(fallback: Boolean): Boolean = preferences.getBoolean("automatic-enabled", fallback)
+    fun setAutomaticSyncEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean("automatic-enabled", enabled).apply()
+    }
+    fun hasPeers(): Boolean = automaticSyncEnabled(preferences.getBoolean("enabled", false)) && preferences.getInt("peer-count", 0) > 0
     fun load(): DeviceSyncPreferences {
-        val encrypted = preferences.getString("protected", null) ?: return DeviceSyncPreferences()
+        val encrypted = preferences.getString("protected", null)
+            ?: return DeviceSyncPreferences(enabled = automaticSyncEnabled(true))
         val json = JSONObject(security.decryptData(encrypted))
         require(json.getInt("version") == 1)
         val result = DeviceSyncPreferences(json.getString("device_id"), json.getString("replica_key"),
-            json.optBoolean("enabled", true), json.optInt("interval"), json.optLong("settings_version"), json.optString("settings_writer"))
+            automaticSyncEnabled(json.optBoolean("enabled", true)), json.optInt("interval"), json.optLong("settings_version"), json.optString("settings_writer"))
         require(result.intervalSeconds == 0 || result.intervalSeconds in 60..86400)
         require(result.deviceId.matches(Regex("[A-Za-z0-9_-]{1,64}")) && result.settingsVersion >= 0)
         require(LanPairingInvitation.parse("monica-lan:2:127.0.0.1:1:${result.replicaKey}") != null)
