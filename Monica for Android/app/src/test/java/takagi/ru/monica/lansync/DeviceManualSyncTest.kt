@@ -73,6 +73,8 @@ class DeviceManualSyncTest {
             assertNull(ReflectionHelpers.getField<Any?>(sender.coordinator, "snapshot"))
             assertTrue(receiver.db.passwordEntryDao().getDeviceSyncLocalPasswords().isEmpty())
             sender.request(); receiver.request()
+            sender.tick()
+            assertTrue(sender.coordinator.state.value.lastAttemptAt > 0)
             DeviceSyncEditGate.hold().use {
                 val receiveDeadline = System.nanoTime() + 60_000_000_000L
                 while (receiver.coordinator.state.value.phase != "received" && System.nanoTime() < receiveDeadline) {
@@ -97,6 +99,9 @@ class DeviceManualSyncTest {
             }
             assertTrue(sender.settings.peers.single().lastSyncedAt > 0L)
             assertTrue(receiver.settings.peers.single().lastSyncedAt > 0L)
+            assertTrue(receiver.coordinator.state.value.lastDiscoveryAt > 0)
+            assertEquals(1, receiver.coordinator.state.value.discoveredPeers)
+            assertEquals(0, receiver.coordinator.state.value.activeConnections)
             assertFalse(sender.store.load().enabled); assertFalse(receiver.store.load().enabled)
             assertFalse(sender.coordinator.state.value.manualSync); assertFalse(receiver.coordinator.state.value.manualSync)
             val received = receiver.db.passwordEntryDao().getDeviceSyncLocalPasswords().single()
@@ -104,6 +109,18 @@ class DeviceManualSyncTest {
             sender.db.passwordEntryDao().updatePasswordEntry(sender.db.passwordEntryDao().getPasswordEntryById(source)!!.copy(password = "second-secret"))
             repeat(4) { sender.tick(); receiver.tick() }
             assertEquals("first-secret", SecurityManager(context).decryptDataIfMonicaCiphertext(receiver.db.passwordEntryDao().getPasswordEntryById(received.id)!!.password))
+            // Re-enable automatic sync and verify a later edit arrives without another request.
+            sender.settings.enabled = true; sender.store.save(sender.settings)
+            receiver.settings.enabled = true; receiver.store.save(receiver.settings)
+            val automaticDeadline = System.nanoTime() + 60_000_000_000L
+            while (System.nanoTime() < automaticDeadline) {
+                sender.tick(); receiver.tick()
+                val password = receiver.db.passwordEntryDao().getPasswordEntryById(received.id)!!.password
+                if (SecurityManager(context).decryptDataIfMonicaCiphertext(password) == "second-secret") break
+                Thread.sleep(30)
+            }
+            assertEquals("second-secret", SecurityManager(context).decryptDataIfMonicaCiphertext(receiver.db.passwordEntryDao().getPasswordEntryById(received.id)!!.password))
+            assertFalse(sender.coordinator.state.value.manualSync); assertFalse(receiver.coordinator.state.value.manualSync)
         } finally {
             sender.close(); receiver.close(); SessionManager.markLocked(); Dispatchers.resetMain()
         }

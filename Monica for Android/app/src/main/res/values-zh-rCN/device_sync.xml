@@ -9,7 +9,7 @@
     <string name="device_sync_failed_record">失败的通行密钥：%1$s</string>
     <string name="device_sync_preparation_failed_status">已配对 · 准备同步失败</string>
     <string name="device_sync_first_pending">已配对 · 首次同步未完成</string>
-    <string name="device_sync_connection_failed">无法连接到对方设备，已自动尝试二维码中的地址。请保持对方连接页面打开；若仍失败，可复制下方诊断信息。</string>
+    <string name="device_sync_connection_failed">无法连接另一台设备。请检查两端是否已解锁、准备同步，以及局域网是否互通；连接尝试情况见诊断信息。</string>
     <string name="device_sync_pairing_failed">已找到设备，但配对验证未通过。请在对方重新生成二维码后扫码。</string>
     <string name="device_sync_prepare_failed">准备设备同步失败，尚未开始连接。请查看下方诊断信息。</string>
     <string name="device_sync_storage_failed">无法读写本机同步文件。请检查应用可用存储空间，并查看下方诊断信息。</string>

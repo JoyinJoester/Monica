@@ -4,6 +4,8 @@
 
 ## 中文
 
+- 附近同步使用常驻状态区显示准备、传输、保存、失败与完成，避免进度条和提示出现时推挤设备卡片；诊断补充实时阶段、所选数据库、默认网络、连接与发现统计、重试及最近成功时间，并提供对应处理建议和可复制信息。
+
 - 修复附近同步引用解析错误：普通扩展字段不再被当作对象 ID，保留原始内容；诊断异常类型不再显示混淆名称。
 - 自动同步与手动同步独立：关闭自动同步后仍可点击“立即同步”，支持取消本次操作；两端均手动时需分别点击。同步数据库默认“本地”，可选择受支持的 MDBX 库，发送范围和接收目标均限所选库，切换不会删除其他库内容。
 
@@ -36,6 +38,8 @@
 - 修复仅绑定 Bitwarden／Vaultwarden 时密码库首页和搜索可能看不到已同步条目：未保存数据库范围时默认显示“全部”，旧版省略范围的设置同步采用该默认值；明确保存的本地库或具体数据库选择继续保留，锁定库仍不参与展示与搜索。
 
 ## English
+
+- Nearby sync keeps preparation, transfer, saving, failure and completion in a stable status panel so progress updates do not shift device cards. Diagnostics now show the live stage, selected database, default network, connection/discovery counts, retry timing and last success, with actionable guidance and copyable details.
 
 - Fixed Nearby reference resolution: opaque extension fields are no longer mistaken for object IDs and are preserved unchanged. Diagnostic exception types remain readable in release builds.
 - Manual sync works with automatic sync off and can be cancelled; when both devices use manual mode, tap Sync now on each. The sync database defaults to Local and can be changed to a supported MDBX vault. Sending and receiving use only the selected store; switching stores does not delete other contents.

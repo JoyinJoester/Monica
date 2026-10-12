@@ -1,0 +1,216 @@
+package takagi.ru.monica.ui.screens
+
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.text.format.Formatter
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import takagi.ru.monica.BuildConfig
+import takagi.ru.monica.R
+import takagi.ru.monica.lansync.*
+import takagi.ru.monica.ui.components.SettingsPanelGroup
+import takagi.ru.monica.ui.components.SettingsPanelRow
+import java.text.DateFormat
+import java.util.Date
+
+internal fun nearbyStageLabel(context: Context, state: DeviceSyncState): String = context.getString(when {
+    state.error != null -> if (state.failureStage == "preparing") R.string.nearby_status_prepare_failed else R.string.nearby_status_failed
+    state.passkeyReview != null -> R.string.nearby_status_review
+    state.phase == "locked" -> R.string.device_sync_locked
+    else -> when (state.progress?.stage ?: state.phase) {
+        "preparing" -> R.string.nearby_status_preparing
+        "connecting" -> R.string.nearby_status_connecting
+        "authenticating", "checking" -> R.string.nearby_status_checking
+        "sending", "receiving", "transferring" -> R.string.nearby_status_transferring
+        "received", "applying", "remembering" -> R.string.nearby_status_applying
+        "confirming" -> R.string.nearby_status_confirming
+        "completed" -> R.string.nearby_status_completed
+        "passkey_review" -> R.string.nearby_status_review
+        else -> when {
+            state.pairing || state.manualSync -> R.string.nearby_status_waiting
+            !state.enabled -> R.string.nearby_wait_manual
+            state.peers.isEmpty() -> R.string.nearby_no_devices_title
+            else -> R.string.nearby_status_ready
+        }
+    }
+})
+
+internal fun nearbyNextStep(context: Context, state: DeviceSyncState): String = context.getString(when {
+    state.error == "sync_database_unavailable" -> R.string.nearby_hint_database
+    state.error in setOf("sync_direction_conflict", "sync_direction_unsupported") -> R.string.device_sync_direction_hint
+    state.error in setOf("unsupported_protocol", "native_unavailable", "device_sync_unavailable") -> R.string.nearby_hint_update
+    state.error in setOf("pairing_rejected", "authentication_failed", "different_device", "pairing_expired") -> R.string.nearby_hint_pair
+    state.error != null && state.failureStage == "preparing" -> R.string.nearby_hint_prepare_failed
+    state.error in setOf("connection_failed", "listen_failed", "discovery_unavailable") -> R.string.nearby_hint_connect
+    state.error != null && state.failureStage in setOf("received", "applying", "remembering") -> R.string.nearby_hint_apply
+    state.error != null -> R.string.nearby_hint_generic
+    state.phase == "locked" -> R.string.nearby_hint_locked
+    state.passkeyReview != null || state.phase == "passkey_review" -> R.string.nearby_hint_review
+    state.phase == "received" && DeviceSyncEditGate.isEditing -> R.string.nearby_hint_editing
+    state.progress?.stage == "preparing" || state.phase == "preparing" -> R.string.nearby_hint_preparing
+    state.activeConnections > 0 || state.phase in setOf("transferring", "applying", "received", "confirming") -> R.string.nearby_hint_transfer
+    state.peers.isEmpty() -> R.string.device_sync_no_devices
+    !state.enabled && !state.manualSync -> R.string.nearby_manual_both_hint
+    else -> R.string.nearby_hint_connect
+})
+
+private fun nearbyTime(context: Context, time: Long): String = if (time <= 0) context.getString(R.string.nearby_diagnostic_none)
+    else DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(Date(time))
+
+private fun nearbyProgressText(context: Context, progress: DeviceSyncProgress?): String = when {
+    progress == null -> ""
+    progress.totalBytes > 0 -> context.getString(R.string.nearby_progress_bytes,
+        Formatter.formatShortFileSize(context, progress.bytes), Formatter.formatShortFileSize(context, progress.totalBytes))
+    progress.total > 0 -> context.getString(R.string.nearby_progress_items, progress.completed, progress.total)
+    else -> ""
+}
+
+/** The same text slots and progress space remain in the layout in every state. */
+@Composable
+internal fun NearbySyncStatus(state: DeviceSyncState, diagnostics: () -> Unit, cancelPairing: () -> Unit) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val titleStyle = MaterialTheme.typography.titleMedium
+    val hintStyle = MaterialTheme.typography.bodySmall
+    // minLines alone still changes height when fallback CJK glyph metrics differ.
+    // Reserve two scaled lines plus font overhang, independent of the current text.
+    val titleHeight = with(density) { titleStyle.lineHeight.toDp() * 2 } + 4.dp
+    val hintHeight = with(density) { hintStyle.lineHeight.toDp() * 2 } + 4.dp
+    Surface(Modifier.fillMaxWidth().testTag("nearby-status"), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(nearbyStageLabel(context, state), Modifier.height(titleHeight).testTag("nearby-status-title"), style = titleStyle,
+                color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(nearbyNextStep(context, state), Modifier.height(hintHeight), style = hintStyle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.Center) {
+                val progress = state.progress.takeIf { state.error == null }
+                if (progress != null) Column(Modifier.fillMaxWidth()) {
+                    Text(nearbyProgressText(context, progress).ifEmpty { " " }, style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(4.dp))
+                    val total = if (progress.totalBytes > 0) progress.totalBytes else progress.total
+                    val done = if (progress.totalBytes > 0) progress.bytes else progress.completed
+                    if (total > 0) LinearProgressIndicator(progress = { (done.toFloat() / total).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                    else LinearProgressIndicator(Modifier.fillMaxWidth())
+                } else if (state.error == null && (state.manualSync || state.pairing || state.activeConnections > 0)) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(diagnostics, Modifier.weight(1f)) {
+                    Text(stringResource(R.string.nearby_view_diagnostics), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Box(Modifier.size(48.dp)) {
+                    if (state.pairing) IconButton(cancelPairing) { Icon(Icons.Default.Close, stringResource(R.string.nearby_cancel_pairing)) }
+                }
+            }
+        }
+    }
+}
+
+/** Reads only transport type: no SSID, IP address or nearby-device identity. */
+@Composable
+private fun rememberNearbyNetwork(): State<Int> {
+    val context = LocalContext.current
+    return produceState(R.string.nearby_network_unknown, context) {
+        val manager = context.getSystemService(ConnectivityManager::class.java)
+        fun refresh() {
+            value = runCatching {
+                val caps = manager.getNetworkCapabilities(manager.activeNetwork)
+                when {
+                    caps == null -> R.string.nearby_network_offline
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> R.string.nearby_network_vpn
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> R.string.nearby_network_wifi
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> R.string.nearby_network_ethernet
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> R.string.nearby_network_cellular
+                    else -> R.string.nearby_network_unknown
+                }
+            }.getOrDefault(R.string.nearby_network_unknown)
+        }
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = refresh()
+            override fun onLost(network: Network) = refresh()
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = refresh()
+        }
+        val registered = runCatching { manager.registerDefaultNetworkCallback(callback) }.isSuccess
+        refresh()
+        awaitDispose { if (registered) runCatching { manager.unregisterNetworkCallback(callback) } }
+    }
+}
+
+internal fun nearbyDiagnosticRows(context: Context, state: DeviceSyncState, database: String, network: String): List<Pair<String, String>> {
+    fun label(id: Int) = context.getString(id)
+    val direction = context.getString(when (state.mode) {
+        DeviceSyncMode.SEND_ONLY -> R.string.device_sync_send_only
+        DeviceSyncMode.RECEIVE_ONLY -> R.string.device_sync_receive_only
+        DeviceSyncMode.BIDIRECTIONAL -> R.string.device_sync_bidirectional
+    })
+    return listOf(
+        label(R.string.nearby_diagnostic_stage) to nearbyStageLabel(context, state),
+        label(R.string.nearby_database) to "$database · $direction",
+        label(R.string.device_sync_automatic) to label(if (state.enabled) R.string.nearby_automatic_hint else R.string.nearby_manual_hint),
+        label(R.string.nearby_diagnostic_network) to network,
+        label(R.string.nearby_diagnostic_connection) to context.getString(R.string.nearby_diagnostic_connection_value,
+            state.peers.size, state.activeConnections, state.listeningPeers, state.connectionAttempts),
+        label(R.string.nearby_diagnostic_discovery) to context.getString(R.string.nearby_diagnostic_discovery_value,
+            nearbyTime(context, state.lastDiscoveryAt), state.discoveredPeers),
+        label(R.string.nearby_diagnostic_attempt) to nearbyTime(context, state.lastAttemptAt),
+        label(R.string.nearby_diagnostic_success) to nearbyTime(context, state.peers.maxOfOrNull { it.lastSyncedAt } ?: 0)
+    )
+}
+
+private fun nearbyTechnicalDiagnostics(context: Context, state: DeviceSyncState): String = buildString {
+    appendLine(context.getString(R.string.device_sync_build_diagnostic, BuildConfig.VERSION_NAME, BuildConfig.GIT_SHA,
+        android.os.Build.VERSION.SDK_INT, android.os.Process.myUid() / 100000))
+    appendLine(context.getString(R.string.device_sync_direction_diagnostic, state.mode.wireName))
+    append(context.getString(R.string.device_sync_diagnostic_format,
+        if (state.error != null) state.failureStage else state.phase, state.error ?: "-",
+        if (state.error != null) state.failureKind.ifEmpty { "-" } else "-", state.connectionAttempts,
+        if (state.error != null) state.failureOperation.ifEmpty { "-" } else "-"))
+}
+
+internal fun nearbyDiagnostics(context: Context, state: DeviceSyncState, database: String, network: String): String = buildString {
+    appendLine(nearbyTechnicalDiagnostics(context, state))
+    nearbyDiagnosticRows(context, state, database, network).forEach { (label, value) -> appendLine("$label: $value") }
+    appendLine(nearbyNextStep(context, state))
+    if (state.retryInSeconds > 0) appendLine(context.getString(R.string.nearby_diagnostic_retry, state.retryInSeconds))
+    nearbyProgressText(context, state.progress).takeIf { it.isNotEmpty() }?.let { appendLine(it) }
+}
+
+@Composable
+internal fun ColumnScope.NearbySyncDetails(state: DeviceSyncState, database: String, copy: (String) -> Unit) {
+    val context = LocalContext.current
+    val network by rememberNearbyNetwork()
+    Text(stringResource(R.string.nearby_details), style = MaterialTheme.typography.headlineSmall)
+    Text(nearbyStageLabel(context, state), style = MaterialTheme.typography.titleMedium)
+    Text(nearbyNextStep(context, state))
+    if (state.error != null) Text(stringResource(R.string.nearby_diagnostic_failure, state.error, state.failureOperation.ifEmpty { "-" }),
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    if (state.failureRecordName.isNotEmpty() && state.error != null) Text(stringResource(R.string.device_sync_failed_record, state.failureRecordName))
+    if (state.retryInSeconds > 0) Text(stringResource(R.string.nearby_diagnostic_retry, state.retryInSeconds))
+    val diagnostics = nearbyDiagnostics(context, state, database, stringResource(network))
+    Button({ copy(diagnostics) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.device_sync_copy_diagnostics)) }
+    SettingsPanelGroup("") {
+        nearbyDiagnosticRows(context, state, database, stringResource(network)).forEach { (label, value) ->
+            SettingsPanelRow(Icons.Default.Info, label, value)
+        }
+    }
+    Text(stringResource(R.string.nearby_network_note), style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(R.string.device_sync_scope), style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(R.string.nearby_diagnostic_technical), style = MaterialTheme.typography.titleSmall)
+    Text(nearbyTechnicalDiagnostics(context, state), Modifier.testTag("nearby-diagnostic-text"), style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(R.string.nearby_diagnostic_safe), style = MaterialTheme.typography.bodySmall)
+}

@@ -27,7 +27,10 @@ internal data class DeviceSyncState(
     val failureOperation: String = "", val progress: DeviceSyncProgress? = null, val failureRecordName: String = "",
     val mode: DeviceSyncMode = DeviceSyncMode.BIDIRECTIONAL,
     val passkeyReview: DevicePasskeySyncReview? = null,
-    val databaseId: Long? = null, val manualSync: Boolean = false
+    val databaseId: Long? = null, val manualSync: Boolean = false,
+    val activeConnections: Int = 0, val listeningPeers: Int = 0,
+    val lastAttemptAt: Long = 0, val lastDiscoveryAt: Long = 0,
+    val discoveredPeers: Int = 0, val retryInSeconds: Int = 0
 )
 
 /** App-owned coordinator. Leaving settings does not cancel remembered-device synchronization. */
@@ -69,6 +72,9 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     private var multicast: WifiManager.MulticastLock? = null
     private var multicastAttempted = false
     private var dataProgress: DeviceSyncProgress? = null
+    private var lastAttemptAt = 0L
+    private var lastDiscoveryAt = 0L
+    private var discoveredPeers = 0
     private val activeHandles = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
     private val receiveOnlyRevision = "receive-only-v1"
     private val passkeyConsent = DevicePasskeySyncConsent()
@@ -111,6 +117,8 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
 
     private fun publish() {
         val settings = preferences
+        val now = SystemClock.elapsedRealtime()
+        val retryAt = maxOf(loadAfter, retry.values.map { it.second }.filter { it > now }.minOrNull() ?: 0)
         mutableState.value = DeviceSyncState(settings?.enabled ?: state.value.enabled,
             settings?.intervalSeconds ?: state.value.intervalSeconds,
             settings?.peers?.map {
@@ -120,9 +128,15 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
                     else if (it.lastSyncedAt == 0L && cached in listOf("offline", "waiting")) "first_sync_pending" else cached
                 DeviceSyncPeerState(it.deviceId, it.name, status, it.lastSyncedAt)
             } ?: state.value.peers,
-            phase, pairing, code, invitations, error, failureStage, connectionAttempts, failureKind, failureOperation, dataProgress, failureRecordName,
+            phase, pairing, code, invitations, error, failureStage,
+            if (error != null) connectionAttempts else transfers.values.maxOfOrNull { it.attempts } ?: 0,
+            failureKind, failureOperation, dataProgress, failureRecordName,
             settings?.mode ?: state.value.mode, passkeyConsent.pending,
-            settings?.databaseId ?: if (settings == null) state.value.databaseId else null, manualPeers.isNotEmpty())
+            settings?.databaseId ?: if (settings == null) state.value.databaseId else null, manualPeers.isNotEmpty(),
+            activeConnections = transfers.values.count { it.stage in setOf("authenticating", "checking", "sending", "receiving", "transferring", "received", "applying", "remembering", "confirming") },
+            listeningPeers = transfers.values.count { it.stage == "waiting" },
+            lastAttemptAt = lastAttemptAt, lastDiscoveryAt = lastDiscoveryAt, discoveredPeers = discoveredPeers,
+            retryInSeconds = if (settings?.enabled == true) ((retryAt - now).coerceAtLeast(0) + 999).div(1000).toInt() else 0)
         DeviceSyncService.update(app, mutableState.value)
     }
 
@@ -174,7 +188,8 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         manualPeers += settings.peers.map { it.deviceId }
         manualDeadline = SystemClock.elapsedRealtime() + 120_000
         settings.peers.forEach { force += it.deviceId; retry.remove(it.deviceId) }
-        error = null; failureStage = ""; loadAfter = 0; phase = "preparing"
+        error = null; failureStage = ""; failureKind = ""; failureOperation = ""; connectionAttempts = 0
+        loadAfter = 0; phase = "preparing"
         store.save(settings)
     }
 
@@ -204,7 +219,10 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
 
     fun confirmPasskeySync(review: DevicePasskeySyncReview) = action {
         passkeyConsent.confirm(review)
-        if (passkeyConsent.pending == null) phase = "idle"
+        if (passkeyConsent.pending == null) {
+            phase = "idle"
+            if (manualPeers.isNotEmpty()) manualDeadline = SystemClock.elapsedRealtime() + 120_000
+        }
     }
 
     fun cancelPasskeySync() = setEnabled(false)
@@ -310,6 +328,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             parameters.put("expected_device_id", it.deviceId)
             if (invitation == null) parameters.put("trusted_key", it.trustedKey)
         }
+        lastAttemptAt = System.currentTimeMillis()
         val started = try { RustLanSync.request(parameters) } catch (failure: Exception) { deleteOwned(directory); throw failure }
         val transfer = Transfer(started.getLong("handle"), directory, outgoing, enrollment, advertisement)
         activeHandles += transfer.handle
@@ -397,8 +416,15 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
                 statuses[peer.deviceId] = "waiting"
                 continue
             }
-            if (discovery == null) discovery = RustLanSync.request(JSONObject().put("operation", "discover")
-                .put("targets", org.json.JSONArray(settings.peers.map { it.address }.filter(String::isNotEmpty).distinct().take(64))))
+            if (discovery == null) {
+                discovery = RustLanSync.request(JSONObject().put("operation", "discover")
+                    .put("targets", org.json.JSONArray(settings.peers.map { it.address }.filter(String::isNotEmpty).distinct().take(64))))
+                lastDiscoveryAt = System.currentTimeMillis()
+                val foundDevices = discovery.getJSONArray("devices")
+                discoveredPeers = (0 until foundDevices.length()).map(foundDevices::getJSONObject).count { found ->
+                    settings.peers.any { it.deviceId == found.optString("device_id") && it.pairId == found.optString("session") } && found.optBoolean("trusted")
+                }
+            }
             currentCoroutineContext().ensureActive()
             val devices = discovery.getJSONArray("devices")
             val found = (0 until devices.length()).map(devices::getJSONObject).firstOrNull {
@@ -429,9 +455,10 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         val progress = request("progress", transfer.handle)
         val next = progress.getString("phase")
         if(transfer.enrollment || next != "waiting") phase = next else if(!pairing) phase = "idle"
-        if (next in listOf("sending", "receiving", "transferring")) updateProgress(DeviceSyncProgress(next, bytes = progress.optLong("transferred"), totalBytes = progress.optLong("total")))
         transfer.stage = if (next == "failed") progress.optString("failed_at", transfer.stage) else next
         transfer.attempts = progress.optInt("connection_attempt")
+        if (next in listOf("sending", "receiving", "transferring")) updateProgress(DeviceSyncProgress(next, bytes = progress.optLong("transferred"), totalBytes = progress.optLong("total")))
+        else if (dataProgress?.stage in listOf("sending", "receiving", "transferring")) dataProgress = null
         transfer.remoteAddress = progress.optString("remote_address", transfer.remoteAddress)
         if (transfer.enrollment) phase = next else if (next != "waiting") statuses[id] = "syncing"
         if (next == "waiting" && !transfer.enrollment) {
@@ -524,7 +551,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             transfers.values.toList().forEach { stop(it) }; transfers.clear()
             retiring.values.toList().forEach { stop(it) }
             if (!paused && dataProvider.isInitialized()) data.pause()
-            snapshot = null; cleanSnapshots()
+            snapshot = null; dataProgress = null; cleanSnapshots()
             passkeyConsent.clearPending()
             pairing = false; code = ""; invitations = emptyList(); phase = if (locked) "locked" else "paused"
             preferences?.peers?.forEach { statuses[it.deviceId] = phase; force += it.deviceId }

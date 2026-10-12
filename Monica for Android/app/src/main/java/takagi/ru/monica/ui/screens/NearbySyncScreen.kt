@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -32,7 +33,6 @@ import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import takagi.ru.monica.BuildConfig
 import takagi.ru.monica.R
 import takagi.ru.monica.lansync.*
 import takagi.ru.monica.data.LocalMdbxDatabase
@@ -92,6 +92,8 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
     var minutes by rememberSaveable { mutableStateOf("10") }
     var custom by rememberSaveable { mutableStateOf(false) }
     var forgetting by rememberSaveable { mutableStateOf<String?>(null) }
+    val databaseName = if (state.databaseId == null) stringResource(R.string.nearby_local)
+        else databases.firstOrNull { it.id == state.databaseId }?.name ?: stringResource(R.string.nearby_database_unavailable)
     LaunchedEffect(state.phase) {
         if (state.phase == "completed" || state.phase == "locked") {
             if (sheet == "qr" || sheet == "link") sheet = null
@@ -185,18 +187,7 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
                         })
                     }
                 }
-                "details" -> {
-                    Text(stringResource(R.string.nearby_details), style = MaterialTheme.typography.headlineSmall)
-                    Text(stringResource(R.string.device_sync_scope))
-                    Text(stringResource(R.string.device_sync_version, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.bodySmall)
-                    val diagnostics = stringResource(R.string.device_sync_build_diagnostic, BuildConfig.VERSION_NAME, BuildConfig.GIT_SHA,
-                        android.os.Build.VERSION.SDK_INT, android.os.Process.myUid() / 100000) + "\n" +
-                        stringResource(R.string.device_sync_direction_diagnostic, state.mode.wireName) + "\n" +
-                        stringResource(R.string.device_sync_diagnostic_format, state.failureStage, state.error ?: "-",
-                            state.failureKind, state.connectionAttempts, state.failureOperation.ifEmpty { "-" })
-                    if (state.error != null) Text(diagnostics, style = MaterialTheme.typography.bodySmall)
-                    TextButton({ copyNearbyText(context, diagnostics, false) }) { Text(stringResource(R.string.device_sync_copy_diagnostics)) }
-                }
+                "details" -> NearbySyncDetails(state, databaseName) { copyNearbyText(context, it, false) }
             }
         }
     }
@@ -208,8 +199,6 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
             Text(stringResource(R.string.nearby_intro), Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SettingsPanelGroup(stringResource(R.string.nearby_settings)) {
-                val databaseName = if (state.databaseId == null) stringResource(R.string.nearby_local)
-                    else databases.firstOrNull { it.id == state.databaseId }?.name ?: stringResource(R.string.nearby_database_unavailable)
                 SettingsPanelRow(Icons.Default.Storage, stringResource(R.string.nearby_database), databaseName,
                     onClick = { sheet = "database" }, enabled = !state.pairing && !state.manualSync)
                 SettingsPanelRow(Icons.Default.Sync, stringResource(R.string.device_sync_automatic),
@@ -220,29 +209,14 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
                     if (state.enabled) frequencyName(state.intervalSeconds) else stringResource(R.string.nearby_frequency_disabled),
                     onClick = { sheet = "frequency" }, enabled = state.enabled)
             }
-            Button(actions.sync, Modifier.fillMaxWidth(), enabled = state.peers.isNotEmpty() && !state.pairing && !state.manualSync) {
-                Icon(Icons.Default.Sync, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.device_sync_now))
+            Button(if (state.manualSync) actions.cancelSync else actions.sync, Modifier.fillMaxWidth(),
+                enabled = state.manualSync || state.peers.isNotEmpty() && !state.pairing) {
+                Icon(if (state.manualSync) Icons.Default.Close else Icons.Default.Sync, null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(if (state.manualSync) R.string.nearby_cancel_sync else R.string.device_sync_now))
             }
-            if (state.manualSync) TextButton(actions.cancelSync, Modifier.fillMaxWidth()) { Text(stringResource(R.string.nearby_cancel_sync)) }
-            else if (!state.enabled) Text(stringResource(R.string.nearby_manual_both_hint), Modifier.padding(horizontal = 12.dp),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (state.error != null) SettingsPanelGroup("") {
-                SettingsPanelRow(Icons.Default.ErrorOutline, nearbyError(state), state.failureRecordName.takeIf { it.isNotEmpty() }
-                    ?.let { stringResource(R.string.device_sync_failed_record, it) }.orEmpty(), onClick = { sheet = "details" })
-            }
-            if (state.pairing && sheet != "qr") {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(stringResource(R.string.device_sync_syncing), Modifier.padding(horizontal = 12.dp))
-                TextButton(actions.cancelPairing) { Text(stringResource(R.string.nearby_cancel_pairing)) }
-            }
-            state.progress?.let { progress ->
-                val total = if (progress.totalBytes > 0) progress.totalBytes else progress.total
-                val completed = if (progress.totalBytes > 0) progress.bytes else progress.completed
-                Text(stringResource(if (progress.stage == "applying") R.string.device_sync_applying else R.string.device_sync_preparing), Modifier.padding(horizontal = 12.dp))
-                if (total > 0) LinearProgressIndicator(progress = { (completed.toFloat() / total).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                else LinearProgressIndicator(Modifier.fillMaxWidth())
-            }
-            SettingsPanelGroup(stringResource(R.string.device_sync_devices)) {
+            NearbySyncStatus(state, diagnostics = { sheet = "details" }, cancelPairing = actions.cancelPairing)
+            SettingsPanelGroup(stringResource(R.string.device_sync_devices), Modifier.testTag("nearby-devices")) {
                 if (state.peers.isEmpty()) SettingsPanelRow(Icons.Default.Devices, stringResource(R.string.nearby_no_devices_title), stringResource(R.string.device_sync_no_devices))
                 state.peers.forEach { peer ->
                     val status = stringResource(when (peer.status) {
@@ -273,7 +247,7 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
                     onClick = { sheet = "link" }, enabled = !state.pairing)
             }
             SettingsPanelGroup("") {
-                SettingsPanelRow(Icons.Default.Info, stringResource(R.string.nearby_details), stringResource(R.string.nearby_scope_summary), onClick = { sheet = "details" })
+                SettingsPanelRow(Icons.Default.Info, stringResource(R.string.nearby_details), nearbyStageLabel(context, state), onClick = { sheet = "details" })
             }
             Spacer(Modifier.height(20.dp))
         }
@@ -303,7 +277,7 @@ private fun copyNearbyText(context: Context, value: String, sensitive: Boolean) 
     if (sensitive) clip.description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
 }
-@Composable private fun nearbyError(state: DeviceSyncState): String {
+@Composable internal fun nearbyError(state: DeviceSyncState): String {
     val error = state.error.orEmpty()
     return stringResource(when (error) {
         "connection_failed", "listen_failed", "discovery_unavailable" -> R.string.device_sync_connection_failed

@@ -9,7 +9,7 @@
     <string name="device_sync_failed_record">Passkey that could not be prepared: %1$s</string>
     <string name="device_sync_preparation_failed_status">Paired · Could not prepare sync</string>
     <string name="device_sync_first_pending">Paired · First sync is incomplete</string>
-    <string name="device_sync_connection_failed">Could not reach the other device. All invitation addresses were tried. Keep its connection screen open and check connection diagnostics.</string>
+    <string name="device_sync_connection_failed">Could not connect to the other device. Check that both devices are unlocked, ready to sync and on a reachable local network. See connection diagnostics for the attempted connections.</string>
     <string name="device_sync_pairing_failed">A device answered, but pairing could not be verified. Generate a fresh QR code on the other device.</string>
     <string name="device_sync_prepare_failed">Could not prepare device synchronization. The connection has not started; see diagnostics below.</string>
     <string name="device_sync_storage_failed">Could not read or write local sync files. Check available app storage and see diagnostics below.</string>
