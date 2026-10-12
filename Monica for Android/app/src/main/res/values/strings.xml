@@ -4695,7 +4695,11 @@
     <string name="storage_picker_edit_multi_append_hint">Select additional save locations for this item.</string>
     <string name="qr_image_read_failed">Could not read the QR code image.</string>
     <string name="device_sync_passkey_title">Passkey cross-device limits</string>
-    <string name="device_sync_passkey_summary">These %1$d Passkeys may not work on another device or platform. Review the reasons before syncing. You may need to register a new Passkey on the destination device.</string>
+    <string name="device_sync_passkey_summary">These %1$d Passkeys have sync restrictions. Continuing skips every Passkey with a nonzero signature counter and syncs the remaining items. Review the other restrictions; you may need to register a new Passkey on the destination device.</string>
+    <string name="device_sync_passkey_counter_skip_hint">Signature counter is nonzero. This Passkey will be skipped; its local key and counter stay unchanged.</string>
+    <string name="device_sync_passkey_skip_continue">Skip and continue</string>
+    <string name="nearby_hint_peer_apply">The other device could not save the received items. Open its connection diagnostics for the original error, then retry.</string>
+    <string name="nearby_hint_payload">A received item could not be read. Update both devices and retry; if it fails again, copy the diagnostics from this device.</string>
     <string name="device_sync_passkey_reference_hint">This entry cannot export a private key. Only credential metadata will sync; it cannot enable sign-in on another device.</string>
     <string name="device_sync_passkey_cancel">Cancel sync</string>
     <string name="device_sync_passkey_continue">Understand and continue</string>

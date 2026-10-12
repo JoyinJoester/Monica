@@ -42,6 +42,19 @@ class DevicePasskeySyncConsentTest {
         assertNull(consent.review(issues, setOf("phone")))
     }
 
+    @Test fun counter_skip_is_independent_of_the_displayed_portability_restriction() {
+        val consent = DevicePasskeySyncConsent()
+        val unused = DevicePasskeySyncIssue.from(record(backup=false))!!
+        consent.confirm(consent.review(listOf(unused),setOf("phone"))!!)
+        val used = DevicePasskeySyncIssue.from(record(backup=false,count=8))!!
+        assertEquals(unused.portability,used.portability)
+        assertTrue(used.skipForCounter)
+        assertEquals(listOf(used),consent.review(listOf(used),setOf("phone"))!!.issues)
+        consent.confirm(consent.pending!!)
+        assertNull(consent.review(listOf(used),setOf("phone")))
+        assertTrue(DevicePasskeySyncIssue.from(record(reference=true,count=3))!!.skipForCounter)
+    }
+
     @Test fun new_credentials_restrictions_and_peers_require_another_review() {
         val consent = DevicePasskeySyncConsent()
         val issue = DevicePasskeySyncIssue.from(record(reference = true))!!

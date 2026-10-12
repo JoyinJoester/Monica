@@ -56,6 +56,8 @@ internal fun nearbyNextStep(context: Context, state: DeviceSyncState): String = 
     state.error in setOf("pairing_rejected", "authentication_failed", "different_device", "pairing_expired") -> R.string.nearby_hint_pair
     state.error != null && state.failureStage == "preparing" -> R.string.nearby_hint_prepare_failed
     state.error in setOf("connection_failed", "listen_failed", "discovery_unavailable") -> R.string.nearby_hint_connect
+    state.error == "peer_merge_failed" -> R.string.nearby_hint_peer_apply
+    state.error in setOf("invalid_password_payload", "invalid_vault_payload", "invalid_passkey_material") -> R.string.nearby_hint_payload
     state.error != null && state.failureStage in setOf("received", "applying", "remembering") -> R.string.nearby_hint_apply
     state.error != null -> R.string.nearby_hint_generic
     state.phase == "locked" -> R.string.nearby_hint_locked

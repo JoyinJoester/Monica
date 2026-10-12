@@ -209,10 +209,12 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     suspend fun prepare(directory: File): DevicePasswordExport = gate.withLock {
         reconcile()
         check(directory.mkdirs() || directory.isDirectory)
-        val result = request("replica_export") { put("path", File(directory, "changes.mdbxsync").absolutePath) }
+        val result = request("replica_export") { put("path", File(directory, "changes.mdbxsync").absolutePath); put("skip_nonzero_passkeys", true) }
         val transfer = DeviceAssetTransfer(directory, result.getString("content_key"))
-        val total = assets.sumOf { it.size }; var completed = 0L
-        for(asset in assets) {
+        val ids = result.getJSONArray("asset_ids").let { list -> (0 until list.length()).map(list::getString).toSet() }
+        val outgoingAssets = assets.filter { it.id in ids }
+        val total = outgoingAssets.sumOf { it.size }; var completed = 0L
+        for(asset in outgoingAssets) {
             val bytes = readAsset(asset)
             try { transfer.append(asset.id, bytes) { count -> onProgress?.invoke(DeviceSyncProgress("preparing", bytes = completed + count, totalBytes = total)) } }
             finally { bytes.fill(0) }
@@ -288,7 +290,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
                 } else if (localId == null && primaryNativeId != null) {
                     val databaseId = requireNotNull(primaryNativeId)
                     native.applyDeviceSyncPassword(databaseId, null, id, expected, deleted, data, ::readIncomingAsset)?.also { pendingProjections += databaseId }
-                } else if (!deleted && data.optString("entry_type") !in listOf("login", "ssh-key")) applyLocalVault(id, localId, expected, deleted, data)
+                } else if ((!deleted || data.optBoolean("trashed")) && data.optString("entry_type") !in listOf("login", "ssh-key")) applyLocalVault(id, localId, expected, deleted, data)
                 else applyLocal(id, localId?.substringAfter("local:")?.toLongOrNull(), expected, deleted, data)
                 if (applied == null) { raced = true; break }
                 acknowledgments.put(JSONObject().put("record_id", id).put("clock", record.getJSONObject("clock"))
@@ -408,7 +410,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     private suspend fun applyLocalVault(globalId: String, address: String?, expected: String?, deleted: Boolean, data: JSONObject): DevicePasswordSnapshot? = database.withTransaction {
         check(SessionManager.isUnlocked.value) { "device_sync_locked" }
         val mapped = address ?: vaultIdentities().entries.firstOrNull { it.value == globalId }?.key
-        val passkey = mapped?.startsWith("passkey:") == true || (!deleted && data.optString("entry_type") == "passkey")
+        val passkey = mapped?.startsWith("passkey:") == true || data.optString("entry_type") == "passkey"
         val localId = mapped?.substringAfter(':')?.toLongOrNull()
         val scope = if(passkey) "passkeys" else "secure"
         var savedAddress: String
@@ -439,7 +441,8 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
                         .put("backup_eligible", previous.backupEligible ?: JSONObject.NULL).put("backup_state", previous.backupState ?: JSONObject.NULL))
                     flags
                 }
-                incoming = incoming.copy(backupEligible = if(flags.isNull("backup_eligible")) null else flags.getBoolean("backup_eligible"),
+                incoming = incoming.copy(signCount = maxOf(previous.signCount, incoming.signCount),
+                    backupEligible = if(flags.isNull("backup_eligible")) null else flags.getBoolean("backup_eligible"),
                     backupState = if(flags.isNull("backup_state")) null else flags.getBoolean("backup_state"))
                 if(incoming.privateKeyAlias.isEmpty()) incoming = incoming.copy(privateKeyAlias = previous.privateKeyAlias,
                     isBackedUp = previous.isBackedUp, syncStatus = previous.syncStatus)

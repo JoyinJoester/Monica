@@ -7,7 +7,8 @@ internal data class DevicePasskeySyncIssue(
     val identity: String,
     val account: String,
     val relyingParty: String,
-    val portability: PasskeyPortability
+    val portability: PasskeyPortability,
+    val skipForCounter: Boolean = false
 ) {
     companion object {
         fun from(snapshot: DevicePasswordSnapshot, signCount: Long? = null): DevicePasskeySyncIssue? {
@@ -21,7 +22,8 @@ internal data class DevicePasskeySyncIssue(
             return DevicePasskeySyncIssue(
                 snapshot.localId + ":" + payload.getString("credential_id"),
                 payload.optString("user_display_name").ifBlank { payload.optString("user_name") }
-                    .ifBlank { snapshot.data.optString("title") }, payload.getString("rp_id"), status)
+                    .ifBlank { snapshot.data.optString("title") }, payload.getString("rp_id"), status,
+                (signCount ?: payload.optLong("sign_count")) > 0)
         }
     }
 }
@@ -30,13 +32,13 @@ internal data class DevicePasskeySyncReview(val issues: List<DevicePasskeySyncIs
 
 /** Owned by the coordinator mutex. Acknowledgements last only for this app process. */
 internal class DevicePasskeySyncConsent {
-    private val accepted = mutableMapOf<String, MutableSet<Pair<String, PasskeyPortability>>>()
+    private val accepted = mutableMapOf<String, MutableSet<Triple<String, PasskeyPortability, Boolean>>>()
     var pending: DevicePasskeySyncReview? = null
         private set
 
     fun review(issues: List<DevicePasskeySyncIssue>, peers: Set<String>): DevicePasskeySyncReview? {
         val unseen = issues.filter { issue ->
-            peers.any { peer -> (issue.identity to issue.portability) !in accepted[peer].orEmpty() }
+            peers.any { peer -> Triple(issue.identity, issue.portability, issue.skipForCounter) !in accepted[peer].orEmpty() }
         }
         pending = if (unseen.isEmpty()) null else DevicePasskeySyncReview(unseen, peers.toSet())
         return pending
@@ -45,7 +47,7 @@ internal class DevicePasskeySyncConsent {
     fun confirm(review: DevicePasskeySyncReview) {
         if (pending != review) return
         review.peers.forEach { peer ->
-            accepted.getOrPut(peer) { mutableSetOf() }.addAll(review.issues.map { it.identity to it.portability })
+            accepted.getOrPut(peer) { mutableSetOf() }.addAll(review.issues.map { Triple(it.identity, it.portability, it.skipForCounter) })
         }
         pending = null
     }

@@ -34,7 +34,13 @@ pub(super) fn request(value: &Value) -> Result<Value> {
             }
             let plain = Zeroizing::new(
                 STANDARD
-                    .decode(string(value, "data")?)
+                    // Base64 of an empty attachment is a valid empty string.
+                    .decode(
+                        value
+                            .get("data")
+                            .and_then(Value::as_str)
+                            .ok_or("invalid_asset")?,
+                    )
                     .map_err(|_| "invalid_asset")?,
             );
             if plain.len() > CHUNK {
@@ -163,6 +169,24 @@ pub(super) fn request(value: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn empty_attachment_has_an_authenticated_final_chunk() {
+        let path =
+            std::env::temp_dir().join(format!("monica-empty-{}.monica", peering::random_id()));
+        let key = URL_SAFE_NO_PAD.encode([7u8; 32]);
+        let id = "b".repeat(64);
+        request(&json!({"operation":"asset_append","path":path,"key":key,"id":id,"index":0,"final":true,"data":""})).unwrap();
+        let list = request(&json!({"operation":"asset_list","path":path})).unwrap();
+        assert_eq!(list["items"].as_array().unwrap().len(), 1);
+        let mut read = json!({"operation":"asset_read","path":path,"key":key,"offset":list["items"][0]["offset"]});
+        let result = request(&read).unwrap();
+        assert_eq!(result["data"], "");
+        assert_eq!(result["final"], true);
+        read["key"] = json!(URL_SAFE_NO_PAD.encode([8u8; 32]));
+        assert_eq!(request(&read).unwrap_err(), "invalid_asset");
+        std::fs::remove_file(path).unwrap();
+    }
+
     #[test]
     fn assets_roundtrip_and_reject_wrong_keys_truncation_and_header_tampering() {
         let path = std::env::temp_dir().join(format!(

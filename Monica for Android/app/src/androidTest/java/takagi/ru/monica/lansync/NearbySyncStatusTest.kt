@@ -124,6 +124,18 @@ class NearbySyncStatusTest {
         compose.runOnIdle {
             assertTrue(copied().contains("replica_resolve")); assertTrue(copied().contains("invalid_request"))
             assertTrue(copied().contains(text(R.string.nearby_hint_prepare_failed)))
+            state.value = initial.copy(phase="failed",error="peer_merge_failed",failureStage="confirming",failureOperation="peer_apply",progress=null)
+        }
+        compose.onNodeWithText(text(R.string.device_sync_copy_diagnostics)).performScrollTo().performClick()
+        compose.runOnIdle {
+            assertTrue(copied().contains(text(R.string.nearby_hint_peer_apply)))
+            assertFalse(copied().contains("secret-pairing")); assertFalse(copied().contains("private-entry-name"))
+            state.value = initial.copy(phase="failed",error="invalid_password_payload",failureStage="applying",failureOperation="password_password_plain_type",progress=null)
+        }
+        compose.onNodeWithText(text(R.string.device_sync_copy_diagnostics)).performScrollTo().performClick()
+        compose.runOnIdle {
+            assertTrue(copied().contains(text(R.string.nearby_hint_payload)))
+            assertTrue(copied().contains("password_password_plain_type"))
         }
         capture("diagnostics")
     }

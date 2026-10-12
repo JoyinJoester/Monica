@@ -66,6 +66,87 @@ struct Wire {
     aliases: BTreeMap<String, String>,
 }
 
+fn passkey_identity(record: &Record) -> Option<(String, String)> {
+    if record.data["entry_type"].as_str() != Some("passkey") {
+        return None;
+    }
+    let payload = &record.data["payload"];
+    let raw = payload["credential_id"].as_str()?.trim();
+    let hex = raw.replace('-', "");
+    let credential =
+        if raw.len() == 36 && hex.len() == 32 && hex.bytes().all(|c| c.is_ascii_hexdigit()) {
+            let bytes: Vec<u8> = (0..32)
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+                .collect();
+            URL_SAFE_NO_PAD.encode(bytes)
+        } else {
+            let encoded = if raw.get(..4).is_some_and(|p| p.eq_ignore_ascii_case("b64.")) {
+                &raw[4..]
+            } else {
+                raw
+            };
+            let normalized = encoded
+                .trim_end_matches('=')
+                .replace('+', "-")
+                .replace('/', "_");
+            URL_SAFE_NO_PAD
+                .decode(&normalized)
+                .ok()
+                .filter(|b| !b.is_empty())
+                .map(|b| URL_SAFE_NO_PAD.encode(b))
+                .unwrap_or_else(|| raw.to_owned())
+        };
+    Some((payload["rp_id"].as_str()?.to_ascii_lowercase(), credential))
+}
+
+/// Filter the wire copy, never the local scan: omission is not a deletion.
+/// Include cached/conflict copies in the check so an older zero-counter copy
+/// cannot leak the same credential after its live counterpart has been used.
+fn export_wire(state: &State, skip_nonzero_passkeys: bool) -> Wire {
+    let excluded: BTreeSet<_> = if skip_nonzero_passkeys {
+        state
+            .records
+            .values()
+            .filter(|r| {
+                r.data["payload"]["sign_count"]
+                    .as_u64()
+                    .is_some_and(|n| n > 0)
+            })
+            .filter_map(passkey_identity)
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
+    let records: BTreeMap<_, _> = state
+        .records
+        .iter()
+        .filter(|(_, r)| !passkey_identity(r).is_some_and(|key| excluded.contains(&key)))
+        .map(|(id, r)| (id.clone(), r.clone()))
+        .collect();
+    let aliases = state
+        .aliases
+        .iter()
+        .filter(|(id, _)| {
+            !state
+                .records
+                .get(&resolve(state, id))
+                .and_then(passkey_identity)
+                .is_some_and(|key| excluded.contains(&key))
+        })
+        .map(|(id, target)| (id.clone(), target.clone()))
+        .collect();
+    Wire {
+        version: 1,
+        records,
+        aliases: if skip_nonzero_passkeys {
+            aliases
+        } else {
+            state.aliases.clone()
+        },
+    }
+}
+
 struct Scan {
     state: State,
     scopes: BTreeSet<String>,
@@ -786,14 +867,17 @@ pub(super) fn request(value: &Value) -> Result<Value> {
             Ok(json!({}))
         }
         "replica_export" => {
-            let plain = Zeroizing::new(
-                serde_json::to_vec(&Wire {
-                    version: 1,
-                    records: replica.state.records.clone(),
-                    aliases: replica.state.aliases.clone(),
-                })
-                .map_err(|_| "invalid_replica")?,
+            let wire = export_wire(
+                &replica.state,
+                value["skip_nonzero_passkeys"].as_bool().unwrap_or(false),
             );
+            let asset_ids: BTreeSet<_> = wire
+                .records
+                .values()
+                .flat_map(|r| r.data["assets"].as_array().into_iter().flatten())
+                .filter_map(|a| a["id"].as_str())
+                .collect();
+            let plain = Zeroizing::new(serde_json::to_vec(&wire).map_err(|_| "invalid_replica")?);
             if plain.len() > MAX_STATE {
                 return Err("replica_limit");
             }
@@ -805,7 +889,7 @@ pub(super) fn request(value: &Value) -> Result<Value> {
                 false,
             )?;
             Ok(
-                json!({"content_key":content_key,"revision":replica.content_revision,"pending":has_pending(&replica.state)}),
+                json!({"content_key":content_key,"revision":replica.content_revision,"pending":has_pending(&replica.state),"asset_ids":asset_ids}),
             )
         }
         "replica_merge" => {
@@ -986,6 +1070,40 @@ mod tests {
             deleted: false,
             data: json!({"title":"Synthetic login","password":password}),
         }
+    }
+
+    #[test]
+    fn counter_filter_excludes_cached_copies_aliases_and_assets_without_mutating_replica() {
+        let mut s = state("source");
+        let mut key = local("local-key", "key", "unused");
+        key.data = json!({"title":"Passkey", "entry_type":"passkey", "payload":{
+            "credential_id":"00000000-0000-0000-0000-000000000001", "rp_id":"example.test", "sign_count":0},
+            "assets":[{"id":"private-asset"}]});
+        reconcile(&mut s, key).unwrap();
+        let mut cached = s.records["key"].clone();
+        cached.id = "old-copy".into();
+        cached.data["title"] = json!("[Sync conflict] Passkey");
+        cached.data["payload"]["credential_id"] = json!("b64.AAAAAAAAAAAAAAAAAAAAAQ");
+        cached.data["payload"]["rp_id"] = json!("EXAMPLE.TEST");
+        s.records.insert(cached.id.clone(), cached);
+        s.aliases.insert("z-key-alias".into(), "key".into());
+        reconcile(&mut s, local("local-password", "password", "synthetic")).unwrap();
+        assert_eq!(export_wire(&s, true).records.len(), 3);
+        s.records.get_mut("key").unwrap().data["payload"]["sign_count"] = json!(7);
+        let before = serde_json::to_vec(&s).unwrap();
+        let filtered = export_wire(&s, true);
+        assert_eq!(
+            filtered.records.keys().cloned().collect::<Vec<_>>(),
+            vec!["password"]
+        );
+        assert!(filtered.aliases.is_empty());
+        assert!(!filtered.records.values().any(|r| r.deleted));
+        assert_eq!(serde_json::to_vec(&s).unwrap(), before);
+        assert_eq!(export_wire(&s, false).records.len(), 3);
+        assert_eq!(export_wire(&s, false).aliases.len(), 1);
+        // Persisted caches have the same policy after restarting the process.
+        let restored: State = serde_json::from_slice(&before).unwrap();
+        assert_eq!(export_wire(&restored, true).records.len(), 1);
     }
 
     #[test]

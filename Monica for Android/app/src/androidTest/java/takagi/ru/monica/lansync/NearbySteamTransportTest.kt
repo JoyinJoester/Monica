@@ -30,7 +30,7 @@ class NearbySteamTransportTest {
         val preferences = DeviceSyncPreferenceStore(context, security, preferenceName)
         val provider = DevicePasswordSyncProvider(context, security, preferences, db, File(root, "replica"), steam)
         val repository = SteamAccountRepository(steam.steamAccountDao(), security)
-        val incoming = File(root, "incoming")
+        var incoming = File(root, "incoming")
         lateinit var outgoing: DevicePasswordExport
         suspend fun seed() {
             val raw = JSONObject().put("steamid", "76561198000000000").put("account_name", name)
@@ -50,6 +50,10 @@ class NearbySteamTransportTest {
             .put("device", JSONObject().put("device_id", name).put("name", name).put("content_type", "vault")
                 .put("vault_content_version", 2).put("sync_mode", "bidirectional"))
         var expectedNames = setOf("ordinary", "fdroid")
+        var expectedTrash = 0
+        var expectedLive = 0
+        var expectedPasswords = 0
+        var expectedPasskeys = 0
         suspend fun verify() {
             val accounts = repository.getAccounts()
             assertEquals(expectedNames.size, accounts.size)
@@ -69,16 +73,23 @@ class NearbySteamTransportTest {
             File(incoming, "changes.mdbxsync").takeIf { it.exists() }?.let {
                 assertFalse(it.readBytes().toString(Charsets.ISO_8859_1).contains(secret))
             }
-            assertTrue(db.secureItemDao().getDeviceSyncLocalItems().isEmpty())
+            val trash = db.secureItemDao().getDeviceSyncLocalItems()
+            assertEquals(expectedTrash, trash.count { it.isDeleted })
+            assertEquals(expectedLive, trash.count { !it.isDeleted })
+            assertEquals(expectedPasswords, db.passwordEntryDao().getDeviceSyncLocalPasswords().size)
+            assertEquals(expectedPasskeys, db.passkeyDao().getAllPasskeysSync().size)
         }
         suspend fun close() { provider.pause(); steam.close(); db.close(); context.deleteSharedPreferences(preferenceName); root.deleteRecursively() }
     }
-    private suspend fun awaitTransfers(sessions: List<Pair<Fixture, Long>>) {
+    private suspend fun awaitTransfers(sessions: List<Pair<Fixture, Long>>, timeoutSeconds: Long = 90) {
         val applied = mutableSetOf<Long>()
-        val deadline = System.nanoTime() + 90_000_000_000L
+        val deadline = System.nanoTime() + timeoutSeconds * 1_000_000_000L
+        val phases = mutableMapOf<Long,String>()
         while (System.nanoTime() < deadline) {
             val states = sessions.map { (fixture, handle) ->
                 val state = RustLanSync.request(JSONObject().put("operation", "progress").put("handle", handle))
+                val phase = state.getString("phase")
+                if(phases.put(handle,phase) != phase) android.util.Log.i("NearbyFixture", "${fixture.name}: $phase")
                 assertNotEquals(state.optString("error"), "failed", state.getString("phase"))
                 if (state.getString("phase") == "received" && applied.add(handle)) {
                     if (state.getJSONObject("peer").optBoolean("receive_content", true))
@@ -92,7 +103,7 @@ class NearbySteamTransportTest {
             if (states.all { it.getString("phase") == "completed" }) return
             Thread.sleep(20)
         }
-        fail("Encrypted Steam transfer timed out")
+        fail("Encrypted fixture transfer timed out after $timeoutSeconds seconds: ${phases.values}")
     }
     private fun release(handle: Long) {
         RustLanSync.request(JSONObject().put("operation", "cancel").put("handle", handle))
@@ -135,6 +146,60 @@ class NearbySteamTransportTest {
             assertFalse(RustLanSync.request(JSONObject().put("operation", "progress").put("handle", handles[0]))
                 .getJSONObject("peer").getBoolean("receive_content"))
         } finally { handles.forEach(::release); sender.close(); receiver.close(); SessionManager.markLocked() }
+    }
+
+    @Test fun bulkTrashAndPasskeyCounterUseRealAndroidStorageAndTransport() = runBlocking {
+        SessionManager.markUnlocked()
+        val sender = Fixture("ordinary"); val receiver = Fixture("fdroid")
+        sender.expectedNames = setOf("ordinary")
+        sender.expectedTrash = 6; receiver.expectedTrash = 6
+        sender.expectedLive = 6; receiver.expectedLive = 6
+        sender.expectedPasswords = 610; receiver.expectedPasswords = 610
+        sender.expectedPasskeys = 2; receiver.expectedPasskeys = 1
+        val handles = mutableListOf<Long>()
+        val richData = NearbyVaultFixtureData(context)
+        try {
+            receiver.provider.onProgress = { if(it.completed % 64L == 0L || it.completed==it.total)
+                android.util.Log.i("NearbyFixture", "receiver ${it.stage}: ${it.completed}/${it.total}") }
+            sender.seed(); receiver.seed()
+            repeat(610) { index -> sender.db.passwordEntryDao().insertPasswordEntry(takagi.ru.monica.data.PasswordEntry(
+                title="Bulk $index", website="example.test", username="fixture", password=sender.security.encryptData("synthetic-$index"))) }
+            for (type in listOf(takagi.ru.monica.data.ItemType.NOTE, takagi.ru.monica.data.ItemType.TOTP, takagi.ru.monica.data.ItemType.BANK_CARD,
+                takagi.ru.monica.data.ItemType.DOCUMENT, takagi.ru.monica.data.ItemType.BILLING_ADDRESS, takagi.ru.monica.data.ItemType.PAYMENT_ACCOUNT)) {
+                sender.db.secureItemDao().insertItem(takagi.ru.monica.data.SecureItem(itemType=type,title="Trash $type",
+                    itemData=sender.security.encryptData("{\"content\":\"synthetic trash\"}"),isDeleted=true))
+            }
+            richData.seed(sender.db,sender.security)
+            val pair = java.security.KeyPairGenerator.getInstance("EC").apply { initialize(java.security.spec.ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+            for (count in listOf(0L,7L)) sender.db.passkeyDao().insert(takagi.ru.monica.passkey.PasskeyPrivateKeyStore.protectPasskey(context,
+                takagi.ru.monica.data.PasskeyEntry(credentialId=UUID.randomUUID().toString(),rpId="example.test",rpName="Counter $count",
+                    userId="Zml4dHVyZQ==",userName="fixture",userDisplayName="Fixture",signCount=count,backupEligible=true,backupState=false,
+                    publicKey=java.util.Base64.getEncoder().encodeToString(pair.public.encoded),privateKeyAlias=java.util.Base64.getEncoder().encodeToString(pair.private.encoded))))
+            sender.outgoing = sender.provider.prepare(File(sender.root,"bulk-outgoing"))
+            assertEquals(1,sender.outgoing.passkeyIssues.count { it.skipForCounter })
+            repeat(2) {
+                sender.incoming = File(sender.root,"incoming-$it")
+                receiver.incoming = File(receiver.root,"incoming-$it")
+                val request = sender.request("start").put("listen_address","127.0.0.1")
+                request.getJSONObject("device").put("sync_mode","send_only")
+                val server = RustLanSync.request(request); handles += server.getLong("handle")
+                val connect = receiver.request("connect").put("invitation","monica-lan:2:127.0.0.1:${server.getInt("port")}:${server.getString("code")}")
+                connect.getJSONObject("device").put("sync_mode","receive_only")
+                connect.remove("outgoing_directory"); connect.remove("content_key")
+                handles += RustLanSync.request(connect).getLong("handle")
+                awaitTransfers(listOf(sender to handles[0],receiver to handles[1]),timeoutSeconds=600)
+                richData.verify(receiver.db,receiver.security)
+                handles.forEach(::release); handles.clear()
+            }
+            receiver.db.passwordEntryDao().getDeviceSyncLocalPasswords().forEach {
+                assertEquals("synthetic-${it.title.removePrefix("Bulk ")}",receiver.security.decryptDataIfMonicaCiphertext(it.password))
+            }
+            receiver.db.secureItemDao().getDeviceSyncLocalItems().filter { it.isDeleted }.forEach {
+                assertEquals("synthetic trash",JSONObject(receiver.security.decryptDataIfMonicaCiphertext(it.itemData)).getString("content"))
+            }
+            assertEquals("Counter 0",receiver.db.passkeyDao().getAllPasskeysSync().single().rpName)
+            assertEquals(setOf(0L,7L),sender.db.passkeyDao().getAllPasskeysSync().map { it.signCount }.toSet())
+        } finally { handles.forEach(::release); richData.clean(sender.db); richData.clean(receiver.db); sender.close(); receiver.close(); SessionManager.markLocked() }
     }
 
     /** Run concurrently in ordinary and F-Droid apps using nearbyRole=server/client. */

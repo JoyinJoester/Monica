@@ -4669,7 +4669,11 @@
     <string name="autofill_keep_unlocked_desc">仅在同一应用及网站内复用验证。关闭此项、锁屏或从最近任务中清理 Monica 后失效，不会解锁主应用。</string>
     <string name="keepass_delete_failed_reload">未能完成 KDBX 删除。请重新加载数据库，检查文件或写入权限后重试。</string>
     <string name="device_sync_passkey_title">通行密钥跨设备限制</string>
-    <string name="device_sync_passkey_summary">以下 %1$d 项通行密钥可能无法在其他设备或平台登录。请先查看原因；必要时需在目标设备重新注册通行密钥。</string>
+    <string name="device_sync_passkey_summary">以下 %1$d 项通行密钥存在同步限制。继续后将跳过所有签名计数非零的通行密钥，并同步其余条目。请查看其他限制；必要时需在目标设备重新注册通行密钥。</string>
+    <string name="device_sync_passkey_counter_skip_hint">签名计数非零，将跳过此通行密钥；本地密钥和计数保持不变。</string>
+    <string name="device_sync_passkey_skip_continue">跳过并继续</string>
+    <string name="nearby_hint_peer_apply">对方设备未能保存收到的条目。请打开对方的连接诊断查看原始错误，再重试。</string>
+    <string name="nearby_hint_payload">收到的某项数据无法读取。请更新两端后重试；若仍失败，复制本机诊断信息反馈。</string>
     <string name="device_sync_passkey_reference_hint">此项无法导出私钥，仅同步凭据信息，不能因此在其他设备登录。</string>
     <string name="device_sync_passkey_cancel">取消同步</string>
     <string name="device_sync_passkey_continue">了解并继续</string>

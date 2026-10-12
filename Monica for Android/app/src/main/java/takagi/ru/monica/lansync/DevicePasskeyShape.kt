@@ -22,7 +22,7 @@ internal object DevicePasskeyShape {
             .put("created_at", entry.createdAt).put("last_used_at", entry.lastUsedAt)
             .put("use_count", entry.useCount).put("icon_url", entry.iconUrl ?: JSONObject.NULL).put("is_discoverable", entry.isDiscoverable)
             .put("is_user_verification_required", entry.isUserVerificationRequired).put("transports", entry.transports).put("aaguid", entry.aaguid)
-            .put("sign_count", 0).put("notes", entry.notes).put("passkey_mode", entry.passkeyMode)
+            .put("sign_count", entry.signCount).put("notes", entry.notes).put("passkey_mode", entry.passkeyMode)
             .put("backup_eligible", entry.backupEligible ?: JSONObject.NULL).put("backup_state", entry.backupState ?: JSONObject.NULL)
         preparePayload(context, p)
         return DeviceVaultShape.normalize(p, entry.rpName, "", "passkey")
@@ -74,6 +74,7 @@ internal object DevicePasskeyShape {
         val eligibility = backupFlag(payload, "backup_eligible")
         val state = backupFlag(payload, "backup_state")
         if (eligibility == false && state == true) invalid("backup_flags_invalid")
+        if (payload.has("sign_count") && (payload.opt("sign_count") !is Long && payload.opt("sign_count") !is Int || payload.optLong("sign_count") < 0)) invalid("sign_count_invalid")
     }
 
     private fun invalid(reason: String): Nothing = throw LanSyncException("invalid_passkey_material", "passkey_$reason")
@@ -130,6 +131,7 @@ internal object DevicePasskeyShape {
             throw LanSyncException("passkey_conflict", "passkey_public_key_changed")
         if (oldCredential.isNotBlank() || originalKey.isNotEmpty() || old.optString("public_key").isNotBlank())
             retainBackupFlags(incoming, previous)
+        incoming.put("sign_count", maxOf(incoming.optLong("sign_count"), previous.optLong("sign_count")))
         if (incoming.getString("private_key_alias").isNotEmpty() || originalKey.isEmpty()) return
         preparePayload(context, old)
         val normalized = old.optString("private_key_alias")
@@ -165,7 +167,7 @@ internal object DevicePasskeyShape {
             privateKeyAlias = p.optString("private_key_alias"), createdAt = p.optLong("created_at"), lastUsedAt = p.optLong("last_used_at"),
             useCount = p.optInt("use_count"), iconUrl = p.optString("icon_url").takeUnless { it == "null" || it.isBlank() },
             isDiscoverable = p.optBoolean("is_discoverable", true), isUserVerificationRequired = p.optBoolean("is_user_verification_required", true),
-            transports = p.optString("transports", "internal"), aaguid = p.optString("aaguid"), signCount = 0, isBackedUp = p.optString("key_status") == "portable",
+            transports = p.optString("transports", "internal"), aaguid = p.optString("aaguid"), signCount = p.optLong("sign_count"), isBackedUp = p.optString("key_status") == "portable",
             notes = p.optString("notes"), passkeyMode = p.optString("passkey_mode", "LEGACY"), syncStatus = if(p.optString("key_status") == "reference") "REFERENCE" else "SYNCED"))
     }
     fun guard(data: JSONObject) = MessageDigest.getInstance("SHA-256").digest(canonical(data).toByteArray()).joinToString("") { "%02x".format(it) }

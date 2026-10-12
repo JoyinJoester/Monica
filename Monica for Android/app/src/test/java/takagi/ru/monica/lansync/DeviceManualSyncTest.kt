@@ -126,6 +126,39 @@ class DeviceManualSyncTest {
         }
     } }
 
+    @Test fun receiver_write_failure_reaches_sender_as_rejection_and_retry_completes() = runBlocking { withTimeout(90000) {
+        DeviceVaultProviderTest.loadNative(); Dispatchers.setMain(Dispatchers.Unconfined); SessionManager.markUnlocked()
+        val context = RuntimeEnvironment.getApplication()
+        val sender = Fixture(context,"z-reject-sender","a-reject-receiver",DeviceSyncMode.SEND_ONLY)
+        val receiver = Fixture(context,"a-reject-receiver","z-reject-sender",DeviceSyncMode.RECEIVE_ONLY)
+        try {
+            sender.db.passwordEntryDao().insertPasswordEntry(PasswordEntry(title="Rejected fixture",website="",username="",password="synthetic"))
+            receiver.db.openHelper.writableDatabase.execSQL("CREATE TRIGGER reject_fixture BEFORE INSERT ON password_entries BEGIN SELECT RAISE(ABORT, 'synthetic write failure'); END")
+            sender.request(); receiver.request()
+            val deadline = System.nanoTime() + 60_000_000_000L
+            while (System.nanoTime() < deadline && sender.coordinator.state.value.error == null) {
+                sender.tick(); receiver.tick(); Thread.sleep(30)
+            }
+            assertEquals("peer_merge_failed",sender.coordinator.state.value.error)
+            assertEquals("peer_apply",sender.coordinator.state.value.failureOperation)
+            assertEquals("applying",receiver.coordinator.state.value.failureStage)
+            assertEquals(0L,sender.settings.peers.single().lastSyncedAt)
+            assertEquals(0L,receiver.settings.peers.single().lastSyncedAt)
+            assertTrue(receiver.db.passwordEntryDao().getDeviceSyncLocalPasswords().isEmpty())
+            receiver.db.openHelper.writableDatabase.execSQL("DROP TRIGGER reject_fixture")
+            // Finish native rejection cleanup before explicitly requesting the retry.
+            repeat(3) { receiver.tick(); sender.tick() }
+            sender.request(); receiver.request()
+            val retryDeadline = System.nanoTime() + 60_000_000_000L
+            while (System.nanoTime() < retryDeadline && (sender.settings.peers.single().lastSyncedAt == 0L || receiver.settings.peers.single().lastSyncedAt == 0L)) {
+                sender.tick(); receiver.tick(); Thread.sleep(30)
+            }
+            assertTrue(sender.settings.peers.single().lastSyncedAt > 0L)
+            assertTrue(receiver.settings.peers.single().lastSyncedAt > 0L)
+            assertEquals(1,receiver.db.passwordEntryDao().getDeviceSyncLocalPasswords().size)
+        } finally { sender.close(); receiver.close(); SessionManager.markLocked(); Dispatchers.resetMain() }
+    } }
+
     @Test fun manual_connection_window_expires_when_the_peer_never_connects() = runBlocking {
         DeviceVaultProviderTest.loadNative()
         Dispatchers.setMain(Dispatchers.Unconfined)

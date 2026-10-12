@@ -54,19 +54,20 @@ internal object DevicePasswordShape {
     }
 
     fun validate(data: JSONObject) {
-        fun invalid(): Nothing = throw LanSyncException("invalid_password_payload")
-        if (data.toString().toByteArray().size > 1024 * 1024) invalid()
-        (stringFields + listOf("title", "folder", "entry_type", "login_type")).forEach { if (data.opt(it) !is String) invalid() }
-        if (data.getString("entry_type") !in listOf("login", "ssh-key") || data.getString("title").length > 4096 || data.getString("folder").length > 4096) invalid()
-        if (data.opt("is_archived") !is Boolean) invalid()
+        fun invalid(reason: String): Nothing = throw LanSyncException("invalid_password_payload", "password_$reason")
+        if (data.toString().toByteArray().size > 1024 * 1024) invalid("size_limit")
+        (stringFields + listOf("title", "folder", "entry_type", "login_type")).forEach { if (data.opt(it) !is String) invalid("${it}_type") }
+        if (data.getString("entry_type") !in listOf("login", "ssh-key")) invalid("entry_type")
+        if (data.getString("title").length > 4096 || data.getString("folder").length > 4096) invalid("label_limit")
+        if (data.opt("is_archived") !is Boolean) invalid("is_archived_type")
         val archived = data.opt("archived_at")
         if (archived != null && archived != JSONObject.NULL &&
-            ((archived !is Long && archived !is Int) || (archived as Number).toLong() !in 0..253402300799999L)) invalid()
-        val fields = data.optJSONArray("custom_fields") ?: invalid()
-        if (fields.length() > 1024) invalid()
+            ((archived !is Long && archived !is Int) || (archived as Number).toLong() !in 0..253402300799999L)) invalid("archived_at_type")
+        val fields = data.optJSONArray("custom_fields") ?: invalid("custom_fields_type")
+        if (fields.length() > 1024) invalid("custom_fields_limit")
         for (index in 0 until fields.length()) {
-            val field = fields.optJSONObject(index) ?: invalid()
-            if (field.opt("title") !is String || field.opt("value") !is String || field.opt("is_protected") !is Boolean) invalid()
+            val field = fields.optJSONObject(index) ?: invalid("custom_field_type")
+            if (field.opt("title") !is String || field.opt("value") !is String || field.opt("is_protected") !is Boolean) invalid("custom_field_type")
         }
     }
 

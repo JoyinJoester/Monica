@@ -62,7 +62,8 @@ class DeviceVaultProviderTest {
         val database = builder.build()
         databases += database
         val security = SecurityManager(context)
-        return database to DevicePasswordSyncProvider(context,security,DeviceSyncPreferenceStore(context,security),database,
+        val preferences = DeviceSyncPreferenceStore(context,security,"provider-${UUID.randomUUID()}").also { it.save(DeviceSyncPreferences()) }
+        return database to DevicePasswordSyncProvider(context,security,preferences,database,
             File(context.filesDir,"fixture-${UUID.randomUUID()}.replica"))
     }
 
@@ -293,6 +294,7 @@ class DeviceVaultProviderTest {
     @Test fun coordinator_blocks_first_send_for_restricted_room_keys_but_receive_only_skips_local_export() = runBlocking { withTimeout(60000) {
         SessionManager.markUnlocked()
         val (database, provider) = vault(synchronousInvalidation = true)
+        val (received, receiver) = vault()
         val context = RuntimeEnvironment.getApplication()
         val coordinator = ReflectionHelpers.callConstructor(DeviceSyncCoordinator::class.java,
             ClassParameter.from(Context::class.java, context))
@@ -315,6 +317,7 @@ class DeviceVaultProviderTest {
                 privateKeyAlias = Base64.getEncoder().encodeToString(pair.private.encoded)))
             database.passkeyDao().insert(entry)
             database.passkeyDao().insert(entry.copy(credentialId = "external", keepassDatabaseId = 9, backupEligible = false))
+            database.passwordEntryDao().insertPasswordEntry(PasswordEntry(title="Continue fixture",website="",username="",password="synthetic"))
             invoke("maintainConnections")
             val consent = ReflectionHelpers.getField<DevicePasskeySyncConsent>(coordinator, "passkeyConsent")
             val review = requireNotNull(consent.pending)
@@ -322,13 +325,18 @@ class DeviceVaultProviderTest {
             assertEquals(takagi.ru.monica.passkey.PasskeyPortability.COUNTER_HISTORY, review.issues.single().portability)
             assertTrue(ReflectionHelpers.getField<Map<*, *>>(coordinator, "transfers").isEmpty())
             assertEquals("passkey_review", ReflectionHelpers.getField<String>(coordinator, "phase"))
+            consent.confirm(review)
+            val continued = invoke("currentSnapshot") as DevicePasswordExport
+            receiver.apply(continued.directory,JSONObject().put("pairing",JSONObject().put("content_key",continued.contentKey)))
+            assertTrue(received.passkeyDao().getAllPasskeysSync().isEmpty())
+            assertEquals(1,received.passwordEntryDao().getDeviceSyncLocalPasswords().size)
             settings.mode = DeviceSyncMode.RECEIVE_ONLY
             val receiving = invoke("currentSnapshot") as DevicePasswordExport
             assertTrue(receiving.passkeyIssues.isEmpty())
             assertEquals("", receiving.contentKey)
             assertEquals(7L, database.passkeyDao().getAllPasskeysSync().first { it.keepassDatabaseId == null }.signCount)
         } finally {
-            provider.pause()
+            provider.pause(); receiver.pause()
             val root = ReflectionHelpers.getField<File>(coordinator, "root")
             assertEquals(File(context.cacheDir, "device-sync").canonicalFile, root.canonicalFile.parentFile)
             root.deleteRecursively()
@@ -409,6 +417,62 @@ class DeviceVaultProviderTest {
             assertNull(a.passkeyDao().getAllPasskeysSync().single().boundPasswordId)
             assertNull(a.passwordEntryDao().getPasswordEntryById(password)!!.boundNoteId)
             assertEquals(2,a.attachmentDao().getAllByParent(password).size)
+        } finally { first.pause(); second.pause() }
+    } }
+
+    @Test fun nonzero_passkeys_are_omitted_without_deleting_existing_copies_even_after_reopening_replica() = runBlocking { withTimeout(60000) {
+        SessionManager.markUnlocked()
+        val (a, first) = vault(synchronousInvalidation=true); val (b, second) = vault(); val (c, third) = vault()
+        try {
+            val context = RuntimeEnvironment.getApplication()
+            val pair = java.security.KeyPairGenerator.getInstance("EC").apply { initialize(java.security.spec.ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+            val original = PasskeyEntry(credentialId=UUID.randomUUID().toString(), rpId="example.test", rpName="Counter fixture",
+                userId="Zml4dHVyZQ==", userName="fixture", userDisplayName="Fixture", notes="Before use", backupEligible=true, backupState=false,
+                publicKey=Base64.getEncoder().encodeToString(pair.public.encoded), privateKeyAlias=Base64.getEncoder().encodeToString(pair.private.encoded))
+            a.passkeyDao().insert(original)
+            val id = a.passkeyDao().getAllPasskeysSync().single().id
+            suspend fun send(target: DevicePasswordSyncProvider) {
+                val out = first.prepare(File(context.filesDir,"counter-${UUID.randomUUID()}"))
+                target.apply(out.directory, JSONObject().put("pairing",JSONObject().put("content_key",out.contentKey)))
+            }
+            send(second)
+            assertEquals(1, b.passkeyDao().getAllPasskeysSync().size)
+            a.passkeyDao().update(a.passkeyDao().getPasskeyByRecordId(id)!!.copy(signCount=7, notes="After use"))
+            a.passkeyDao().insert(original.copy(credentialId=UUID.randomUUID().toString(), signCount=11, backupEligible=false))
+            a.passwordEntryDao().insertPasswordEntry(PasswordEntry(title="Still synced",website="",username="",password="synthetic"))
+            val issues = first.currentPasskeyIssues()
+            assertEquals(2, issues.size); assertTrue(issues.all { it.skipForCounter })
+            send(second); send(third)
+            first.pause() // Reopen the encrypted replica and export its cached records again.
+            send(second); send(third)
+            val existing = b.passkeyDao().getAllPasskeysSync().single()
+            assertEquals("Before use", existing.notes); assertEquals(0L, existing.signCount)
+            assertTrue(c.passkeyDao().getAllPasskeysSync().isEmpty())
+            assertEquals(1, b.passwordEntryDao().getDeviceSyncLocalPasswords().size)
+            assertEquals(1, c.passwordEntryDao().getDeviceSyncLocalPasswords().size)
+            assertEquals(setOf(7L,11L), a.passkeyDao().getAllPasskeysSync().map { it.signCount }.toSet())
+            assertEquals(original.privateKeyAlias, a.passkeyDao().getPasskeyByRecordId(id)!!.privateKeyAlias)
+        } finally { first.pause(); second.pause(); third.pause() }
+    } }
+
+    @Test fun mixed_bulk_sync_preserves_new_trashed_secure_items_and_retries_without_duplicates() = runBlocking { withTimeout(120000) {
+        SessionManager.markUnlocked(); val (a, first) = vault(); val (b, second) = vault()
+        try {
+            repeat(610) { index ->
+                a.passwordEntryDao().insertPasswordEntry(PasswordEntry(title="Bulk $index", website="example.test", username="fixture", password="synthetic-$index"))
+            }
+            val types = listOf(ItemType.NOTE, ItemType.TOTP, ItemType.BANK_CARD, ItemType.DOCUMENT, ItemType.BILLING_ADDRESS, ItemType.PAYMENT_ACCOUNT)
+            types.forEach { type -> a.secureItemDao().insertItem(SecureItem(itemType=type, title="Trash $type", itemData="{\"content\":\"synthetic trash\"}", isDeleted=true)) }
+            val outgoing = first.prepare(File(RuntimeEnvironment.getApplication().filesDir,"trash-bulk-${UUID.randomUUID()}"))
+            val peer = JSONObject().put("pairing", JSONObject().put("content_key",outgoing.contentKey))
+            assertEquals(616, second.apply(outgoing.directory, peer))
+            assertEquals(610, b.passwordEntryDao().getDeviceSyncLocalPasswords().size)
+            val trash = b.secureItemDao().getDeviceSyncLocalItems()
+            assertEquals(types.toSet(), trash.map { it.itemType }.toSet())
+            assertTrue(trash.all { it.isDeleted && JSONObject(it.itemData).getString("content") == "synthetic trash" })
+            second.apply(outgoing.directory, peer)
+            assertEquals(610, b.passwordEntryDao().getDeviceSyncLocalPasswords().size)
+            assertEquals(6, b.secureItemDao().getDeviceSyncLocalItems().size)
         } finally { first.pause(); second.pause() }
     } }
 

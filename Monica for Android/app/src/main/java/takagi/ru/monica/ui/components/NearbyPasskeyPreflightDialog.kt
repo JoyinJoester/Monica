@@ -13,10 +13,11 @@ internal fun NearbyPasskeyPreflightDialog(review: DevicePasskeySyncReview, onCan
         summary = stringResource(R.string.device_sync_passkey_summary, review.issues.size),
         issues = review.issues.map { issue ->
             PasskeyPreflightIssue(issue.account, issue.relyingParty,
-                if (issue.portability == PasskeyPortability.DEVICE_ONLY) R.string.device_sync_passkey_reference_hint
+                if (issue.skipForCounter) R.string.device_sync_passkey_counter_skip_hint
+                else if (issue.portability == PasskeyPortability.DEVICE_ONLY) R.string.device_sync_passkey_reference_hint
                 else issue.portability.description())
         },
         cancelText = stringResource(R.string.device_sync_passkey_cancel),
-        confirmText = stringResource(R.string.device_sync_passkey_continue),
+        confirmText = stringResource(if (review.issues.any { it.skipForCounter }) R.string.device_sync_passkey_skip_continue else R.string.device_sync_passkey_continue),
         tag = "nearby_passkey", onCancel = onCancel, onConfirm = onContinue)
 }

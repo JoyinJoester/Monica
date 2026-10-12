@@ -88,6 +88,8 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         var stage = "connecting"
         var attempts = 0
         var remoteAddress = ""
+        var applyFailure: Exception? = null
+        var rejectionDeadline = 0L
     }
 
     fun start() {
@@ -454,6 +456,12 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     private suspend fun poll(id: String, transfer: Transfer) {
         val progress = request("progress", transfer.handle)
         val next = progress.getString("phase")
+        transfer.applyFailure?.let { failure ->
+            // Let the worker send its authenticated rejection receipt before cleanup.
+            // Lock/cancellation still cancels immediately; an unresponsive peer is bounded.
+            if (next in listOf("completed", "failed", "cancelled") || SystemClock.elapsedRealtime() >= transfer.rejectionDeadline) throw failure
+            return
+        }
         if(transfer.enrollment || next != "waiting") phase = next else if(!pairing) phase = "idle"
         transfer.stage = if (next == "failed") progress.optString("failed_at", transfer.stage) else next
         transfer.attempts = progress.optInt("connection_attempt")
@@ -493,9 +501,14 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
                 currentCoroutineContext().ensureActive()
                 check(SessionManager.isUnlocked.value) { "device_sync_locked" }
                 RustLanSync.request(JSONObject().put("operation", "acknowledge").put("handle", transfer.handle).put("success", true))
-            } catch (failure: Exception) {
-                runCatching { RustLanSync.request(JSONObject().put("operation", "acknowledge").put("handle", transfer.handle).put("success", false)) }
-                throw failure
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                val rejected = runCatching { RustLanSync.request(JSONObject().put("operation", "acknowledge").put("handle", transfer.handle).put("success", false)) }
+                if (rejected.isFailure) throw failure
+                transfer.applyFailure = failure
+                transfer.rejectionDeadline = SystemClock.elapsedRealtime() + 10_000
+                recordFailure(failure, transfer.stage, transfer.attempts)
+                return
             }
         }
         if (next !in listOf("completed", "failed", "cancelled")) return
@@ -519,7 +532,8 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             error = null
         } else {
             fail(id, transfer.enrollment)
-            recordFailure(LanSyncException(progress.optString("error", "device_sync_failed")), transfer.stage, transfer.attempts)
+            val code = progress.optString("error", "device_sync_failed")
+            recordFailure(LanSyncException(code, if (code == "peer_merge_failed") "peer_apply" else "transfer_$next"), transfer.stage, transfer.attempts)
         }
         if (transfer.enrollment) { pairing = false; code = ""; invitations = emptyList(); phase = next }
         stop(transfer); transfers.remove(id)

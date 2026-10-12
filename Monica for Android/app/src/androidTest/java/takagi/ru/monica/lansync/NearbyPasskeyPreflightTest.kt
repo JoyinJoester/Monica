@@ -19,7 +19,7 @@ class NearbyPasskeyPreflightTest {
     @Test fun cancel_does_not_confirm_and_continue_requires_a_visible_review_at_large_text() {
         val consent = DevicePasskeySyncConsent()
         val issues = (1..12).map { index -> DevicePasskeySyncIssue("fixture-$index", "Fixture $index",
-            "example.test", if (index == 1) PasskeyPortability.DEVICE_ONLY else PasskeyPortability.BACKUP_RESTRICTED) }
+            "example.test", if (index == 1) PasskeyPortability.DEVICE_ONLY else PasskeyPortability.BACKUP_RESTRICTED, skipForCounter = index == 2) }
         var review by mutableStateOf(consent.review(issues, setOf("phone")))
         var cancelled = false
         var continued = false
@@ -36,6 +36,8 @@ class NearbyPasskeyPreflightTest {
             }
         }
         compose.onNodeWithTag("nearby_passkey_preflight").assertIsDisplayed()
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        compose.onNodeWithTag("nearby_passkey_skip").assertTextContains(context.getString(takagi.ru.monica.R.string.device_sync_passkey_skip_continue))
         // Optional local visual evidence; functional assertions do not depend on screenshots.
         runCatching {
             val bitmap = compose.onNodeWithTag("nearby_passkey_preflight").captureToImage().asAndroidBitmap()

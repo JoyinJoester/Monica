@@ -4,6 +4,10 @@
 
 ## 中文
 
+- 修复空文件附件导致附近同步打包失败的问题；空附件仍经过加密和完整性校验。
+- 修复附近同步首次接收回收站中的笔记、验证码、卡片等条目时报 `invalid_password_payload` 的问题。接收端保存失败会先回传拒绝结果，发送端提示查看对方诊断，避免只显示连接断开；密码格式诊断补充不含凭据内容的字段原因。
+- 通行密钥确认弹窗中的“跳过并继续”会跳过所有签名计数非零的 Passkey，继续同步其他条目；本地密钥和计数、对方已有副本保持不变，缓存及冲突副本也遵守跳过规则。
+
 - 移除喵喵语、芝士雪豹语和雪豹彩蛋图标，原始语言与图标资源归档至“彩蛋语言备份”；旧语言设置自动恢复简体中文，保留升级后的正常桌面入口。
 
 - 附近同步使用常驻状态区显示准备、传输、保存、失败与完成，避免进度条和提示出现时推挤设备卡片；诊断补充实时阶段、所选数据库、默认网络、连接与发现统计、重试及最近成功时间，并提供对应处理建议和可复制信息。
@@ -40,6 +44,10 @@
 - 修复仅绑定 Bitwarden／Vaultwarden 时密码库首页和搜索可能看不到已同步条目：未保存数据库范围时默认显示“全部”，旧版省略范围的设置同步采用该默认值；明确保存的本地库或具体数据库选择继续保留，锁定库仍不参与展示与搜索。
 
 ## English
+
+- Fixed empty file attachments aborting Nearby bundle preparation; empty attachments remain encrypted and authenticated.
+- Fixed `invalid_password_payload` when Nearby sync first receives trashed notes, authenticators, cards and other items. Failed receiver saves send a rejection before closing; the sender directs users to the receiver diagnostics. Password validation reports field reasons without credential contents.
+- “Skip and continue” in Passkey review skips every Passkey with a nonzero signature counter while syncing other items. Local keys and counters and existing destination copies are preserved; cached and conflict copies follow the same exclusion policy.
 
 - Removed the Nya and Snow Leopard Easter egg languages and Snow Leopard icon. Original resources are archived in “彩蛋语言备份”; existing selections migrate to Simplified Chinese while preserving a working launcher entry.
 
