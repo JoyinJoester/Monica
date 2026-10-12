@@ -16,4 +16,16 @@
     <string name="nearby_automatic_hint">Connect to paired devices while unlocked</string>
     <string name="nearby_details">Sync contents and diagnostics</string>
     <string name="nearby_scope_summary">Passwords, 2FA, Steam tokens, passkeys and more</string>
+    <string name="nearby_database">Sync database</string>
+    <string name="nearby_local">Local</string>
+    <string name="nearby_local_hint">Monica local contents</string>
+    <string name="nearby_database_hint">Send only the selected database and save received contents here. Each device can choose its own destination.</string>
+    <string name="nearby_database_scope">Bitwarden and KeePass use their own sync. Changing this selection does not delete existing contents.</string>
+    <string name="nearby_database_unavailable">The selected database is unavailable. Choose another database.</string>
+    <string name="nearby_manual_hint">Off · Sync only when requested</string>
+    <string name="nearby_auto_frequency">Automatic sync frequency</string>
+    <string name="nearby_frequency_disabled">Available when automatic sync is on</string>
+    <string name="nearby_wait_manual">Waiting for manual sync</string>
+    <string name="nearby_manual_both_hint">When automatic sync is off on both devices, tap Sync now on each device.</string>
+    <string name="nearby_cancel_sync">Cancel this sync</string>
 </resources>

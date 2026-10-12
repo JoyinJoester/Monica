@@ -24,9 +24,13 @@ class DeviceSyncModeTest {
         original.peers += SavedSyncPeer("desktop", "Computer", "pair", "A".repeat(43))
         for (mode in DeviceSyncMode.entries) {
             original.mode = mode
+            original.databaseId = 42L
+            original.enabled = false
             store.save(original)
             val reloaded = store.load()
             assertEquals(mode, reloaded.mode)
+            assertEquals(42L, reloaded.databaseId)
+            assertFalse(reloaded.enabled)
             assertEquals(original.replicaKey, reloaded.replicaKey)
             assertEquals(original.peers.single().trustedKey, reloaded.peers.single().trustedKey)
         }
@@ -42,6 +46,7 @@ class DeviceSyncModeTest {
         json.remove("sync_mode")
         preferences.edit().putString("protected", security.encryptData(json.toString())).commit()
         assertEquals(DeviceSyncMode.BIDIRECTIONAL, store.load().mode)
+        assertNull(store.load().databaseId)
         json.put("sync_mode", "unknown-mode")
         preferences.edit().putString("protected", security.encryptData(json.toString())).commit()
         assertThrows(IllegalArgumentException::class.java) { store.load() }

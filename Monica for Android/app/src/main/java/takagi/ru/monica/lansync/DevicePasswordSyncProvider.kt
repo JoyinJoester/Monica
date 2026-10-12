@@ -60,6 +60,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     private var sourceRevision: String? = null
     private var handle: Long? = null
     private var nodeId: String = ""
+    private var selectedDatabaseId: Long? = null
     private val viewModels = ViewModelStore()
     private var projection: MdbxViewModel? = null
     private val pendingProjections = mutableSetOf<Long>()
@@ -92,12 +93,21 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     }
 
     private fun ensureOpen() {
-        if (handle != null) return
+        if (handle != null && selectedDatabaseId == preferences.selectedDatabaseId()) return
         val settings = preferences.load()
-        val path = replicaPath ?: File(app.filesDir, "device-sync/passwords.replica")
-        handle = RustLanSync.request(JSONObject().put("operation", "replica_open").put("device_id", settings.deviceId)
+        handle?.let { request("replica_close") }
+        handle = null; sourceRevision = null; assets = emptyList(); preparedAssets = null
+        passkeyIssues = emptyList(); primaryNativeId = null
+        selectedDatabaseId = settings.databaseId
+        val target = selectedDatabaseId?.let { "mdbx-$it" } ?: "local"
+        // Each selected store owns an independent replica and logical writer. Never
+        // scan a reduced scope into the old all-vault replica (that implies deletes).
+        val writer = java.util.UUID.nameUUIDFromBytes("${settings.deviceId}:$target".toByteArray()).toString()
+        val path = replicaPath?.let { File(it.parentFile, "${it.name}-$target") }
+            ?: File(app.filesDir, "device-sync/$target.replica")
+        handle = RustLanSync.request(JSONObject().put("operation", "replica_open").put("device_id", writer)
             .put("key", settings.replicaKey).put("path", path.absolutePath)).getLong("handle")
-        nodeId = settings.deviceId
+        nodeId = writer
     }
 
     private suspend fun reconcile(force: Boolean = false) {
@@ -110,57 +120,59 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
         // App writes invalidate Room immediately. The fallback catches externally changed files
         // without reopening encrypted native stores on every connection-progress tick.
         if (!force && sourceRevision != null && observed == observedChanges && checkedAt - lastRevisionCheck < 5000) return
-        val nativeDatabases = database.localMdbxDatabaseDao().getAvailableDatabasesSnapshot()
-            .filter { it.engineTypeEnum == MdbxEngineType.RUST_MDBX2 && it.tigaModeEnum != MdbxTigaMode.GLITTER }
+        val nativeDatabases = selectedNativeDatabases()
         val revisions = nativeDatabases.map { preparingDeviceSync("mdbx_revision_${it.id}") { "${it.id}:${native.deviceSyncRevision(it.id)}" } }
         val marker = observed.toString() + revisions.joinToString(";")
         observedChanges = observed; lastRevisionCheck = checkedAt
         if (!force && marker == sourceRevision) return
         onProgress?.invoke(DeviceSyncProgress("preparing"))
-        preparingDeviceSync("room_identities") { metadata.prepareIdentities() }
-        val local = database.withTransaction {
-            val identities = identities()
-            val entries = passwords.getDeviceSyncLocalPasswords()
-            val fieldsById = if (entries.isEmpty()) emptyMap() else fields.getFieldsByEntryIds(entries.map { it.id }).groupBy { it.entryId }
-            val categoryNames = categories.getDeviceSyncCategories().associate { it.id to it.name }
-            entries.map { entry ->
-                val data = preparingDeviceSync("room_password_${entry.id}") { metadata.password(entry, fieldsById[entry.id].orEmpty(), categoryNames[entry.categoryId].orEmpty()) }
-                data.put("entry_type", identities[entry.id]?.second ?: "login")
-                val snapshot = DevicePasswordSnapshot("local:${entry.id}", identities[entry.id]?.first.orEmpty(), "local", DevicePasswordShape.guard(entry, data), entry.isDeleted, data)
-                withLocalAssets(snapshot, attachments.getAllByParent(entry.id).filter { !it.isDeleted || entry.isDeleted })
-            }
-        }.toMutableList()
-        val folderNames = categories.getDeviceSyncCategories().associate { it.id to it.name }
-        val vaultIds = vaultIdentities()
-        secureItems.getDeviceSyncLocalItems().forEach { item ->
-            val data = preparingDeviceSync("room_item_${item.id}") { metadata.secure(item, folderNames[item.categoryId].orEmpty()) }
-            val address = "secure:${item.id}"
-            local += withLocalAssets(DevicePasswordSnapshot(address, vaultIds[address].orEmpty(), "secure", DevicePasskeyShape.guard(data) + ":" + item.isDeleted, item.isDeleted, data),
-                attachments.getAllBySecureItem(item.id).filter { !it.isDeleted || item.isDeleted })
-        }
+        val local = mutableListOf<DevicePasswordSnapshot>()
         val issues = mutableListOf<DevicePasskeySyncIssue>()
-        passkeys.getAllPasskeysSync().filter { it.isDeviceSyncLocal() }.forEach { item ->
-            val data = preparingDeviceSync("room_passkey_${item.id}") { localPasskey(item) }
-            val address = "passkey:${item.id}"
-            val exported = DevicePasswordSnapshot(address, vaultIds[address] ?: DevicePasskeyShape.identity(item), "passkeys", DevicePasskeyShape.guard(data), false, data)
-            local += exported
-            DevicePasskeySyncIssue.from(exported, item.signCount)?.let(issues::add)
-        }
-        categories.getDeviceSyncCategories().filter { it.isMonicaLocalCategory() }.forEach { category ->
-            val data = preparingDeviceSync("room_folder_${category.id}") { metadata.folder(category) }
-            local += DevicePasswordSnapshot("folder:${category.id}", metadata.global("folder:${category.id}").orEmpty(), "folders", DevicePasskeyShape.guard(data), false, data)
+        if (selectedDatabaseId == null) {
+            preparingDeviceSync("room_identities") { metadata.prepareIdentities() }
+            local += database.withTransaction {
+                val identities = identities()
+                val entries = passwords.getDeviceSyncLocalPasswords()
+                val fieldsById = if (entries.isEmpty()) emptyMap() else fields.getFieldsByEntryIds(entries.map { it.id }).groupBy { it.entryId }
+                val categoryNames = categories.getDeviceSyncCategories().associate { it.id to it.name }
+                entries.map { entry ->
+                    val data = preparingDeviceSync("room_password_${entry.id}") { metadata.password(entry, fieldsById[entry.id].orEmpty(), categoryNames[entry.categoryId].orEmpty()) }
+                    data.put("entry_type", identities[entry.id]?.second ?: "login")
+                    val snapshot = DevicePasswordSnapshot("local:${entry.id}", identities[entry.id]?.first.orEmpty(), "local", DevicePasswordShape.guard(entry, data), entry.isDeleted, data)
+                    withLocalAssets(snapshot, attachments.getAllByParent(entry.id).filter { !it.isDeleted || entry.isDeleted })
+                }
+            }.toMutableList()
+            val folderNames = categories.getDeviceSyncCategories().associate { it.id to it.name }
+            val vaultIds = vaultIdentities()
+            secureItems.getDeviceSyncLocalItems().forEach { item ->
+                val data = preparingDeviceSync("room_item_${item.id}") { metadata.secure(item, folderNames[item.categoryId].orEmpty()) }
+                val address = "secure:${item.id}"
+                local += withLocalAssets(DevicePasswordSnapshot(address, vaultIds[address].orEmpty(), "secure", DevicePasskeyShape.guard(data) + ":" + item.isDeleted, item.isDeleted, data),
+                    attachments.getAllBySecureItem(item.id).filter { !it.isDeleted || item.isDeleted })
+            }
+            passkeys.getAllPasskeysSync().filter { it.isDeviceSyncLocal() }.forEach { item ->
+                val data = preparingDeviceSync("room_passkey_${item.id}") { localPasskey(item) }
+                val address = "passkey:${item.id}"
+                val exported = DevicePasswordSnapshot(address, vaultIds[address] ?: DevicePasskeyShape.identity(item), "passkeys", DevicePasskeyShape.guard(data), false, data)
+                local += exported
+                DevicePasskeySyncIssue.from(exported, item.signCount)?.let(issues::add)
+            }
+            categories.getDeviceSyncCategories().filter { it.isMonicaLocalCategory() }.forEach { category ->
+                val data = preparingDeviceSync("room_folder_${category.id}") { metadata.folder(category) }
+                local += DevicePasswordSnapshot("folder:${category.id}", metadata.global("folder:${category.id}").orEmpty(), "folders", DevicePasskeyShape.guard(data), false, data)
+            }
+            local += preparingDeviceSync("room_metadata") { metadata.rootMetadata() }
+            local += preparingDeviceSync("steam_accounts") { steam.snapshots() }
         }
         nativeDatabases.forEach {
             val exported = preparingDeviceSync("mdbx_export_${it.id}") { native.deviceSyncPasswords(it.id) }
             local += exported
             issues += exported.mapNotNull { entry -> DevicePasskeySyncIssue.from(entry) }
         }
-        local += preparingDeviceSync("room_metadata") { metadata.rootMetadata() }
-        local += preparingDeviceSync("steam_accounts") { steam.snapshots() }
         normalizeNativeReferences(local)
         assets = local.flatMap { it.assets }.distinctBy { it.id }
-        primaryNativeId = nativeDatabases.firstOrNull { it.isDefault }?.id
-        request("replica_scan_begin") { put("scopes", JSONArray(listOf("local", "secure", "passkeys", "folders", "metadata", "steam") + nativeDatabases.map { "mdbx:${it.id}" })) }
+        primaryNativeId = selectedDatabaseId
+        request("replica_scan_begin") { put("scopes", JSONArray(if (selectedDatabaseId == null) listOf("local", "secure", "passkeys", "folders", "metadata", "steam") else nativeDatabases.map { "mdbx:${it.id}" })) }
         var batch = JSONArray()
         var bytes = 0
         fun flush() {
@@ -179,6 +191,13 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
         request("replica_scan_end")
         passkeyIssues = issues.toList()
         sourceRevision = marker
+    }
+
+    private suspend fun selectedNativeDatabases(): List<LocalMdbxDatabase> {
+        val id = selectedDatabaseId ?: return emptyList()
+        val selected = database.localMdbxDatabaseDao().getDatabaseById(id)
+            ?.takeIf { it.isUsable } ?: throw LanSyncException("sync_database_unavailable", "selected_database")
+        return listOf(selected)
     }
 
     private fun revisionStamp(result: JSONObject): String = result.getString("revision") + if (result.optBoolean("pending")) "~pending" else ""
@@ -280,8 +299,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
             if (acknowledgments.length() > 0) request("replica_applied_batch") { put("items", acknowledgments) }
             if (raced) { if (++retries > 4) throw LanSyncException("passwords_changing"); reconcile(force = true) }
         }
-        database.localMdbxDatabaseDao().getAvailableDatabasesSnapshot().filter { it.engineTypeEnum == MdbxEngineType.RUST_MDBX2 && it.tigaModeEnum != MdbxTigaMode.GLITTER }
-            .forEach { native.resolveDeviceSyncRelations(it.id,ensureNativePasskeyTargets(it.id)) }
+        selectedNativeDatabases().forEach { native.resolveDeviceSyncRelations(it.id,ensureNativePasskeyTargets(it.id)) }
         refreshProjections()
         metadata.repairBindings()
         changed

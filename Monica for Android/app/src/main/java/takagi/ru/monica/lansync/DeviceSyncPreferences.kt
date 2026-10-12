@@ -30,7 +30,8 @@ internal data class DeviceSyncPreferences @JvmOverloads constructor(
     var settingsWriter: String = "",
     val peers: MutableList<SavedSyncPeer> = mutableListOf(),
     var syncRequest: Long = 0,
-    var mode: DeviceSyncMode = DeviceSyncMode.BIDIRECTIONAL
+    var mode: DeviceSyncMode = DeviceSyncMode.BIDIRECTIONAL,
+    var databaseId: Long? = null
 ) {
     fun setInterval(seconds: Int) {
         require(seconds == 0 || seconds in 60..86400)
@@ -61,6 +62,16 @@ internal object DeviceSyncCadence {
 internal class DeviceSyncPreferenceStore(context: Context, private val security: SecurityManager,
     preferenceName: String = "monica-device-sync") {
     private val preferences = context.applicationContext.getSharedPreferences(preferenceName, Context.MODE_PRIVATE)
+    private var selectionToken: String? = null
+    private var selection: Long? = null
+    fun selectedDatabaseId(): Long? {
+        val token = preferences.getString("protected", null)
+        if (token != selectionToken) {
+            selection = load().databaseId
+            selectionToken = token
+        }
+        return selection
+    }
     fun hasPeers(): Boolean = preferences.getBoolean("enabled", false) && preferences.getInt("peer-count", 0) > 0
     fun load(): DeviceSyncPreferences {
         val encrypted = preferences.getString("protected", null) ?: return DeviceSyncPreferences()
@@ -73,6 +84,7 @@ internal class DeviceSyncPreferenceStore(context: Context, private val security:
         require(LanPairingInvitation.parse("monica-lan:2:127.0.0.1:1:${result.replicaKey}") != null)
         result.syncRequest = json.optLong("sync_request")
         result.mode = requireNotNull(DeviceSyncMode.fromWire(json.optString("sync_mode", "bidirectional")))
+        result.databaseId = if (json.isNull("database_id")) null else json.getLong("database_id").also { require(it > 0) }
         val peers = json.getJSONArray("peers")
         require(peers.length() <= 8)
         for (index in 0 until peers.length()) {
@@ -94,6 +106,7 @@ internal class DeviceSyncPreferenceStore(context: Context, private val security:
             .put("enabled", settings.enabled).put("interval", settings.intervalSeconds).put("settings_version", settings.settingsVersion)
             .put("settings_writer", settings.settingsWriter).put("sync_request", settings.syncRequest).put("peers", peers)
             .put("sync_mode", settings.mode.wireName)
+            .put("database_id", settings.databaseId ?: JSONObject.NULL)
         check(preferences.edit().putString("protected", security.encryptData(json.toString()))
             .putBoolean("enabled", settings.enabled).putInt("peer-count", settings.peers.size).commit())
     }

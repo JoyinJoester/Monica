@@ -35,6 +35,9 @@ import kotlinx.coroutines.withContext
 import takagi.ru.monica.BuildConfig
 import takagi.ru.monica.R
 import takagi.ru.monica.lansync.*
+import takagi.ru.monica.data.LocalMdbxDatabase
+import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.isUsable
 import takagi.ru.monica.ui.components.NearbyPasskeyPreflightDialog
 import takagi.ru.monica.ui.components.SettingsPanelGroup
 import takagi.ru.monica.ui.components.SettingsPanelRow
@@ -46,6 +49,8 @@ fun LanSyncScreen(onNavigateBack: () -> Unit, onScanPairingQr: () -> Unit) {
     val context = LocalContext.current
     val coordinator = remember { DeviceSyncCoordinator.get(context) }
     val state by coordinator.state.collectAsStateWithLifecycle()
+    val databaseFlow = remember(context) { PasswordDatabase.getDatabase(context).localMdbxDatabaseDao().getAvailableDatabases() }
+    val databases by databaseFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     DisposableEffect(coordinator) { onDispose { coordinator.cancelPairing() } }
     state.passkeyReview?.let { review ->
         NearbyPasskeyPreflightDialog(review, onCancel = coordinator::cancelPasskeySync,
@@ -53,7 +58,8 @@ fun LanSyncScreen(onNavigateBack: () -> Unit, onScanPairingQr: () -> Unit) {
     }
     NearbySyncContent(state, NearbySyncActions(onNavigateBack, onScanPairingQr, { coordinator.pair() },
         { coordinator.pair(it) }, coordinator::cancelPairing, coordinator::setEnabled, coordinator::setMode,
-        coordinator::setInterval, coordinator::syncNow, coordinator::forget))
+        coordinator::setInterval, coordinator::syncNow, coordinator::forget, coordinator::setDatabase, coordinator::cancelSync),
+        databases.filter { it.isUsable })
 }
 
 @Composable
@@ -74,11 +80,12 @@ internal data class NearbySyncActions(
     val back: () -> Unit = {}, val scan: () -> Unit = {}, val showQr: () -> Unit = {},
     val connect: (String) -> Unit = {}, val cancelPairing: () -> Unit = {},
     val enabled: (Boolean) -> Unit = {}, val mode: (DeviceSyncMode) -> Unit = {},
-    val interval: (Int) -> Unit = {}, val sync: () -> Unit = {}, val forget: (String) -> Unit = {})
+    val interval: (Int) -> Unit = {}, val sync: () -> Unit = {}, val forget: (String) -> Unit = {},
+    val database: (Long?) -> Unit = {}, val cancelSync: () -> Unit = {})
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncActions) {
+internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncActions, databases: List<LocalMdbxDatabase> = emptyList()) {
     val context = LocalContext.current
     var sheet by rememberSaveable { mutableStateOf<String?>(null) }
     var invitation by rememberSaveable { mutableStateOf("") }
@@ -152,6 +159,19 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
                             enabled = !state.pairing, trailing = { RadioButton(state.mode == mode, onClick = null) })
                     } }
                 }
+                "database" -> {
+                    Text(stringResource(R.string.nearby_database), style = MaterialTheme.typography.headlineSmall)
+                    Text(stringResource(R.string.nearby_database_hint))
+                    SettingsPanelGroup("") {
+                        SettingsPanelRow(Icons.Default.Storage, stringResource(R.string.nearby_local), stringResource(R.string.nearby_local_hint),
+                            onClick = { actions.database(null); sheet = null }, trailing = { RadioButton(state.databaseId == null, onClick = null) })
+                        databases.forEach { database ->
+                            SettingsPanelRow(Icons.Default.Storage, database.name, "MDBX · ${database.tigaModeEnum.label}",
+                                onClick = { actions.database(database.id); sheet = null }, trailing = { RadioButton(state.databaseId == database.id, onClick = null) })
+                        }
+                    }
+                    Text(stringResource(R.string.nearby_database_scope), style = MaterialTheme.typography.bodySmall)
+                }
                 "frequency" -> {
                     Text(stringResource(R.string.device_sync_frequency), style = MaterialTheme.typography.headlineSmall)
                     Text(stringResource(R.string.device_sync_frequency_hint))
@@ -187,14 +207,25 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.nearby_intro), Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SettingsPanelGroup(stringResource(R.string.nearby_add_device)) {
-                SettingsPanelRow(Icons.Default.QrCode2, stringResource(R.string.device_sync_show_qr), stringResource(R.string.nearby_generate_hint),
-                    onClick = { sheet = "qr"; actions.showQr() }, enabled = !state.pairing)
-                SettingsPanelRow(Icons.Default.QrCodeScanner, stringResource(R.string.lan_scan), stringResource(R.string.nearby_scan_subtitle),
-                    onClick = actions.scan, enabled = !state.pairing)
-                SettingsPanelRow(Icons.Default.Link, stringResource(R.string.device_sync_use_link), stringResource(R.string.nearby_paste_hint),
-                    onClick = { sheet = "link" }, enabled = !state.pairing)
+            SettingsPanelGroup(stringResource(R.string.nearby_settings)) {
+                val databaseName = if (state.databaseId == null) stringResource(R.string.nearby_local)
+                    else databases.firstOrNull { it.id == state.databaseId }?.name ?: stringResource(R.string.nearby_database_unavailable)
+                SettingsPanelRow(Icons.Default.Storage, stringResource(R.string.nearby_database), databaseName,
+                    onClick = { sheet = "database" }, enabled = !state.pairing && !state.manualSync)
+                SettingsPanelRow(Icons.Default.Sync, stringResource(R.string.device_sync_automatic),
+                    stringResource(if (state.enabled) R.string.nearby_automatic_hint else R.string.nearby_manual_hint),
+                    checked = state.enabled, onCheckedChange = actions.enabled)
+                SettingsPanelRow(Icons.Default.SyncAlt, stringResource(R.string.device_sync_direction), modeName(state.mode), onClick = { sheet = "mode" }, enabled = !state.pairing && !state.manualSync)
+                SettingsPanelRow(Icons.Default.Schedule, stringResource(R.string.nearby_auto_frequency),
+                    if (state.enabled) frequencyName(state.intervalSeconds) else stringResource(R.string.nearby_frequency_disabled),
+                    onClick = { sheet = "frequency" }, enabled = state.enabled)
             }
+            Button(actions.sync, Modifier.fillMaxWidth(), enabled = state.peers.isNotEmpty() && !state.pairing && !state.manualSync) {
+                Icon(Icons.Default.Sync, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.device_sync_now))
+            }
+            if (state.manualSync) TextButton(actions.cancelSync, Modifier.fillMaxWidth()) { Text(stringResource(R.string.nearby_cancel_sync)) }
+            else if (!state.enabled) Text(stringResource(R.string.nearby_manual_both_hint), Modifier.padding(horizontal = 12.dp),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (state.error != null) SettingsPanelGroup("") {
                 SettingsPanelRow(Icons.Default.ErrorOutline, nearbyError(state), state.failureRecordName.takeIf { it.isNotEmpty() }
                     ?.let { stringResource(R.string.device_sync_failed_record, it) }.orEmpty(), onClick = { sheet = "details" })
@@ -218,6 +249,7 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
                         "syncing" -> R.string.device_sync_syncing
                         "online" -> R.string.device_sync_online
                         "scheduled" -> R.string.device_sync_scheduled
+                        "manual" -> R.string.nearby_wait_manual
                         "paused" -> R.string.device_sync_paused
                         "locked" -> R.string.device_sync_locked
                         "preparation_failed" -> R.string.device_sync_preparation_failed_status
@@ -232,14 +264,13 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
                     })
                 }
             }
-            SettingsPanelGroup(stringResource(R.string.nearby_settings)) {
-                SettingsPanelRow(Icons.Default.Sync, stringResource(R.string.device_sync_automatic), stringResource(R.string.nearby_automatic_hint),
-                    checked = state.enabled, onCheckedChange = actions.enabled)
-                SettingsPanelRow(Icons.Default.SyncAlt, stringResource(R.string.device_sync_direction), modeName(state.mode), onClick = { sheet = "mode" }, enabled = !state.pairing)
-                SettingsPanelRow(Icons.Default.Schedule, stringResource(R.string.device_sync_frequency), frequencyName(state.intervalSeconds), onClick = { sheet = "frequency" })
-            }
-            FilledTonalButton(actions.sync, Modifier.fillMaxWidth(), enabled = state.enabled && state.peers.isNotEmpty() && !state.pairing) {
-                Icon(Icons.Default.Sync, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.device_sync_now))
+            SettingsPanelGroup(stringResource(R.string.nearby_add_device)) {
+                SettingsPanelRow(Icons.Default.QrCode2, stringResource(R.string.device_sync_show_qr), stringResource(R.string.nearby_generate_hint),
+                    onClick = { sheet = "qr"; actions.showQr() }, enabled = !state.pairing)
+                SettingsPanelRow(Icons.Default.QrCodeScanner, stringResource(R.string.lan_scan), stringResource(R.string.nearby_scan_subtitle),
+                    onClick = actions.scan, enabled = !state.pairing)
+                SettingsPanelRow(Icons.Default.Link, stringResource(R.string.device_sync_use_link), stringResource(R.string.nearby_paste_hint),
+                    onClick = { sheet = "link" }, enabled = !state.pairing)
             }
             SettingsPanelGroup("") {
                 SettingsPanelRow(Icons.Default.Info, stringResource(R.string.nearby_details), stringResource(R.string.nearby_scope_summary), onClick = { sheet = "details" })
@@ -285,6 +316,7 @@ private fun copyNearbyText(context: Context, value: String, sensitive: Boolean) 
         "native_unavailable", "device_sync_unavailable" -> R.string.lan_unavailable
         "invalid_password_payload", "invalid_record", "invalid_vault_payload" -> R.string.device_sync_invalid_data
         "invalid_passkey_material", "passkey_key_unavailable" -> R.string.device_sync_passkey_failed
+        "sync_database_unavailable" -> R.string.nearby_database_unavailable
         "sync_direction_conflict" -> R.string.device_sync_direction_conflict
         "sync_direction_unsupported" -> R.string.device_sync_direction_unsupported
         else -> when {

@@ -143,18 +143,30 @@ internal object DeviceVaultShape {
                 steamTokenGid=steam.tokenGid.orEmpty(),steamRawJson=steam.rawJson))
     }
     fun remapReferences(data: JSONObject,map: (String) -> String) {
-        fun visit(node: Any,key: String? = null) {
-            if(node is JSONObject) node.keys().asSequence().toList().forEach { name ->
-                val value = node.get(name)
-                if((name in listOf("bound_password_entry_id","bound_note_entry_id","sso_ref_entry_id") ||
-                    (key in listOf("folder_path","path") && name in listOf("id","parent")) || (key == "relations" && name == "target")) && value is String && value.isNotBlank()) node.put(name,map(value))
-                else if(value is JSONObject || value is org.json.JSONArray) visit(value,name)
-            }
-            else if(node is org.json.JSONArray) for(index in 0 until node.length()) {
-                val value = node.get(index); if(value is JSONObject || value is org.json.JSONArray) visit(value,key)
+        // Only wire-schema reference slots are owned by sync. Opaque extension
+        // objects may also contain path/id/target fields and must stay untouched.
+        fun field(node: JSONObject?, name: String) {
+            val value = node?.opt(name) as? String ?: return
+            // Legacy external references are not replica identifiers. Retain them
+            // verbatim, without submitting them to the native alias resolver.
+            if (value.matches(Regex("[A-Za-z0-9_-]{1,64}"))) node.put(name, map(value))
+        }
+        fun path(nodes: org.json.JSONArray?) {
+            if (nodes != null) for (index in 0 until nodes.length()) {
+                val node = nodes.optJSONObject(index)
+                field(node, "id"); field(node, "parent")
             }
         }
-        visit(data)
+        val payload = data.optJSONObject("payload")
+        val extensions = data.optJSONObject("extensions")
+        listOf("bound_password_entry_id", "bound_note_entry_id", "sso_ref_entry_id").forEach {
+            field(data, it); field(payload, it); field(extensions, it)
+        }
+        path(data.optJSONArray("folder_path"))
+        if (data.optString("entry_type") == "folder") path(payload?.optJSONArray("path"))
+        data.optJSONArray("relations")?.let { relations ->
+            for (index in 0 until relations.length()) field(relations.optJSONObject(index), "target")
+        }
     }
 
     fun applyNative(data: JSONObject, previous: String?, id: String, folder: String?): JSONObject {

@@ -66,6 +66,31 @@ class DeviceVaultProviderTest {
             File(context.filesDir,"fixture-${UUID.randomUUID()}.replica"))
     }
 
+    @Test fun opaque_extension_paths_do_not_become_replica_references() = runBlocking { withTimeout(60000) {
+        SessionManager.markUnlocked()
+        val (database, provider) = vault(); val (received, receiver) = vault()
+        try {
+            val context = RuntimeEnvironment.getApplication()
+            val security = SecurityManager(context)
+            val id = database.passwordEntryDao().insertPasswordEntry(PasswordEntry(title = "Opaque extensions",
+                website = "example.test", username = "fixture", password = "synthetic-password"))
+            val extension = JSONObject().put("path", org.json.JSONArray().put(JSONObject()
+                .put("id", "service/account:42").put("parent", "folder/user")))
+                .put("bound_password_entry_id", "external:42")
+            DeviceRoomVaultMetadata(database, security) { JSONObject() }.save("local:$id",
+                JSONObject().put("extensions", JSONObject().put("custom_data", extension)))
+            val outgoing = provider.prepare(File(context.filesDir, "opaque-${UUID.randomUUID()}"))
+            receiver.apply(outgoing.directory, JSONObject().put("pairing", JSONObject().put("content_key", outgoing.contentKey)))
+            val entry = received.passwordEntryDao().getDeviceSyncLocalPasswords().single()
+            val saved = DeviceRoomVaultMetadata(received, security) { JSONObject() }.supplement("local:${entry.id}", JSONObject())
+            val retained = saved.getJSONObject("extensions").getJSONObject("custom_data")
+            assertEquals("external:42", retained.getString("bound_password_entry_id"))
+            assertEquals("service/account:42", retained.getJSONArray("path").getJSONObject(0).getString("id"))
+            assertEquals("folder/user", retained.getJSONArray("path").getJSONObject(0).getString("parent"))
+            assertEquals("synthetic-password", security.decryptDataIfMonicaCiphertext(entry.password))
+        } finally { provider.pause(); receiver.pause() }
+    } }
+
     @Test fun local_passkey_with_stale_mdbx_folder_does_not_abort_preparation() = runBlocking { withTimeout(60000) {
         SessionManager.markUnlocked()
         val (database, provider) = vault()

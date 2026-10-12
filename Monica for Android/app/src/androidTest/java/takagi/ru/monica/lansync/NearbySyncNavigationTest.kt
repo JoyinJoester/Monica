@@ -64,7 +64,7 @@ class NearbySyncNavigationTest {
             else compose.onNodeWithContentDescription(text(R.string.go_back)).performClick()
             compose.waitForIdle()
             compose.runOnIdle { assertEquals(Screen.LanSync.route, nav.currentDestination?.route) }
-            compose.onNodeWithText(text(R.string.device_sync_show_qr)).assertIsDisplayed()
+            compose.onNodeWithText(text(R.string.device_sync_show_qr)).performScrollTo().assertIsDisplayed()
         }
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.onNodeWithText("Open nearby fixture").assertIsDisplayed()
@@ -73,7 +73,7 @@ class NearbySyncNavigationTest {
         open()
         val coordinator = DeviceSyncCoordinator.get(compose.activity)
         repeat(3) {
-            compose.onNodeWithText(text(R.string.device_sync_show_qr)).performClick()
+            compose.onNodeWithText(text(R.string.device_sync_show_qr)).performScrollTo().performClick()
             compose.waitUntil(30_000) { coordinator.state.value.invitations.isNotEmpty() || coordinator.state.value.error != null }
             compose.runOnIdle { assertNull(coordinator.state.value.error) }
             compose.onNodeWithText(text(R.string.lan_copy_link)).performScrollTo()
@@ -90,6 +90,6 @@ class NearbySyncNavigationTest {
         }
         // Cross Android's foreground-service start deadline after repeated start/cancel cycles.
         Thread.sleep(7_000)
-        compose.onNodeWithText(text(R.string.device_sync_show_qr)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.device_sync_show_qr)).performScrollTo().assertIsDisplayed()
     }
 }

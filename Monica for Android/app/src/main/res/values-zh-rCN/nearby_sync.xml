@@ -16,4 +16,16 @@
     <string name="nearby_automatic_hint">解锁后自动连接已配对设备</string>
     <string name="nearby_details">同步内容与连接诊断</string>
     <string name="nearby_scope_summary">密码、验证器、Steam 令牌、通行密钥等</string>
+    <string name="nearby_database">同步数据库</string>
+    <string name="nearby_local">本地</string>
+    <string name="nearby_local_hint">Monica 本地内容</string>
+    <string name="nearby_database_hint">仅发送所选数据库，也将接收内容保存到这里。两台设备可以选择不同的目标库。</string>
+    <string name="nearby_database_scope">Bitwarden、KeePass 使用各自的同步。更换选择不会删除已有内容。</string>
+    <string name="nearby_database_unavailable">所选数据库不可用，请重新选择。</string>
+    <string name="nearby_manual_hint">已关闭 · 仅在点击后同步</string>
+    <string name="nearby_auto_frequency">自动同步频率</string>
+    <string name="nearby_frequency_disabled">开启自动同步后可设置</string>
+    <string name="nearby_wait_manual">等待手动同步</string>
+    <string name="nearby_manual_both_hint">两端都关闭自动同步时，请在两台设备上点击“立即同步”。</string>
+    <string name="nearby_cancel_sync">取消本次同步</string>
 </resources>
