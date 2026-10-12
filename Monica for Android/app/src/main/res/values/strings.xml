@@ -4674,8 +4674,6 @@
     <string name="wallet_stack_open_card">Open card details</string>
     <string name="language_french">Français</string>
     <string name="qs_lang_french">Français</string>
-    <string name="language_nya" translatable="false">喵喵语</string>
-    <string name="qs_lang_nya" translatable="false">喵喵语</string>
     <string name="custom_icon_pick_installed">Installed icons</string>
     <string name="custom_icon_installed_apps">App icons</string>
     <string name="custom_icon_installed_packs">Icon packs</string>
@@ -4684,8 +4682,6 @@
     <string name="custom_icon_installed_load_failed">Could not load icons. Please try again.</string>
     <string name="custom_icon_installed_save_failed">Could not use this icon. Try again or choose another icon.</string>
     <string name="field_barcode_linear_too_wide">This barcode needs more screen width. Rotate your device or use a QR code.</string>
-    <string name="language_snow_leopard" translatable="false">芝士雪豹语</string>
-    <string name="qs_lang_snow_leopard" translatable="false">芝士雪豹语</string>
     <string name="cg_vault_frequent">Frequently used in vault</string>
 
     <string name="local_recovery_action">Recover with master password</string>

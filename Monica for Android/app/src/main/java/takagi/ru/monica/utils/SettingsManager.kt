@@ -542,9 +542,7 @@ class SettingsManager(private val context: Context) {
             interfaceScalePercent = InterfaceScale.normalizePercent(
                 preferences[INTERFACE_SCALE_PERCENT_KEY]
             ),
-            language = Language.valueOf(
-                preferences[LANGUAGE_KEY] ?: Language.SYSTEM.name
-            ),
+            language = parseStartupLanguage(preferences[LANGUAGE_KEY]),
             biometricEnabled = preferences[BIOMETRIC_ENABLED_KEY] ?: false,
             quickSetupCompleted = preferences[QUICK_SETUP_COMPLETED_KEY] ?: false,
             autoLockMinutes = preferences[AUTO_LOCK_MINUTES_KEY] ?: 5,
@@ -779,8 +777,7 @@ class SettingsManager(private val context: Context) {
     }
 
     /**
-     * 芝士雪豹语会连带替换桌面图标。语言变更后按最新语言与现有图标/名称偏好
-     * 重新应用可见启动入口；切换失败不影响语言本身生效。
+     * 按现有图标和名称偏好修复旧版启动入口；修复失败不影响语言本身生效。
      */
     private suspend fun refreshLauncherEntryForLanguage() {
         runCatching {

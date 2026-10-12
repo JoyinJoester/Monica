@@ -136,7 +136,7 @@ class AppLauncherIconSettingsTest {
             manager.updateAppLauncherIcon(AppLauncherIcon.BLUE_STAR)
             val alias = if (label == AppLauncherLabel.MONICA_PASS) "BlueStarVisibleLauncherAlias" else "BlueStarVisibleLauncherAliasMonica"
             val labelRes = if (label == AppLauncherLabel.MONICA_PASS) R.string.app_label else R.string.app_name
-            for (language in listOf(Language.CHINESE, Language.SNOW_LEOPARD, Language.NYA, Language.ENGLISH)) {
+            for (language in listOf(Language.CHINESE, Language.ENGLISH)) {
                 manager.updateLanguage(language)
                 assertLauncher(alias, labelRes)
                 assertEquals(AppLauncherIcon.BLUE_STAR, AppLauncherIconManager.getCurrentSelection(context))
@@ -148,9 +148,7 @@ class AppLauncherIconSettingsTest {
             )
             AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(context, AppLauncherIcon.BLUE_STAR, label)
             assertLauncher(alias, labelRes)
-            manager.updateLanguage(Language.SNOW_LEOPARD)
             manager.updateAppLauncherIcon(AppLauncherIcon.MODERN)
-            assertLauncher("SnowLeopardVisibleLauncherAlias", R.string.app_label)
             manager.updateLanguage(Language.CHINESE)
             assertLauncher(if (label == AppLauncherLabel.MONICA_PASS) "ModernVisibleLauncherAlias" else "ModernVisibleLauncherAliasMonica", labelRes)
         }

@@ -4,5 +4,4 @@
     <string name="launcher_icon_blue_star">Grok bot</string>
     <string name="launcher_icon_selection_description">Wybierz ikonę na ekranie głównym. W każdej chwili możesz wrócić do poprzedniej.</string>
     <string name="launcher_icon_refresh_hint">Odświeżenie ikony może potrwać kilka sekund.</string>
-    <string name="launcher_icon_language_hint">Domyślna ikona zmienia się wraz z językiem pantery śnieżnej.</string>
 </resources>

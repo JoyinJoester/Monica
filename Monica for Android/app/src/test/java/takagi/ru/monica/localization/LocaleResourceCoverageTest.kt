@@ -37,10 +37,8 @@ class LocaleResourceCoverageTest {
     fun theResourceContractCoversEveryAdvertisedLanguage() {
         assertEquals(
             "New language options must also receive full resource checks",
-            // Nya and snow leopard intentionally inherit Chinese; their supplied
-            // entries have separate format checks.
             Language.entries.toSet() -
-                setOf(Language.SYSTEM, Language.ENGLISH, Language.NYA, Language.SNOW_LEOPARD),
+                setOf(Language.SYSTEM, Language.ENGLISH),
             localeDirectories.keys,
         )
     }

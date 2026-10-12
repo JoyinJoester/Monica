@@ -825,7 +825,7 @@ fun IconSettingsScreen(
 
     var sourceExpanded by rememberSaveable { mutableStateOf(false) }
     CustomizationPage(stringResource(R.string.icon_settings_title), onNavigateBack) {
-        AppLauncherIconSettings(settings.appLauncherIcon, settings.language, viewModel::updateAppLauncherIcon)
+        AppLauncherIconSettings(settings.appLauncherIcon, viewModel::updateAppLauncherIcon)
         CustomizationSection(stringResource(R.string.image_sources_title)) {
             Surface(onClick = { showImageSources = true }, shape = settingsSectionItemShape(0, 1), color = MaterialTheme.colorScheme.surfaceContainer) {
                 androidx.compose.material3.ListItem(headlineContent = { Text(stringResource(R.string.image_sources_title)) },

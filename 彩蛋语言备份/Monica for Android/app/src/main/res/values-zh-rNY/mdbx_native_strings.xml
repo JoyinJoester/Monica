@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mdbx_native_title">管理原始信息喵</string>
+    <string name="mdbx_native_summary">浏览文件夹、条目与原始字段喵</string>
+    <string name="mdbx_native_search">搜索名称或类型喵</string>
+    <string name="mdbx_native_readonly">原始字段只读；可从列表重命名条目，不会修改其内容。喵</string>
+    <string name="mdbx_native_schema">数据格式版本：%1$d喵</string>
+    <string name="mdbx_native_failed">操作未能完成。请先刷新确认已保存的状态，再重试。喵</string>
+    <string name="mdbx_native_snapshot_readonly">快照结构只读。需要恢复时，请使用快照菜单。喵</string>
+</resources>

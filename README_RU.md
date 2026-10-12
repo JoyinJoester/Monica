@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | **Русский** | [黑羽川](README_Nya.md)
+[中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | **Русский** | [黑羽川](彩蛋语言备份/README_Nya.md)
 
 <img src="image/themepng.png" alt="Monica App Icon" width="500" />
 

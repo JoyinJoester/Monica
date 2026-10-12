@@ -259,15 +259,14 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- Easter-egg launcher entry shown while the Cheese Snow Leopard language is
-             selected. Always disabled here; AppLauncherIconManager toggles exactly one
-             visible alias on at runtime. -->
+        <!-- Compatibility entry for installations that enabled this retired alias.
+             Keep a normal icon until upgrade repair enables the selected launcher. -->
         <activity-alias
             android:name=".SnowLeopardVisibleLauncherAlias"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher_snow_leopard"
-            android:roundIcon="@mipmap/ic_launcher_snow_leopard_round"
+            android:icon="@mipmap/ic_launcher_modern"
+            android:roundIcon="@mipmap/ic_launcher_modern_round"
             android:label="@string/app_label"
             android:targetActivity=".MainActivity">
             <intent-filter>

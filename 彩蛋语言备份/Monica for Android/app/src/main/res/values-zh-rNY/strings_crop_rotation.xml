@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="card_face_rotate_left">向左转90°喵</string>
+    <string name="card_face_rotate_right">向右转90°喵</string>
+    <string name="card_face_crop_rotation_hint">拖动摆位置，双指缩放，还能旋转和镜像翻转喵。</string>
+    <string name="card_face_flip_horizontal">左右翻转喵</string>
+    <string name="card_face_flip_vertical">上下翻转喵</string>
+</resources>

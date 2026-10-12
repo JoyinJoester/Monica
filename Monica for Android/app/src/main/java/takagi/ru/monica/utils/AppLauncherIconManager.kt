@@ -8,7 +8,6 @@ import takagi.ru.monica.MainActivity
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppLauncherIcon
 import takagi.ru.monica.data.AppLauncherLabel
-import takagi.ru.monica.data.Language
 import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 
@@ -115,17 +114,14 @@ object AppLauncherIconManager {
         label: AppLauncherLabel
     ) {
         val packageManager = context.packageManager
-        // Explicit icon choices survive language changes. The default selection
-        // retains the snow leopard Easter egg. Enable the replacement first so
-        // older Android versions always retain a working launcher entry.
-        val snowLeopardMode = StartupLanguageCache.read(context) == Language.SNOW_LEOPARD
+        // Enable the replacement before disabling retired aliases so upgrades
+        // retain a working launcher entry, including on older Android versions.
         val enabledAlias = when {
             icon == AppLauncherIcon.BLUE_STAR -> if (label == AppLauncherLabel.MONICA_PASS) {
                 VISIBLE_BLUE_STAR_PASS_ALIAS
             } else {
                 VISIBLE_BLUE_STAR_MONICA_ALIAS
             }
-            snowLeopardMode -> VISIBLE_SNOW_LEOPARD_ALIAS
             label == AppLauncherLabel.MONICA_PASS -> VISIBLE_MODERN_PASS_ALIAS
             else -> VISIBLE_MODERN_MONICA_ALIAS
         }

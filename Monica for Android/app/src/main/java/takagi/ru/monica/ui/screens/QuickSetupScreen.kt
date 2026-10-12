@@ -1266,8 +1266,6 @@ private fun languageLabelRes(language: Language): Int = when (language) {
     Language.FRENCH -> R.string.qs_lang_french
     Language.POLISH -> R.string.language_polish
     Language.ITALIAN -> R.string.language_italian
-    Language.NYA -> R.string.qs_lang_nya
-    Language.SNOW_LEOPARD -> R.string.qs_lang_snow_leopard
 }
 
 @StringRes

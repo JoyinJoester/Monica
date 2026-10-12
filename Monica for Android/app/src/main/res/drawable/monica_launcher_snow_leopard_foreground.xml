@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:inset="16.6667%">
-    <bitmap
-        android:filter="true"
-        android:mipMap="true"
-        android:gravity="fill"
-        android:src="@drawable/monica_launcher_snow_leopard" />
-</inset>

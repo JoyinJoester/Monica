@@ -4,5 +4,4 @@
     <string name="launcher_icon_blue_star">Grok bot</string>
     <string name="launcher_icon_selection_description">选择桌面图标，随时可以切回。</string>
     <string name="launcher_icon_refresh_hint">桌面可能需要几秒刷新图标。</string>
-    <string name="launcher_icon_language_hint">默认图标会随芝士雪豹语变成彩蛋图标。</string>
 </resources>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="passkey_move_result_title">移动结果</string>
+    <string name="passkey_move_result_summary">已完成 %1$d 项，需处理 %2$d 项</string>
+    <string name="passkey_move_success_count">已移动 %1$d 项</string>
+    <string name="passkey_move_unnamed_account">未命名账号</string>
+    <string name="passkey_move_bound_reason">此通行密钥已绑定密码项目，不能单独移动。请到关联的密码项目中移动，或先解除绑定。</string>
+    <string name="passkey_move_reference_reason">此项只是引用，不含可独立移动的私钥。请到保存实际通行密钥的原应用或密码库中操作。</string>
+    <string name="passkey_move_bitwarden_reason">此通行密钥的存储模式或私钥不符合 Bitwarden 的迁移要求。请解锁 Monica 后重试，或选择其他目标库。设备绑定密钥无法导出，请保留在原设备使用，或到对应网站重新注册通行密钥。</string>
+    <string name="passkey_move_conflict_reason">目标 KeePass 数据库已存在相同的通行密钥凭据，本次未覆盖。请先检查已有项目，或选择其他数据库。</string>
+    <string name="passkey_move_update_reason">移动未完成，暂时无法确定具体原因。请检查源库和目标库是否已解锁、可写，以及存储空间是否充足。重试前请检查两边的项目，不要删除源数据。</string>
+    <string name="passkey_move_cleanup_reason">目标位置已保存，但源库后续处理未完成，两边可能保留副本。请检查目标项目及源库或同步状态后再继续，不要直接重复移动。</string>
+</resources>

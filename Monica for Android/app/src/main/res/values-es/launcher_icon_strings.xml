@@ -4,5 +4,4 @@
     <string name="launcher_icon_blue_star">Grok bot</string>
     <string name="launcher_icon_selection_description">Elige el icono de la pantalla de inicio. Puedes volver al anterior cuando quieras.</string>
     <string name="launcher_icon_refresh_hint">El lanzador puede tardar unos segundos en actualizar el icono.</string>
-    <string name="launcher_icon_language_hint">El icono predeterminado sigue al idioma del leopardo de las nieves.</string>
 </resources>

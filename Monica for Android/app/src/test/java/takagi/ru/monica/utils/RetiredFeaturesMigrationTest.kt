@@ -53,4 +53,29 @@ class RetiredFeaturesMigrationTest {
         open(false) { store -> store.updateData { other.toMutablePreferences().apply { this[drag] = true; this[bypass] = true } } }
         repeat(2) { open(true) { store -> assertEquals(other, store.data.first()) } }
     }
+
+    @Test fun retiredLanguagesMigrateOnDiskWithoutChangingOtherPreferences() = runBlocking {
+        val language = stringPreferencesKey("language")
+        for (retired in listOf("NYA", "SNOW_LEOPARD")) {
+            val file = temporary.root.resolve("$retired.preferences_pb")
+            suspend fun open(migrate: Boolean, action: suspend (androidx.datastore.core.DataStore<Preferences>) -> Unit) {
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+                try {
+                    action(PreferenceDataStoreFactory.create(
+                        migrations = if (migrate) listOf(RetiredFeaturesMigration) else emptyList(),
+                        scope = scope, produceFile = { file },
+                    ))
+                } finally { scope.coroutineContext[Job]!!.cancelAndJoin() }
+            }
+            open(false) { store -> store.updateData { other.toMutablePreferences().apply { this[language] = retired } } }
+            val expected = other.toMutablePreferences().apply { this[language] = "CHINESE" }
+            repeat(2) { open(true) { store ->
+                assertEquals(expected, store.data.first())
+                assertFalse(RetiredFeaturesMigration.shouldMigrate(store.data.first()))
+            } }
+        }
+        val supported = other.toMutablePreferences().apply { this[language] = "ITALIAN" }
+        assertFalse(RetiredFeaturesMigration.shouldMigrate(supported))
+        assertEquals(supported, RetiredFeaturesMigration.migrate(supported))
+    }
 }

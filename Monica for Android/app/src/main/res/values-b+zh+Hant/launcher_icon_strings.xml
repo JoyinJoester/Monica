@@ -4,5 +4,4 @@
     <string name="launcher_icon_blue_star">Grok bot</string>
     <string name="launcher_icon_selection_description">選擇桌面圖示，隨時可以切回。</string>
     <string name="launcher_icon_refresh_hint">桌面可能需要幾秒更新圖示。</string>
-    <string name="launcher_icon_language_hint">預設圖示會隨芝士雪豹語變成彩蛋圖示。</string>
 </resources>

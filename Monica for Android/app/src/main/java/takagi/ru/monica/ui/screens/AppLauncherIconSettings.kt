@@ -29,12 +29,10 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppLauncherIcon
-import takagi.ru.monica.data.Language
 
 @Composable
 internal fun AppLauncherIconSettings(
     selectedIcon: AppLauncherIcon,
-    language: Language,
     onIconSelected: (AppLauncherIcon) -> Unit,
 ) {
     val context = LocalContext.current
@@ -61,9 +59,7 @@ internal fun AppLauncherIconSettings(
                 )
                 val iconRes = when (option) {
                     AppLauncherIcon.BLUE_STAR -> R.mipmap.ic_launcher_blue_star
-                    AppLauncherIcon.MODERN -> if (language == Language.SNOW_LEOPARD) {
-                        R.mipmap.ic_launcher_snow_leopard_round
-                    } else R.mipmap.ic_launcher_modern
+                    AppLauncherIcon.MODERN -> R.mipmap.ic_launcher_modern
                 }
                 val bitmap = remember(context, iconRes, previewSizePx) {
                     requireNotNull(ContextCompat.getDrawable(context, iconRes))
@@ -95,14 +91,6 @@ internal fun AppLauncherIconSettings(
                     }
                 }
             }
-        }
-        if (language == Language.SNOW_LEOPARD) {
-            Text(
-                text = stringResource(R.string.launcher_icon_language_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            )
         }
         Text(
             text = stringResource(R.string.launcher_icon_refresh_hint),

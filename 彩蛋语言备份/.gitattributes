@@ -1,0 +1,2 @@
+# Preserve original bytes, including historical whitespace, across platforms.
+* -text -whitespace

@@ -4342,8 +4342,6 @@
     <string name="timeline_trash_delete_unknown_error">Une erreur inattendue est survenue. Veuillez réessayer.</string>
     <string name="bitwarden_trash_vault_missing">Le coffre Bitwarden est introuvable.</string>
     <string name="bitwarden_trash_delete_http_error">Bitwarden a refusé la suppression (HTTP %1$d).</string>
-    <string name="language_nya" translatable="false">喵喵语</string>
-    <string name="qs_lang_nya" translatable="false">喵喵语</string>
     <string name="custom_icon_pick_installed">Icônes installées</string>
     <string name="custom_icon_installed_apps">Applications</string>
     <string name="custom_icon_installed_packs">Packs d’icônes</string>

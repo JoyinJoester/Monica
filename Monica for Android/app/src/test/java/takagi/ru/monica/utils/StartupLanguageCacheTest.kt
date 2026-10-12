@@ -14,6 +14,8 @@ class StartupLanguageCacheTest {
         assertEquals(Language.CHINESE, parseStartupLanguage("CHINESE"))
         assertEquals(Language.ITALIAN, parseStartupLanguage("ITALIAN"))
         assertEquals(Language.CLASSICAL_CHINESE, parseStartupLanguage("CLASSICAL_CHINESE"))
+        assertEquals(Language.CHINESE, parseStartupLanguage("NYA"))
+        assertEquals(Language.CHINESE, parseStartupLanguage("SNOW_LEOPARD"))
         assertEquals(Language.SYSTEM, parseStartupLanguage("unsupported"))
         assertEquals(Language.SYSTEM, parseStartupLanguage(null))
     }

@@ -4,5 +4,4 @@
     <string name="launcher_icon_blue_star">Grok bot</string>
     <string name="launcher_icon_selection_description">Chọn biểu tượng màn hình chính. Bạn có thể đổi lại bất cứ lúc nào.</string>
     <string name="launcher_icon_refresh_hint">Trình khởi chạy có thể mất vài giây để cập nhật biểu tượng.</string>
-    <string name="launcher_icon_language_hint">Biểu tượng mặc định thay đổi theo ngôn ngữ Báo tuyết.</string>
 </resources>

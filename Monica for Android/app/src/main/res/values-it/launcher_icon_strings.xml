@@ -4,5 +4,4 @@
     <string name="launcher_icon_blue_star">Grok bot</string>
     <string name="launcher_icon_selection_description">Scegli l’icona della schermata iniziale. Puoi tornare indietro in qualsiasi momento.</string>
     <string name="launcher_icon_refresh_hint">Il launcher potrebbe impiegare qualche secondo per aggiornare l’icona.</string>
-    <string name="launcher_icon_language_hint">L’icona predefinita segue la lingua del leopardo delle nevi.</string>
 </resources>

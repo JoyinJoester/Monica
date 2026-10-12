@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="developer_logs_title">诊断日志</string>
+    <string name="developer_logs_entry_description">搜索、筛选并分享完整诊断报告</string>
+    <string name="developer_logs_search">搜索日志、标签或异常</string>
+    <string name="developer_logs_source">来源：%1$s</string>
+    <string name="developer_logs_hint">先复现问题，再刷新日志。错误级别不一定代表功能故障。</string>
+    <string name="developer_logs_share_full">分享完整日志</string>
+    <string name="developer_logs_result_count">%1$d / %2$d 条 · %3$s 更新</string>
+    <string name="developer_logs_no_matches">没有符合条件的日志，请更换关键词或筛选条件。</string>
+    <string name="developer_logs_clear_confirmation">清除诊断日志缓冲？密码库数据和设置会保留。当前环境信息和新日志仍可能显示。</string>
+    <string name="developer_logs_copy_event">复制此条</string>
+    <string name="developer_logs_preview_limit">预览已缩短，复制此条或分享完整报告可查看全部内容。</string>
+    <string name="developer_logs_expand">展开日志</string>
+    <string name="developer_logs_collapse">收起日志</string>
+    <string name="developer_logs_security">安全</string>
+    <string name="developer_verification_group">验证与兼容性</string>
+    <string name="developer_forensics_group">Bitwarden 同步诊断</string>
+    <string name="developer_logs_copy_failed">无法复制此条日志，请分享完整日志文件。</string>
+</resources>

@@ -16,7 +16,7 @@ class GpgLocalizationDeviceTest {
         val expected = mapOf(
             "en" to "GPG key", "zh-CN" to "GPG 密钥", "zh" to "GPG 密钥",
             "zh-HK" to "GPG 金鑰", "zh-TW" to "GPG 金鑰", "zh-Hant" to "GPG 金鑰",
-            "lzh" to "GPG 密钥", "zh-NY" to "GPG 密钥", "de" to "GPG-Schlüssel",
+            "lzh" to "GPG 密钥", "de" to "GPG-Schlüssel",
             "it" to "Chiave GPG", "es" to "Clave GPG", "fr" to "Clé GPG", "ja" to "GPG 鍵",
             "ko" to "GPG 키", "pl" to "Klucz GPG", "ru" to "Ключ GPG", "vi" to "Khóa GPG")
         for ((tag, title) in expected) {

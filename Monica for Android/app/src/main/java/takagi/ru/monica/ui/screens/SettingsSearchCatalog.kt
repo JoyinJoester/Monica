@@ -23,7 +23,7 @@ internal fun settingsSearchEntries(context: Context, isPlusActivated: Boolean = 
         entry(R.string.theme, Screen.Settings.route, listOf(R.string.settings_title, R.string.theme), keywords = "深色 浅色 纯黑 OLED dark light system"),
         entry(R.string.color_scheme, Screen.Settings.route, listOf(R.string.settings_title, R.string.theme), keywords = "配色 颜色 color palette"),
         entry(R.string.interface_scale_title, Screen.Settings.route, listOf(R.string.settings_title, R.string.theme), summary = R.string.interface_scale_description, keywords = "缩放 大小 字体 DPI scale"),
-        entry(R.string.language, Screen.Settings.route, listOf(R.string.settings_title, R.string.theme), keywords = "中文 简体 繁体 English 日本語 italiano 芝士雪豹 喵喵 language"),
+        entry(R.string.language, Screen.Settings.route, listOf(R.string.settings_title, R.string.theme), keywords = "中文 简体 繁体 English 日本語 italiano language"),
         entry(R.string.version, Screen.Settings.route, listOf(R.string.settings_title, R.string.about), keywords = "版本 version"),
         entry(R.string.update_check_title, Screen.Settings.route, listOf(R.string.settings_title, R.string.about), summary = R.string.update_check_subtitle, keywords = "更新 升级 update upgrade"),
         entry(R.string.developer_settings, Screen.Settings.route, listOf(R.string.settings_title, R.string.developer_settings), summary = R.string.developer_settings_subtitle, keywords = "开发者 日志 调试 developer logs debug"),

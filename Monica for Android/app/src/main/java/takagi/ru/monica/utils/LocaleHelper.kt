@@ -25,8 +25,6 @@ object LocaleHelper {
             Language.FRENCH -> Locale.FRENCH
             Language.POLISH -> Locale.forLanguageTag("pl")
             Language.ITALIAN -> Locale.ITALIAN
-            Language.NYA -> Locale("zh", "NY")
-            Language.SNOW_LEOPARD -> Locale("zh", "XB")
         }
 
         return updateResources(context, locale)
@@ -106,8 +104,6 @@ object LocaleHelper {
 
         return when (currentLocale.language) {
             "zh" -> when {
-                currentLocale.country == "NY" -> Language.NYA
-                currentLocale.country == "XB" -> Language.SNOW_LEOPARD
                 isTraditionalChinese(currentLocale) -> Language.TRADITIONAL_CHINESE
                 else -> Language.CHINESE
             }

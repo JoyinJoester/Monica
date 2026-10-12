@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="manager_open_database">打开数据库设置</string>
+    <string name="manager_dual">切换单栏／双栏</string>
+    <string name="manager_databases">数据库</string>
+    <string name="manager_choose_destination">选择目标文件夹</string>
+    <string name="manager_selection_destination">已选 %1$d 项 → %2$s</string>
+    <string name="manager_items_selected">%1$d 项 · 已选 %2$d 项</string>
+    <string name="manager_confirm_transfer">将选中的 %1$d 项从「%2$s」传送到「%3$s / %4$s」？目标数据校验完成前会保留源数据。</string>
+    <string name="manager_result">操作结果</string>
+    <string name="manager_result_count">已完成 %1$d 项 · 需处理 %2$d 项</string>
+    <string name="manager_technical_details">技术详情</string>
+    <string name="manager_select">选择此项</string>
+    <string name="manager_failure_format">目标格式无法完整保存这些原始信息。已保留源数据，请选择相同格式的数据库，具体字段见详情。</string>
+    <string name="manager_failure_changed">数据已发生变化，或目标校验未通过。已保留源数据，请刷新两栏并检查目标后再重试。</string>
+    <string name="manager_failure_locked">数据库需要解锁，或原文件暂时不可用。请先在数据库设置中打开，再刷新这一栏。</string>
+    <string name="manager_failure_general">操作未能完成，请检查两栏和技术详情后再重试：目标位置可能已存在部分副本。</string>
+</resources>

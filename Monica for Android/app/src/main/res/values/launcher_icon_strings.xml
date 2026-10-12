@@ -4,5 +4,4 @@
     <string name="launcher_icon_blue_star">Grok bot</string>
     <string name="launcher_icon_selection_description">Choose your home screen icon. You can switch back anytime.</string>
     <string name="launcher_icon_refresh_hint">Your launcher may take a few seconds to refresh the icon.</string>
-    <string name="launcher_icon_language_hint">The default icon follows the Snow Leopard language Easter egg.</string>
 </resources>

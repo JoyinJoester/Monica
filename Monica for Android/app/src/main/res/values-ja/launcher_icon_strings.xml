@@ -4,5 +4,4 @@
     <string name="launcher_icon_blue_star">Grok bot</string>
     <string name="launcher_icon_selection_description">ホーム画面のアイコンを選択します。いつでも元に戻せます。</string>
     <string name="launcher_icon_refresh_hint">アイコンが更新されるまで数秒かかる場合があります。</string>
-    <string name="launcher_icon_language_hint">標準アイコンはユキヒョウ語のイースターエッグに連動します。</string>
 </resources>

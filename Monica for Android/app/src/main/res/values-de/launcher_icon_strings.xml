@@ -4,5 +4,4 @@
     <string name="launcher_icon_blue_star">Grok bot</string>
     <string name="launcher_icon_selection_description">Wähle das Symbol für den Startbildschirm. Du kannst jederzeit zurückwechseln.</string>
     <string name="launcher_icon_refresh_hint">Es kann einige Sekunden dauern, bis das Symbol aktualisiert wird.</string>
-    <string name="launcher_icon_language_hint">Das Standardsymbol folgt dem Schneeleoparden-Sprach-Easter-Egg.</string>
 </resources>

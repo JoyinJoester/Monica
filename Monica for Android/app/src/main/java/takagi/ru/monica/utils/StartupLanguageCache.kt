@@ -23,9 +23,10 @@ private const val EXTRA_LANGUAGE = "language"
 private const val EXTRA_SENDER_PID = "sender_pid"
 
 internal fun parseStartupLanguage(value: String?): Language =
-    value?.let { raw ->
-        runCatching { Language.valueOf(raw) }.getOrNull()
-    } ?: Language.SYSTEM
+    when (value) {
+        "NYA", "SNOW_LEOPARD" -> Language.CHINESE
+        else -> value?.let { raw -> runCatching { Language.valueOf(raw) }.getOrNull() } ?: Language.SYSTEM
+    }
 
 /**
  * Small startup-only mirror of the DataStore language setting.
@@ -59,6 +60,9 @@ object StartupLanguageCache {
             parseStartupLanguage(preferences.getString(STARTUP_LANGUAGE_KEY, null))
         } else {
             migrateLegacyDataStoreLanguage(appContext)
+        }
+        if (preferences.getString(STARTUP_LANGUAGE_KEY, null) in setOf("NYA", "SNOW_LEOPARD")) {
+            preferences.edit().putString(STARTUP_LANGUAGE_KEY, cachedValue.name).apply()
         }
         processLanguage = cachedValue
         languageChanges.value = cachedValue

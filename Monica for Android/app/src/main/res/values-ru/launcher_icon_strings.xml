@@ -4,5 +4,4 @@
     <string name="launcher_icon_blue_star">Grok bot</string>
     <string name="launcher_icon_selection_description">Выберите значок на главном экране. Его можно вернуть в любой момент.</string>
     <string name="launcher_icon_refresh_hint">Обновление значка может занять несколько секунд.</string>
-    <string name="launcher_icon_language_hint">Значок по умолчанию меняется при выборе языка «Снежный барс».</string>
 </resources>
