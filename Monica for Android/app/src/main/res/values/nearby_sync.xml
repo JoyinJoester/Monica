@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="nearby_menu_sync">Manual Wi-Fi sync</string>
+    <string name="nearby_menu_progress">View Wi-Fi sync progress</string>
     <string name="nearby_intro">Keep devices in sync on the same Wi-Fi. Encrypted device-to-device connections, without a cloud relay.</string>
     <string name="nearby_add_device">Add a device</string>
     <string name="nearby_generate_hint">Generate a QR code or copy a pairing link</string>

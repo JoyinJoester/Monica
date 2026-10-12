@@ -74,6 +74,7 @@ internal fun PasswordTopActionsDropdownMenu(
                     shape = PasswordTopActionsMenuShape
                 )
         ) {
+            NearbySyncTopActionsMenuItem(onDismissMenu = onDismissRequest)
             content()
         }
     }

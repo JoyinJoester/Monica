@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="nearby_menu_sync">手动 Wi-Fi 同步</string>
+    <string name="nearby_menu_progress">查看 Wi-Fi 同步进度</string>
     <string name="nearby_intro">同一 Wi-Fi，让设备上的内容保持一致。设备之间加密直连，无需云中转。</string>
     <string name="nearby_add_device">添加设备</string>
     <string name="nearby_generate_hint">生成二维码，也可复制配对链接</string>

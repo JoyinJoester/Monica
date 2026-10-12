@@ -1173,6 +1173,8 @@ fun MonicaContent(
     @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
     androidx.compose.runtime.CompositionLocalProvider(
         takagi.ru.monica.ui.screens.LocalSettingsSearchNavigation provides settingsSearchNavigation,
+        takagi.ru.monica.ui.password.LocalNearbySyncMenu provides
+            takagi.ru.monica.navigation.rememberNearbySyncMenu(navController),
         takagi.ru.monica.ui.LocalUiSecurityManager provides securityManager,
         takagi.ru.monica.ui.components.LocalTemplateTargets provides
             takagi.ru.monica.ui.components.decodeTemplateTargets(navBackStackEntry?.savedStateHandle?.get<ArrayList<String>>(takagi.ru.monica.ui.components.TEMPLATE_TARGETS_KEY)),
