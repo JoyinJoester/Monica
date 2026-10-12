@@ -75,4 +75,17 @@
     <string name="nearby_network_unknown">Network type unavailable</string>
     <string name="nearby_network_note">The network type alone does not confirm that the other device is reachable. Guest Wi-Fi or device isolation can block local connections.</string>
     <string name="nearby_diagnostic_failure">Code: %1$s · Operation: %2$s</string>
+    <string name="nearby_passkey_dont_ask">Don’t show again</string>
+    <string name="nearby_passkey_remember_hint">View these limits or turn reminders back on in Sync contents and connection diagnostics.</string>
+    <string name="nearby_passkey_view">View restricted Passkeys</string>
+    <string name="nearby_passkey_prompt">Remind before syncing</string>
+    <string name="nearby_passkey_prompt_on">Show a reminder when restrictions need review</string>
+    <string name="nearby_passkey_prompt_off">Off · Restrictions and skip rules still apply</string>
+    <string name="nearby_passkey_rules">Passkeys with nonzero signature counters are skipped. Non-exportable keys sync only credential metadata. Other limits may require registering a new Passkey on the destination. Hiding this reminder does not change these rules.</string>
+    <string name="nearby_passkey_checking">Checking the selected database…</string>
+    <string name="nearby_passkey_check_failed">Could not check; unlock the selected database and retry</string>
+    <string name="nearby_passkey_not_checked">Not checked yet · Check the selected database below</string>
+    <string name="nearby_passkey_none">No restricted Passkeys found in the last check</string>
+    <string name="nearby_passkey_count">%1$d restricted Passkeys in the last check · Tap to view</string>
+    <string name="nearby_passkey_refresh">Check Passkeys again</string>
 </resources>

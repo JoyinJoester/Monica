@@ -193,7 +193,8 @@ internal fun nearbyDiagnostics(context: Context, state: DeviceSyncState, databas
 }
 
 @Composable
-internal fun ColumnScope.NearbySyncDetails(state: DeviceSyncState, database: String, copy: (String) -> Unit) {
+internal fun ColumnScope.NearbySyncDetails(state: DeviceSyncState, database: String, copy: (String) -> Unit,
+    suppressPasskeyNotice: (Boolean) -> Unit = {}, refreshPasskeys: () -> Unit = {}, viewPasskeys: () -> Unit = {}) {
     val context = LocalContext.current
     val network by rememberNearbyNetwork()
     Text(stringResource(R.string.nearby_details), style = MaterialTheme.typography.headlineSmall)
@@ -205,6 +206,24 @@ internal fun ColumnScope.NearbySyncDetails(state: DeviceSyncState, database: Str
     if (state.retryInSeconds > 0) Text(stringResource(R.string.nearby_diagnostic_retry, state.retryInSeconds))
     val diagnostics = nearbyDiagnostics(context, state, database, stringResource(network))
     Button({ copy(diagnostics) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.device_sync_copy_diagnostics)) }
+    SettingsPanelGroup(stringResource(R.string.device_sync_passkey_title)) {
+        SettingsPanelRow(Icons.Default.Info, stringResource(R.string.nearby_passkey_view),
+            stringResource(when {
+                state.checkingPasskeys -> R.string.nearby_passkey_checking
+                state.passkeyDiagnosticFailed -> R.string.nearby_passkey_check_failed
+                state.passkeyDiagnosticIssues == null -> R.string.nearby_passkey_not_checked
+                state.passkeyDiagnosticIssues.isEmpty() -> R.string.nearby_passkey_none
+                else -> R.string.nearby_passkey_count
+            }, state.passkeyDiagnosticIssues?.size ?: 0),
+            enabled = !state.checkingPasskeys && !state.passkeyDiagnosticIssues.isNullOrEmpty(), onClick = viewPasskeys)
+        SettingsPanelRow(Icons.Default.Info, stringResource(R.string.nearby_passkey_prompt),
+            stringResource(if (state.passkeyNoticeSuppressed) R.string.nearby_passkey_prompt_off else R.string.nearby_passkey_prompt_on),
+            checked = !state.passkeyNoticeSuppressed, onCheckedChange = { suppressPasskeyNotice(!it) })
+    }
+    Text(stringResource(R.string.nearby_passkey_rules), style = MaterialTheme.typography.bodySmall)
+    OutlinedButton(refreshPasskeys, Modifier.fillMaxWidth(), enabled = !state.checkingPasskeys) {
+        Text(stringResource(R.string.nearby_passkey_refresh))
+    }
     SettingsPanelGroup("") {
         nearbyDiagnosticRows(context, state, database, stringResource(network)).forEach { (label, value) ->
             SettingsPanelRow(Icons.Default.Info, label, value)

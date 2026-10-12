@@ -7,7 +7,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
@@ -39,7 +41,8 @@ class DeviceManualSyncTest {
         val steam = Room.inMemoryDatabaseBuilder(context, SteamDatabase::class.java).allowMainThreadQueries().build()
         val settings = DeviceSyncPreferences(deviceId = id, enabled = false, mode = mode,
             peers = mutableListOf(SavedSyncPeer(peer, "Fixture", "manual-pair", "A".repeat(43), address = "127.0.0.1")))
-        val store = DeviceSyncPreferenceStore(context, SecurityManager(context), "manual-${UUID.randomUUID()}").also { it.save(settings) }
+        val preferenceName = "manual-${UUID.randomUUID()}"
+        val store = DeviceSyncPreferenceStore(context, SecurityManager(context), preferenceName).also { it.save(settings) }
         val provider = DevicePasswordSyncProvider(context, SecurityManager(context), store, db,
             File(context.cacheDir, "manual-${UUID.randomUUID()}.replica"), steam)
         val coordinator = ReflectionHelpers.callConstructor(DeviceSyncCoordinator::class.java, ClassParameter.from(Context::class.java, context)).also {
@@ -180,6 +183,63 @@ class DeviceManualSyncTest {
         } finally {
             sender.close(); SessionManager.markLocked(); Dispatchers.resetMain()
         }
+    }
+
+    @Test fun passkey_notice_is_remembered_only_after_valid_confirmation_and_can_be_restored() = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined); SessionManager.markUnlocked()
+        val context = RuntimeEnvironment.getApplication()
+        val fixture = Fixture(context, "notice-sender", "notice-receiver", DeviceSyncMode.SEND_ONLY)
+        ReflectionHelpers.setField(fixture.coordinator, "running", Job())
+        val consent = ReflectionHelpers.getField<DevicePasskeySyncConsent>(fixture.coordinator, "passkeyConsent")
+        val gate = ReflectionHelpers.getField<Mutex>(fixture.coordinator, "gate")
+        val issue = DevicePasskeySyncIssue("fixture", "Synthetic account", "example.test",
+            takagi.ru.monica.passkey.PasskeyPortability.COUNTER_HISTORY, skipForCounter = true)
+        suspend fun await(check: () -> Boolean) = withTimeout(10_000) { while (!check()) delay(10) }
+        try {
+            val stale = consent.review(listOf(issue), setOf("phone"))!!
+            val current = consent.review(listOf(issue.copy(identity = "new")), setOf("phone"))!!
+            fixture.coordinator.confirmPasskeySync(stale, true)
+            await { fixture.coordinator.state.value.passkeyReview == current }
+            assertFalse(fixture.store.passkeyNoticeSuppressed())
+            fixture.coordinator.cancelPasskeySync()
+            await { fixture.coordinator.state.value.passkeyReview == null }
+            assertFalse(fixture.store.passkeyNoticeSuppressed())
+            val accepted = gate.withLock { consent.review(listOf(issue), setOf("phone"))!! }
+            fixture.coordinator.confirmPasskeySync(accepted, true)
+            await { fixture.store.passkeyNoticeSuppressed() }
+            val reopened = DeviceSyncPreferenceStore(context, SecurityManager(context), fixture.preferenceName)
+            assertTrue(reopened.passkeyNoticeSuppressed())
+            fixture.store.save(fixture.settings)
+            assertTrue(reopened.passkeyNoticeSuppressed())
+            val restartedConsent = DevicePasskeySyncConsent()
+            assertNull(restartedConsent.review(listOf(issue), setOf("another-device"), reopened.passkeyNoticeSuppressed()))
+            assertTrue(issue.skipForCounter)
+            fixture.coordinator.setPasskeyNoticeSuppressed(false)
+            withTimeout(10_000) {
+                while (gate.withLock { consent.review(listOf(issue), setOf("phone")) } == null) delay(10)
+            }
+            assertFalse(reopened.passkeyNoticeSuppressed())
+        } finally { fixture.close(); SessionManager.markLocked(); Dispatchers.resetMain() }
+    }
+
+    @Test fun passkey_diagnostics_do_not_start_sync_or_change_its_phase_and_close_idle_replica() = runBlocking {
+        DeviceVaultProviderTest.loadNative(); Dispatchers.setMain(Dispatchers.Unconfined); SessionManager.markUnlocked()
+        val fixture = Fixture(RuntimeEnvironment.getApplication(), "diagnostic-sender", "diagnostic-peer", DeviceSyncMode.SEND_ONLY)
+        ReflectionHelpers.setField(fixture.coordinator, "running", Job())
+        try {
+            fixture.coordinator.refreshPasskeyDiagnostics()
+            withTimeout(15_000) { while (fixture.coordinator.state.value.passkeyDiagnosticIssues == null) delay(10) }
+            assertFalse(fixture.coordinator.state.value.checkingPasskeys)
+            assertEquals("idle", fixture.coordinator.state.value.phase)
+            assertEquals(0L, fixture.coordinator.state.value.lastAttemptAt)
+            assertNull(ReflectionHelpers.getField<Any?>(fixture.provider, "handle"))
+            fixture.settings.databaseId = 999L
+            fixture.coordinator.refreshPasskeyDiagnostics()
+            withTimeout(15_000) { while (!fixture.coordinator.state.value.passkeyDiagnosticFailed) delay(10) }
+            assertEquals("idle", fixture.coordinator.state.value.phase)
+            assertNull(fixture.coordinator.state.value.error)
+            assertNull(ReflectionHelpers.getField<Any?>(fixture.provider, "handle"))
+        } finally { fixture.close(); SessionManager.markLocked(); Dispatchers.resetMain() }
     }
 
     @Test fun automatic_toggle_is_immediate_and_persisted_while_sync_holds_the_gate() = runBlocking {

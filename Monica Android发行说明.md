@@ -4,6 +4,8 @@
 
 ## 中文
 
+- 通行密钥跨设备限制弹窗可勾选“不再提醒”，点击继续后保存并在重启后保留；取消不保存。同步内容与连接诊断中可查看受限条目、重新检查所选库及恢复提醒，非零签名计数跳过和不可导出密钥的限制保持不变。
+
 - 修复附近自动同步开关在准备、传输或保存期间无法及时切换的问题；设置立即保存且不会被进度刷新覆盖。关闭后停止发起新一轮自动同步，正在传输的内容正常完成，手动同步与配对仍可使用。
 
 - 修复空文件附件导致附近同步打包失败的问题；空附件仍经过加密和完整性校验。
@@ -46,6 +48,8 @@
 - 修复仅绑定 Bitwarden／Vaultwarden 时密码库首页和搜索可能看不到已同步条目：未保存数据库范围时默认显示“全部”，旧版省略范围的设置同步采用该默认值；明确保存的本地库或具体数据库选择继续保留，锁定库仍不参与展示与搜索。
 
 ## English
+
+- Passkey sync warnings offer a persistent “Don’t show again” checkbox, saved only when continuing. Sync contents and connection diagnostics lets you inspect restricted entries, recheck the selected database and restore reminders. Nonzero-counter skipping and non-exportable-key restrictions still apply.
 
 - Fixed the nearby automatic-sync switch waiting for preparation, transfer or saving to finish. Changes persist immediately and survive progress updates. Turning it off prevents new automatic rounds while allowing the current transfer to finish; manual sync and pairing remain available.
 

@@ -36,7 +36,8 @@ internal class DevicePasskeySyncConsent {
     var pending: DevicePasskeySyncReview? = null
         private set
 
-    fun review(issues: List<DevicePasskeySyncIssue>, peers: Set<String>): DevicePasskeySyncReview? {
+    fun review(issues: List<DevicePasskeySyncIssue>, peers: Set<String>, suppressNotice: Boolean = false): DevicePasskeySyncReview? {
+        if (suppressNotice) { pending = null; return null }
         val unseen = issues.filter { issue ->
             peers.any { peer -> Triple(issue.identity, issue.portability, issue.skipForCounter) !in accepted[peer].orEmpty() }
         }
@@ -44,14 +45,16 @@ internal class DevicePasskeySyncConsent {
         return pending
     }
 
-    fun confirm(review: DevicePasskeySyncReview) {
-        if (pending != review) return
+    fun confirm(review: DevicePasskeySyncReview): Boolean {
+        if (pending != review) return false
         review.peers.forEach { peer ->
             accepted.getOrPut(peer) { mutableSetOf() }.addAll(review.issues.map { Triple(it.identity, it.portability, it.skipForCounter) })
         }
         pending = null
+        return true
     }
 
+    fun reset() { accepted.clear(); clearPending() }
     fun clearPending() { pending = null }
     fun forget(peer: String) { accepted.remove(peer); clearPending() }
 }

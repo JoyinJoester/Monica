@@ -78,6 +78,10 @@ internal class DeviceSyncPreferenceStore(context: Context, private val security:
     fun setAutomaticSyncEnabled(enabled: Boolean) {
         preferences.edit().putBoolean("automatic-enabled", enabled).apply()
     }
+    fun passkeyNoticeSuppressed(): Boolean = preferences.getBoolean("passkey-notice-suppressed", false)
+    fun setPasskeyNoticeSuppressed(suppressed: Boolean) {
+        preferences.edit().putBoolean("passkey-notice-suppressed", suppressed).apply()
+    }
     fun hasPeers(): Boolean = automaticSyncEnabled(preferences.getBoolean("enabled", false)) && preferences.getInt("peer-count", 0) > 0
     fun load(): DeviceSyncPreferences {
         val encrypted = preferences.getString("protected", null)

@@ -39,6 +39,7 @@ import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.isUsable
 import takagi.ru.monica.ui.components.NearbyPasskeyPreflightDialog
+import takagi.ru.monica.ui.components.NearbyPasskeyRestrictionsDialog
 import takagi.ru.monica.ui.components.SettingsPanelGroup
 import takagi.ru.monica.ui.components.SettingsPanelRow
 import java.text.DateFormat
@@ -54,11 +55,12 @@ fun LanSyncScreen(onNavigateBack: () -> Unit, onScanPairingQr: () -> Unit) {
     DisposableEffect(coordinator) { onDispose { coordinator.cancelPairing() } }
     state.passkeyReview?.let { review ->
         NearbyPasskeyPreflightDialog(review, onCancel = coordinator::cancelPasskeySync,
-            onContinue = { coordinator.confirmPasskeySync(review) })
+            onContinue = { dontAskAgain -> coordinator.confirmPasskeySync(review, dontAskAgain) })
     }
     NearbySyncContent(state, NearbySyncActions(onNavigateBack, onScanPairingQr, { coordinator.pair() },
         { coordinator.pair(it) }, coordinator::cancelPairing, coordinator::setEnabled, coordinator::setMode,
-        coordinator::setInterval, coordinator::syncNow, coordinator::forget, coordinator::setDatabase, coordinator::cancelSync),
+        coordinator::setInterval, coordinator::syncNow, coordinator::forget, coordinator::setDatabase, coordinator::cancelSync,
+        coordinator::setPasskeyNoticeSuppressed, coordinator::refreshPasskeyDiagnostics),
         databases.filter { it.isUsable })
 }
 
@@ -81,7 +83,8 @@ internal data class NearbySyncActions(
     val connect: (String) -> Unit = {}, val cancelPairing: () -> Unit = {},
     val enabled: (Boolean) -> Unit = {}, val mode: (DeviceSyncMode) -> Unit = {},
     val interval: (Int) -> Unit = {}, val sync: () -> Unit = {}, val forget: (String) -> Unit = {},
-    val database: (Long?) -> Unit = {}, val cancelSync: () -> Unit = {})
+    val database: (Long?) -> Unit = {}, val cancelSync: () -> Unit = {},
+    val suppressPasskeyNotice: (Boolean) -> Unit = {}, val refreshPasskeys: () -> Unit = {})
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,6 +95,11 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
     var minutes by rememberSaveable { mutableStateOf("10") }
     var custom by rememberSaveable { mutableStateOf(false) }
     var forgetting by rememberSaveable { mutableStateOf<String?>(null) }
+    var viewingPasskeys by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(sheet, state.databaseId) { if (sheet == "details") actions.refreshPasskeys() }
+    if (viewingPasskeys && state.passkeyReview == null) {
+        NearbyPasskeyRestrictionsDialog(state.passkeyDiagnosticIssues.orEmpty()) { viewingPasskeys = false }
+    }
     val databaseName = if (state.databaseId == null) stringResource(R.string.nearby_local)
         else databases.firstOrNull { it.id == state.databaseId }?.name ?: stringResource(R.string.nearby_database_unavailable)
     LaunchedEffect(state.phase) {
@@ -187,7 +195,9 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
                         })
                     }
                 }
-                "details" -> NearbySyncDetails(state, databaseName) { copyNearbyText(context, it, false) }
+                "details" -> NearbySyncDetails(state, databaseName, copy = { copyNearbyText(context, it, false) },
+                    suppressPasskeyNotice = actions.suppressPasskeyNotice, refreshPasskeys = actions.refreshPasskeys,
+                    viewPasskeys = { viewingPasskeys = true })
             }
         }
     }

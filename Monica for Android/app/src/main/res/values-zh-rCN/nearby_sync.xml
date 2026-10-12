@@ -75,4 +75,17 @@
     <string name="nearby_network_unknown">无法读取网络类型</string>
     <string name="nearby_network_note">网络类型不代表已连通对方；访客 Wi-Fi 或设备隔离可能阻止局域网连接。</string>
     <string name="nearby_diagnostic_failure">错误：%1$s · 位置：%2$s</string>
+    <string name="nearby_passkey_dont_ask">不再提醒</string>
+    <string name="nearby_passkey_remember_hint">仍可在“同步内容与连接诊断”查看限制详情，或重新开启提醒。</string>
+    <string name="nearby_passkey_view">查看受限通行密钥</string>
+    <string name="nearby_passkey_prompt">同步前弹窗提醒</string>
+    <string name="nearby_passkey_prompt_on">有需要确认的限制时提醒</string>
+    <string name="nearby_passkey_prompt_off">已关闭 · 限制与跳过规则仍然适用</string>
+    <string name="nearby_passkey_rules">签名计数非零的通行密钥会跳过；无法导出的密钥仅同步凭据信息。其他跨设备限制可能需要在目标设备重新注册通行密钥。关闭提醒不会改变这些规则。</string>
+    <string name="nearby_passkey_checking">正在检查所选数据库…</string>
+    <string name="nearby_passkey_check_failed">检查失败，请解锁所选数据库后重试</string>
+    <string name="nearby_passkey_not_checked">尚未检查，可在下方检查所选数据库</string>
+    <string name="nearby_passkey_none">最近检查未发现受限通行密钥</string>
+    <string name="nearby_passkey_count">最近检查到 %1$d 项限制 · 点击查看</string>
+    <string name="nearby_passkey_refresh">重新检查通行密钥</string>
 </resources>

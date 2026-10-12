@@ -31,7 +31,10 @@ internal data class DeviceSyncState(
     val databaseId: Long? = null, val manualSync: Boolean = false,
     val activeConnections: Int = 0, val listeningPeers: Int = 0,
     val lastAttemptAt: Long = 0, val lastDiscoveryAt: Long = 0,
-    val discoveredPeers: Int = 0, val retryInSeconds: Int = 0
+    val discoveredPeers: Int = 0, val retryInSeconds: Int = 0,
+    val passkeyNoticeSuppressed: Boolean = false,
+    val passkeyDiagnosticIssues: List<DevicePasskeySyncIssue>? = null,
+    val checkingPasskeys: Boolean = false, val passkeyDiagnosticFailed: Boolean = false
 )
 
 /** App-owned coordinator. Leaving settings does not cancel remembered-device synchronization. */
@@ -79,6 +82,9 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     private val activeHandles = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
     private val receiveOnlyRevision = "receive-only-v1"
     private val passkeyConsent = DevicePasskeySyncConsent()
+    private var passkeyDiagnosticIssues: List<DevicePasskeySyncIssue>? = null
+    private var checkingPasskeys = false
+    private var passkeyDiagnosticFailed = false
 
     init { DeviceSyncDiagLogger.initialize(app) }
 
@@ -139,15 +145,22 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             activeConnections = transfers.values.count { it.stage in setOf("authenticating", "checking", "sending", "receiving", "transferring", "received", "applying", "remembering", "confirming") },
             listeningPeers = transfers.values.count { it.stage == "waiting" },
             lastAttemptAt = lastAttemptAt, lastDiscoveryAt = lastDiscoveryAt, discoveredPeers = discoveredPeers,
-            retryInSeconds = if (automaticSyncEnabled()) ((retryAt - now).coerceAtLeast(0) + 999).div(1000).toInt() else 0)
+            retryInSeconds = if (automaticSyncEnabled()) ((retryAt - now).coerceAtLeast(0) + 999).div(1000).toInt() else 0,
+            passkeyDiagnosticIssues = passkeyDiagnosticIssues, checkingPasskeys = checkingPasskeys,
+            passkeyDiagnosticFailed = passkeyDiagnosticFailed)
         // Re-read inside the CAS loop so a concurrent tap wins over old progress.
-        mutableState.update { next.copy(enabled = automaticSyncEnabled()) }
+        mutableState.update { next.copy(enabled = automaticSyncEnabled(),
+            passkeyNoticeSuppressed = store.passkeyNoticeSuppressed(),
+            passkeyReview = next.passkeyReview.takeUnless { store.passkeyNoticeSuppressed() }) }
         DeviceSyncService.update(app, mutableState.value)
     }
 
     private fun automaticSyncEnabled(): Boolean = store.automaticSyncEnabled(preferences?.enabled ?: state.value.enabled)
 
-    private fun updateProgress(progress: DeviceSyncProgress) { dataProgress = progress; phase = progress.stage; publish() }
+    private fun updateProgress(progress: DeviceSyncProgress) {
+        if (checkingPasskeys) return // Inspecting local restrictions is not a sync attempt.
+        dataProgress = progress; phase = progress.stage; publish()
+    }
 
     private fun settings(): DeviceSyncPreferences {
         if (SessionManager.isSessionExpired()) {
@@ -222,6 +235,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         }
         pause(locked = false)
         settings.databaseId = databaseId
+        passkeyDiagnosticIssues = null; passkeyDiagnosticFailed = false
         settings.syncRequest = Math.addExact(settings.syncRequest, 1)
         settings.peers.forEach {
             it.lastSentRevision = ""; it.lastReceivedRevision = ""
@@ -231,8 +245,11 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         store.save(settings)
     }
 
-    fun confirmPasskeySync(review: DevicePasskeySyncReview) = action {
-        passkeyConsent.confirm(review)
+    fun confirmPasskeySync(review: DevicePasskeySyncReview) = confirmPasskeySync(review, false)
+
+    fun confirmPasskeySync(review: DevicePasskeySyncReview, dontAskAgain: Boolean) = action {
+        if (!passkeyConsent.confirm(review)) return@action
+        if (dontAskAgain) store.setPasskeyNoticeSuppressed(true)
         if (passkeyConsent.pending == null) {
             phase = "idle"
             if (manualPeers.isNotEmpty()) manualDeadline = SystemClock.elapsedRealtime() + 120_000
@@ -240,6 +257,37 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     }
 
     fun cancelPasskeySync() { setEnabled(false); cancelSync() }
+
+    fun setPasskeyNoticeSuppressed(suppressed: Boolean) {
+        if (!SessionManager.isUnlocked.value) return
+        store.setPasskeyNoticeSuppressed(suppressed)
+        mutableState.update { it.copy(passkeyNoticeSuppressed = store.passkeyNoticeSuppressed(),
+            passkeyReview = it.passkeyReview.takeUnless { store.passkeyNoticeSuppressed() }) }
+        action {
+            if (store.passkeyNoticeSuppressed()) {
+                passkeyConsent.clearPending()
+                if (phase == "passkey_review") {
+                    phase = "idle"
+                    if (manualPeers.isNotEmpty()) manualDeadline = SystemClock.elapsedRealtime() + 120_000
+                }
+            } else passkeyConsent.reset()
+        }
+    }
+
+    fun refreshPasskeyDiagnostics() = action {
+        checkingPasskeys = true; passkeyDiagnosticFailed = false; publish()
+        try {
+            store.save(settings())
+            val issues = data.currentPasskeyIssues()
+            passkeyDiagnosticIssues = issues.takeIf { SessionManager.isUnlocked.value }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { passkeyDiagnosticIssues = null; passkeyDiagnosticFailed = true }
+        finally {
+            checkingPasskeys = false
+            // A diagnostic-only check must not leave an unlocked replica open.
+            if (paused && dataProvider.isInitialized()) data.pause()
+        }
+    }
 
     fun setMode(mode: DeviceSyncMode) = action {
         val settings = settings()
@@ -308,6 +356,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             val receiveOnly = settings().mode == DeviceSyncMode.RECEIVE_ONLY
             val revision = if (receiveOnly) receiveOnlyRevision else preparingDeviceSync("vault_revision") { data.revision() }
             val issues = if (receiveOnly) emptyList() else data.currentPasskeyIssues()
+            if (!receiveOnly) { passkeyDiagnosticIssues = issues; passkeyDiagnosticFailed = false }
             snapshot?.takeIf { it.revision == revision && it.passkeyIssues == issues }?.let { return it }
             val directory = File(root, "out-${UUID.randomUUID()}").also { snapshots += it }
             snapshot = if (receiveOnly) {
@@ -420,7 +469,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         var discovery: JSONObject? = null
         // Pairing exchanges no vault data. Every actual send, including the first
         // automatic send after enrollment, must pass this review before JNI starts.
-        if (passkeyConsent.review(outgoing.passkeyIssues, peers.map { it.deviceId }.toSet()) != null) {
+        if (passkeyConsent.review(outgoing.passkeyIssues, peers.map { it.deviceId }.toSet(), store.passkeyNoticeSuppressed()) != null) {
             phase = "passkey_review"; dataProgress = null
             return
         }
@@ -508,7 +557,10 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
                 currentCoroutineContext().ensureActive()
                 if (remote.getString("content_type") != "vault" || remote.optInt("vault_content_version") != 2) throw LanSyncException("unsupported_protocol")
                 if (remote.getString("device_id") == settings().deviceId) throw LanSyncException("same_device")
-                if (receiveContent) data.apply(transfer.directory, remote)
+                if (receiveContent) {
+                    data.apply(transfer.directory, remote)
+                    passkeyDiagnosticIssues = null
+                }
                 val settings = settings()
                 settings.acceptInterval(remote.getInt("interval_seconds"), remote.getLong("settings_version"), remote.getString("settings_writer"))
                 if (transfer.enrollment) {
@@ -589,6 +641,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             if (!paused && dataProvider.isInitialized()) data.pause()
             snapshot = null; dataProgress = null; cleanSnapshots()
             passkeyConsent.clearPending()
+            if (locked) { passkeyDiagnosticIssues = null; passkeyDiagnosticFailed = false }
             pairing = false; code = ""; invitations = emptyList(); phase = if (locked) "locked" else "paused"
             preferences?.peers?.forEach { statuses[it.deviceId] = phase; force += it.deviceId }
             publish()

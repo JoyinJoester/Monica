@@ -22,6 +22,28 @@ class NearbyManualControlsTest {
     @After fun lock() { SessionManager.markLocked() }
     private fun text(id: Int) = compose.activity.getString(id)
 
+    @Test fun hidden_passkey_notice_remains_viewable_and_can_be_reenabled_in_diagnostics() {
+        SessionManager.markUnlocked()
+        val issue = DevicePasskeySyncIssue("fixture", "Synthetic account", "example.test",
+            takagi.ru.monica.passkey.PasskeyPortability.COUNTER_HISTORY, skipForCounter = true)
+        val state = mutableStateOf(DeviceSyncState(enabled = false, passkeyNoticeSuppressed = true,
+            passkeyDiagnosticIssues = listOf(issue)))
+        var checks = 0
+        compose.setContent { MonicaTheme { NearbySyncContent(state.value, NearbySyncActions(
+            suppressPasskeyNotice = { state.value = state.value.copy(passkeyNoticeSuppressed = it) },
+            refreshPasskeys = { checks++ })) } }
+        compose.onNodeWithText(text(R.string.nearby_details)).performScrollTo().performClick()
+        compose.onNodeWithText(text(R.string.nearby_passkey_view)).performScrollTo().performClick()
+        compose.onNodeWithTag("nearby_passkey_details_preflight").assertIsDisplayed()
+        compose.onAllNodes(hasScrollAction()).onLast().performScrollToNode(hasText("Synthetic account"))
+        compose.onNodeWithText("Synthetic account").assertIsDisplayed()
+        compose.onNodeWithTag("nearby_passkey_remember").assertDoesNotExist()
+        compose.onNodeWithTag("nearby_passkey_details_skip").performClick()
+        compose.onNodeWithText(text(R.string.nearby_passkey_prompt)).performScrollTo().assertIsOff().performClick().assertIsOn()
+        compose.onNodeWithText(text(R.string.nearby_passkey_refresh)).performScrollTo().performClick()
+        compose.runOnIdle { assertFalse(state.value.passkeyNoticeSuppressed); assertEquals(2, checks) }
+    }
+
     @Test fun automatic_switch_changes_while_the_coordinator_is_busy() {
         SessionManager.markUnlocked()
         val context = compose.activity

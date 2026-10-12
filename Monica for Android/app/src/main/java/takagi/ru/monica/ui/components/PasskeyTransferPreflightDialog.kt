@@ -34,7 +34,8 @@ internal fun PasskeyTransferPreflightDialog(
 internal fun PasskeyPreflightDialog(
     title: String, summary: String, issues: List<PasskeyPreflightIssue>,
     cancelText: String, confirmText: String, confirmEnabled: Boolean = true,
-    tag: String, onCancel: () -> Unit, onConfirm: () -> Unit
+    tag: String, onCancel: () -> Unit, onConfirm: () -> Unit,
+    showCancel: Boolean = true, footer: (@Composable () -> Unit)? = null
 ) {
     AlertDialog(
         modifier = Modifier.testTag("${tag}_preflight"),
@@ -42,8 +43,8 @@ internal fun PasskeyPreflightDialog(
         title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(summary)
-                LazyColumn(Modifier.heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyColumn(Modifier.weight(1f, fill = false).heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item { Text(summary) }
                     items(issues) { issue ->
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(issue.account.ifBlank { issue.relyingParty }, style = MaterialTheme.typography.titleSmall)
@@ -52,10 +53,11 @@ internal fun PasskeyPreflightDialog(
                         }
                     }
                 }
+                footer?.invoke()
             }
         },
         dismissButton = {
-            TextButton(onClick = onCancel, modifier = Modifier.testTag("${tag}_cancel")) {
+            if (showCancel) TextButton(onClick = onCancel, modifier = Modifier.testTag("${tag}_cancel")) {
                 Text(cancelText)
             }
         },

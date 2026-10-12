@@ -114,6 +114,7 @@ class NearbyAutomaticSyncTest {
 
             sender.toggle(true); receiver.toggle(true)
             var stoppedDuringImport = false
+            var passkeyPrompts = 0
             receiver.onProgress = { progress ->
                 if (!stoppedDuringImport && progress.stage == "applying") {
                     assertTrue(receiver.gate.isLocked)
@@ -127,7 +128,12 @@ class NearbyAutomaticSyncTest {
                 while (sender.settings.peers.single().lastSyncedAt <= previous || receiver.settings.peers.single().lastSyncedAt <= previous) {
                     check(System.nanoTime() < deadline) { "Sync timeout: ${sender.coordinator.state.value} / ${receiver.coordinator.state.value}" }
                     sender.tick(); receiver.tick()
-                    sender.coordinator.state.value.passkeyReview?.let(sender.coordinator::confirmPasskeySync)
+                    sender.coordinator.state.value.passkeyReview?.let { review ->
+                        passkeyPrompts++
+                        sender.coordinator.confirmPasskeySync(review, true)
+                        // Give the action its turn under the production gate.
+                        withTimeout(30_000) { while (sender.coordinator.state.value.passkeyReview != null) delay(10) }
+                    }
                     assertNull(sender.coordinator.state.value.error); assertNull(receiver.coordinator.state.value.error)
                     delay(30)
                 }
@@ -136,6 +142,8 @@ class NearbyAutomaticSyncTest {
             assertTrue(stoppedDuringImport)
             assertFalse(sender.store.load().enabled); assertFalse(receiver.store.load().enabled)
             rich.verify(receiver.db, receiver.security)
+            assertEquals(1, passkeyPrompts)
+            assertTrue(sender.store.passkeyNoticeSuppressed())
             assertEquals(610, receiver.db.passwordEntryDao().getDeviceSyncLocalPasswords().size)
             assertEquals(0L, receiver.db.passkeyDao().getAllPasskeysSync().single().signCount)
             assertEquals(setOf(0L, 7L), sender.db.passkeyDao().getAllPasskeysSync().map { it.signCount }.toSet())
@@ -152,6 +160,8 @@ class NearbyAutomaticSyncTest {
             assertEquals("changed-after-off", receiverSecret(receiver.db.passwordEntryDao().getDeviceSyncLocalPasswords().single { it.title == "Bulk 0" }))
             rich.verify(receiver.db, receiver.security)
             assertFalse(sender.store.load().enabled); assertFalse(receiver.store.load().enabled)
+            assertEquals(1, passkeyPrompts)
+            assertTrue(DeviceSyncPreferenceStore(context, sender.security, sender.preferenceName).passkeyNoticeSuppressed())
         } finally {
             rich.clean(sender.db); rich.clean(receiver.db); sender.close(); receiver.close(); SessionManager.markLocked()
         }

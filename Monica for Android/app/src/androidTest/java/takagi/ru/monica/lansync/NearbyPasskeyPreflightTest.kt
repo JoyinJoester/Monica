@@ -23,6 +23,7 @@ class NearbyPasskeyPreflightTest {
         var review by mutableStateOf(consent.review(issues, setOf("phone")))
         var cancelled = false
         var continued = false
+        var remembered = false
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
@@ -30,7 +31,7 @@ class NearbyPasskeyPreflightTest {
                     review?.let { current ->
                         NearbyPasskeyPreflightDialog(current,
                             onCancel = { cancelled = true; consent.clearPending(); review = null },
-                            onContinue = { continued = true; consent.confirm(current); review = null })
+                            onContinue = { remembered = it; continued = true; consent.confirm(current); review = null })
                     }
                 }
             }
@@ -38,6 +39,7 @@ class NearbyPasskeyPreflightTest {
         compose.onNodeWithTag("nearby_passkey_preflight").assertIsDisplayed()
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
         compose.onNodeWithTag("nearby_passkey_skip").assertTextContains(context.getString(takagi.ru.monica.R.string.device_sync_passkey_skip_continue))
+        compose.onNodeWithTag("nearby_passkey_remember").assertIsDisplayed().assertIsOff().performClick().assertIsOn()
         // Optional local visual evidence; functional assertions do not depend on screenshots.
         runCatching {
             val bitmap = compose.onNodeWithTag("nearby_passkey_preflight").captureToImage().asAndroidBitmap()
@@ -48,15 +50,17 @@ class NearbyPasskeyPreflightTest {
         }
         compose.onNodeWithTag("nearby_passkey_cancel").assertIsDisplayed().performClick()
         compose.runOnIdle {
-            assertTrue(cancelled); assertFalse(continued)
+            assertTrue(cancelled); assertFalse(continued); assertFalse(remembered)
             review = consent.review(issues, setOf("phone"))
             assertNotNull(review)
         }
+        compose.onNodeWithTag("nearby_passkey_remember").assertIsOff().performClick().assertIsOn()
         compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Fixture 12"))
         compose.onNodeWithText("Fixture 12").assertIsDisplayed()
         compose.onNodeWithTag("nearby_passkey_skip").assertIsDisplayed().performClick()
         compose.runOnIdle {
             assertTrue(continued)
+            assertTrue(remembered)
             assertNull(consent.review(issues, setOf("phone")))
         }
         compose.onNodeWithTag("nearby_passkey_preflight").assertDoesNotExist()
