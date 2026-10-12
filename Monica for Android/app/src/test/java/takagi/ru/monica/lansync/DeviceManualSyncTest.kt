@@ -37,6 +37,7 @@ import java.util.UUID
 @OptIn(ExperimentalCoroutinesApi::class)
 class DeviceManualSyncTest {
     private class Fixture(context: Context, id: String, peer: String, mode: DeviceSyncMode) {
+        val online = kotlinx.coroutines.flow.MutableStateFlow(setOf(peer))
         val db = Room.inMemoryDatabaseBuilder(context, PasswordDatabase::class.java).allowMainThreadQueries().setQueryExecutor { it.run() }.build()
         val steam = Room.inMemoryDatabaseBuilder(context, SteamDatabase::class.java).allowMainThreadQueries().build()
         val settings = DeviceSyncPreferences(deviceId = id, enabled = false, mode = mode,
@@ -46,6 +47,13 @@ class DeviceManualSyncTest {
         val provider = DevicePasswordSyncProvider(context, SecurityManager(context), store, db,
             File(context.cacheDir, "manual-${UUID.randomUUID()}.replica"), steam)
         val coordinator = ReflectionHelpers.callConstructor(DeviceSyncCoordinator::class.java, ClassParameter.from(Context::class.java, context)).also {
+            it.setAppVisible(true)
+            ReflectionHelpers.setField(it, "presence", object : DeviceSyncPresence {
+                override val online = this@Fixture.online
+                override val available = true
+                override fun start(deviceId: String, peers: Set<String>) = Unit
+                override fun stop() = Unit
+            })
             ReflectionHelpers.setField(it, "preferences", settings)
             ReflectionHelpers.setField(it, "store\$delegate", lazyOf(store))
             ReflectionHelpers.setField(it, "dataProvider", lazyOf(provider))
@@ -67,6 +75,40 @@ class DeviceManualSyncTest {
         }
     }
 
+    @Test fun absent_peer_never_prepares_or_probes_and_background_rejects_manual_work() = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        SessionManager.markUnlocked()
+        val fixture = Fixture(RuntimeEnvironment.getApplication(), "z-idle", "a-closed", DeviceSyncMode.SEND_ONLY)
+        var starts = 0
+        var stops = 0
+        ReflectionHelpers.setField(fixture.coordinator, "presence", object : DeviceSyncPresence {
+            override val online = kotlinx.coroutines.flow.MutableStateFlow(emptySet<String>())
+            override val available = true
+            override fun start(deviceId: String, peers: Set<String>) { starts++ }
+            override fun stop() { stops++ }
+        })
+        try {
+            fixture.settings.enabled = true; fixture.store.save(fixture.settings)
+            ReflectionHelpers.setField(fixture.coordinator, "preferences", null)
+            repeat(20) { fixture.tick() }
+            assertTrue(starts > 0)
+            assertEquals("waiting_for_app", fixture.coordinator.state.value.phase)
+            assertEquals(0L, fixture.coordinator.state.value.lastAttemptAt)
+            assertEquals(0L, fixture.coordinator.state.value.lastDiscoveryAt)
+            assertNull(ReflectionHelpers.getField<Any?>(fixture.coordinator, "snapshot"))
+            assertTrue(ReflectionHelpers.getField<Set<String>>(fixture.coordinator, "force").isEmpty())
+            fixture.coordinator.setAppVisible(false)
+            fixture.request(); fixture.tick()
+            assertEquals("background", fixture.coordinator.state.value.phase)
+            assertFalse(fixture.coordinator.state.value.manualSync)
+            assertTrue(stops > 0)
+            val before = starts
+            repeat(20) { fixture.tick() }
+            assertEquals(before, starts)
+            assertEquals(0L, fixture.coordinator.state.value.lastAttemptAt)
+        } finally { fixture.close(); SessionManager.markLocked(); Dispatchers.resetMain() }
+    }
+
     @Test fun manual_send_only_to_receive_only_runs_once_without_enabling_automatic_sync() = runBlocking { withTimeout(90_000) {
         DeviceVaultProviderTest.loadNative()
         Dispatchers.setMain(Dispatchers.Unconfined)
@@ -75,6 +117,8 @@ class DeviceManualSyncTest {
         val sender = Fixture(context, "z-sender", "a-receiver", DeviceSyncMode.SEND_ONLY)
         val receiver = Fixture(context, "a-receiver", "z-sender", DeviceSyncMode.RECEIVE_ONLY)
         try {
+            // Manual fallback must work even when NSD cannot see either paired app.
+            sender.online.value = emptySet(); receiver.online.value = emptySet()
             val source = sender.db.passwordEntryDao().insertPasswordEntry(PasswordEntry(title = "Manual fixture",
                 website = "example.test", username = "fixture", password = "first-secret"))
             sender.tick(); receiver.tick()
@@ -118,10 +162,13 @@ class DeviceManualSyncTest {
             repeat(4) { sender.tick(); receiver.tick() }
             assertEquals("first-secret", SecurityManager(context).decryptDataIfMonicaCiphertext(receiver.db.passwordEntryDao().getPasswordEntryById(received.id)!!.password))
             // Re-enable automatic sync and verify a later edit arrives without another request.
+            sender.online.value = setOf("a-receiver"); receiver.online.value = setOf("z-sender")
             sender.settings.enabled = true; sender.store.save(sender.settings)
             receiver.settings.enabled = true; receiver.store.save(receiver.settings)
             val automaticDeadline = System.nanoTime() + 60_000_000_000L
             while (System.nanoTime() < automaticDeadline) {
+                // Native I/O uses wall time; Robolectric's cadence clock must advance explicitly.
+                org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofSeconds(3))
                 sender.tick(); receiver.tick()
                 val password = receiver.db.passwordEntryDao().getPasswordEntryById(received.id)!!.password
                 if (SecurityManager(context).decryptDataIfMonicaCiphertext(password) == "second-secret") break

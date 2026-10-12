@@ -145,10 +145,11 @@ object SessionManager {
 
     fun markUnlocked() {
         takagi.ru.monica.passkey.PasskeyPortabilityCache.shared.clear()
-        _isUnlocked.value = true
         unlockElapsedTimestamp = SystemClock.elapsedRealtime()
         unlockWallTimestamp = System.currentTimeMillis()
         lastRefreshPersistElapsedTimestamp = unlockElapsedTimestamp
+        // Publish only after the timestamps are ready: sync observers may run immediately.
+        _isUnlocked.value = true
         persistAllSynchronously()
         android.util.Log.d(
             TAG,

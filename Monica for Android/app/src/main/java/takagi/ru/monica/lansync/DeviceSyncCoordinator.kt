@@ -8,6 +8,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -34,7 +36,8 @@ internal data class DeviceSyncState(
     val discoveredPeers: Int = 0, val retryInSeconds: Int = 0,
     val passkeyNoticeSuppressed: Boolean = false,
     val passkeyDiagnosticIssues: List<DevicePasskeySyncIssue>? = null,
-    val checkingPasskeys: Boolean = false, val passkeyDiagnosticFailed: Boolean = false
+    val checkingPasskeys: Boolean = false, val passkeyDiagnosticFailed: Boolean = false,
+    val appVisible: Boolean = true, val nearbyAppCount: Int = 0, val nearbyDiscoveryAvailable: Boolean = true
 )
 
 /** App-owned coordinator. Leaving settings does not cancel remembered-device synchronization. */
@@ -42,6 +45,8 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     private val app = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val gate = Mutex()
+    private val appVisible = MutableStateFlow(DeviceSyncService.isAppVisible)
+    private var presence: DeviceSyncPresence = AndroidDeviceSyncPresence(app)
     private val security by lazy { SecurityManager(app) }
     private val store by lazy { DeviceSyncPreferenceStore(app, security) }
     private val dataProvider = lazy { DevicePasswordSyncProvider(app, security, store).also { provider -> provider.onProgress = { updateProgress(it) } } }
@@ -101,15 +106,16 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
 
     fun start() {
         if (running != null) return
+        val active = combine(SessionManager.isUnlocked, appVisible) { unlocked, visible -> unlocked && visible }.distinctUntilChanged()
         scope.launch {
-            SessionManager.isUnlocked.collect { unlocked ->
-                if (!unlocked) activeHandles.forEach { handle -> runCatching { request("cancel", handle) } }
+            active.collect { foreground ->
+                if (!foreground) activeHandles.forEach { handle -> runCatching { request("cancel", handle) } }
             }
         }
         running = scope.launch {
-            SessionManager.isUnlocked.collectLatest { unlocked ->
-                if (!unlocked) {
-                    gate.withLock { pause(locked = true); publish() }
+            active.collectLatest { foreground ->
+                if (!foreground) {
+                    gate.withLock { pause(locked = !SessionManager.isUnlocked.value); publish() }
                 } else {
                     try {
                         while (currentCoroutineContext().isActive) {
@@ -117,11 +123,17 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
                             delay(500)
                         }
                     } finally {
-                        withContext(NonCancellable) { gate.withLock { pause(locked = true); publish() } }
+                        withContext(NonCancellable) { gate.withLock { pause(locked = !SessionManager.isUnlocked.value); publish() } }
                     }
                 }
             }
         }
+    }
+
+    fun setAppVisible(visible: Boolean) {
+        appVisible.value = visible
+        if (!visible) presence.stop()
+        mutableState.update { it.copy(appVisible = visible) }
     }
 
     private fun publish() {
@@ -147,9 +159,11 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             lastAttemptAt = lastAttemptAt, lastDiscoveryAt = lastDiscoveryAt, discoveredPeers = discoveredPeers,
             retryInSeconds = if (automaticSyncEnabled()) ((retryAt - now).coerceAtLeast(0) + 999).div(1000).toInt() else 0,
             passkeyDiagnosticIssues = passkeyDiagnosticIssues, checkingPasskeys = checkingPasskeys,
-            passkeyDiagnosticFailed = passkeyDiagnosticFailed)
+            passkeyDiagnosticFailed = passkeyDiagnosticFailed,
+            appVisible = appVisible.value, nearbyAppCount = presence.online.value.size,
+            nearbyDiscoveryAvailable = presence.available)
         // Re-read inside the CAS loop so a concurrent tap wins over old progress.
-        mutableState.update { next.copy(enabled = automaticSyncEnabled(),
+        mutableState.update { next.copy(enabled = automaticSyncEnabled(), appVisible = appVisible.value,
             passkeyNoticeSuppressed = store.passkeyNoticeSuppressed(),
             passkeyReview = next.passkeyReview.takeUnless { store.passkeyNoticeSuppressed() }) }
         DeviceSyncService.update(app, mutableState.value)
@@ -171,7 +185,6 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         return (preferences ?: store.load().also { loaded ->
             preferences = loaded
             if (phase == "locked") phase = "idle"
-            if (loaded.enabled) loaded.peers.forEach { force += it.deviceId }
         }).also { it.enabled = automaticSyncEnabled() }
     }
 
@@ -209,6 +222,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     fun syncNow() = action { beginManualSync() }
 
     private fun beginManualSync() {
+        if (!appVisible.value) return
         val settings = settings()
         if (pairing || settings.peers.isEmpty()) return
         settings.syncRequest = Math.addExact(settings.syncRequest, 1)
@@ -315,7 +329,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     }
 
     fun pair(invitation: String? = null) = action {
-        if (pairing) return@action
+        if (pairing || !appVisible.value) return@action
         DeviceSyncDiagLogger.event(if (invitation == null) "show_pairing_qr" else "connect_from_invitation")
         phase = "preparing"; failureStage = ""; failureKind = ""; failureOperation = ""; connectionAttempts = 0
         if (invitation != null && LanPairingInvitation.parse(invitation)?.version != 2) throw LanSyncException("unsupported_protocol")
@@ -373,6 +387,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
     private suspend fun startTransfer(outgoing: DevicePasswordExport, peer: SavedSyncPeer?, invitation: String?, enrollment: Boolean): Transfer {
         currentCoroutineContext().ensureActive()
         check(SessionManager.isUnlocked.value) { "device_sync_locked" }
+        if (!appVisible.value) throw CancellationException("device_sync_background")
         val directory = File(root, "in-${UUID.randomUUID()}")
         val settings = settings()
         val advertisement = advertisement(outgoing.revision)
@@ -395,7 +410,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         val started = try { RustLanSync.request(parameters) } catch (failure: Exception) { deleteOwned(directory); throw failure }
         val transfer = Transfer(started.getLong("handle"), directory, outgoing, enrollment, advertisement)
         activeHandles += transfer.handle
-        if (!SessionManager.isUnlocked.value || !currentCoroutineContext().isActive) {
+        if (!SessionManager.isUnlocked.value || !appVisible.value || !currentCoroutineContext().isActive) {
             withContext(NonCancellable) { stop(transfer) }
             throw CancellationException("device_sync_locked")
         }
@@ -412,6 +427,10 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
 
     private suspend fun tick() {
         try {
+            if (!appVisible.value) {
+                if (!paused || preferences != null) pause(locked = false)
+                return
+            }
             if ((app.getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager)?.isKeyguardLocked == true) {
                 if (!paused || preferences != null) pause(locked = true)
                 return
@@ -427,7 +446,12 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             if (!pairing && settings.peers.isEmpty()) { if (!paused) pause(locked = false); return }
             paused = false
             acquireNetwork()
+            presence.start(settings.deviceId, settings.peers.map { it.deviceId }.toSet())
             transfers.toMap().forEach { (id, transfer) ->
+                if (!transfer.enrollment && id !in manualPeers && id !in presence.online.value) {
+                    stop(transfer); transfers.remove(id); statuses[id] = "app_closed"
+                    return@forEach
+                }
                 try { poll(id, transfer) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (failure: Exception) {
@@ -461,8 +485,12 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
 
     private suspend fun maintainConnections() {
         val settings = settings()
-        val peers = settings.peers.filter { settings.enabled || it.deviceId in manualPeers }
-        if (peers.isEmpty()) return
+        val peers = settings.peers.filter { it.deviceId in manualPeers || settings.enabled && it.deviceId in presence.online.value }
+        if (peers.isEmpty()) {
+            settings.peers.forEach { statuses[it.deviceId] = "app_closed" }
+            phase = "waiting_for_app"; dataProgress = null
+            return
+        }
         val outgoing = currentSnapshot()
         // Recheck after potentially long preparation, before consent/network work.
         if (!automaticSyncEnabled() && manualPeers.isEmpty()) return
@@ -475,6 +503,8 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
         }
         for (peer in peers) {
             currentCoroutineContext().ensureActive()
+            if (!appVisible.value) return
+            if (peer.deviceId !in manualPeers && peer.deviceId !in presence.online.value) continue
             if (!automaticSyncEnabled() && peer.deviceId !in manualPeers) continue
             if (peer.deviceId in transfers || (retry[peer.deviceId]?.second ?: 0) > SystemClock.elapsedRealtime()) continue
             if (settings.deviceId > peer.deviceId) {
@@ -484,7 +514,8 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             }
             if (discovery == null) {
                 discovery = RustLanSync.request(JSONObject().put("operation", "discover")
-                    .put("targets", org.json.JSONArray(settings.peers.map { it.address }.filter(String::isNotEmpty).distinct().take(64))))
+                    .put("targets", org.json.JSONArray(peers.filter { it.deviceId in manualPeers || it.deviceId in presence.online.value }
+                        .map { it.address }.filter(String::isNotEmpty).distinct().take(64))))
                 lastDiscoveryAt = System.currentTimeMillis()
                 val foundDevices = discovery.getJSONArray("devices")
                 discoveredPeers = (0 until foundDevices.length()).map(foundDevices::getJSONObject).count { found ->
@@ -496,7 +527,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             val found = (0 until devices.length()).map(devices::getJSONObject).firstOrNull {
                 it.optString("device_id") == peer.deviceId && it.optString("session") == peer.pairId && it.optBoolean("trusted")
             }
-            if (found == null) { statuses[peer.deviceId] = "offline"; force += peer.deviceId; continue }
+            if (found == null) { statuses[peer.deviceId] = "offline"; continue }
             val parts = found.optString("revision").split(':', limit = 4)
             val changed = outgoing.revision != peer.lastSentRevision || parts.firstOrNull() != peer.lastReceivedRevision
             val version = parts.getOrNull(1)?.toLongOrNull()
@@ -635,6 +666,7 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
 
     private suspend fun pause(locked: Boolean) {
         withContext(NonCancellable) {
+            presence.stop()
             manualPeers.clear()
             transfers.values.toList().forEach { stop(it) }; transfers.clear()
             retiring.values.toList().forEach { stop(it) }
@@ -642,8 +674,8 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             snapshot = null; dataProgress = null; cleanSnapshots()
             passkeyConsent.clearPending()
             if (locked) { passkeyDiagnosticIssues = null; passkeyDiagnosticFailed = false }
-            pairing = false; code = ""; invitations = emptyList(); phase = if (locked) "locked" else "paused"
-            preferences?.peers?.forEach { statuses[it.deviceId] = phase; force += it.deviceId }
+            pairing = false; code = ""; invitations = emptyList(); phase = if (locked) "locked" else if (!appVisible.value) "background" else "paused"
+            preferences?.peers?.forEach { statuses[it.deviceId] = phase }
             publish()
             if (locked) preferences = null
             multicast?.let { if (it.isHeld) it.release() }; multicast = null

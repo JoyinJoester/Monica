@@ -69,7 +69,8 @@ class DeviceSyncService : Service() {
         private const val CHANNEL = "nearby-device-sync"
         private const val NOTIFICATION = 7419
         private val main = Handler(Looper.getMainLooper())
-        private var visible = 0
+        @Volatile private var visible = 0
+        internal val isAppVisible: Boolean get() = visible > 0
         private var running = false
         private var starting = false
         private var wanted = false
@@ -79,8 +80,14 @@ class DeviceSyncService : Service() {
             if (installed) return
             installed = true
             application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
-                override fun onActivityStarted(activity: Activity) { visible++ }
-                override fun onActivityStopped(activity: Activity) { visible = (visible - 1).coerceAtLeast(0) }
+                override fun onActivityStarted(activity: Activity) {
+                    visible++
+                    DeviceSyncCoordinator.get(application).setAppVisible(true)
+                }
+                override fun onActivityStopped(activity: Activity) {
+                    visible = (visible - 1).coerceAtLeast(0)
+                    main.postDelayed({ if (!isAppVisible) DeviceSyncCoordinator.get(application).setAppVisible(false) }, 250)
+                }
                 override fun onActivityResumed(activity: Activity) {
                     DeviceSyncCoordinator.get(application)
                     if (wanted) startIfVisible(application)
@@ -95,8 +102,8 @@ class DeviceSyncService : Service() {
 
         internal fun update(context: Context, state: DeviceSyncState) {
             main.post {
-                val next = SessionManager.isUnlocked.value && state.phase != "locked" &&
-                    (state.pairing || state.manualSync || state.activeConnections > 0 || state.enabled && state.peers.isNotEmpty())
+                val next = isAppVisible && state.appVisible && SessionManager.isUnlocked.value && state.phase != "locked" &&
+                    (state.pairing || state.manualSync || state.activeConnections > 0 || state.enabled && state.nearbyAppCount > 0)
                 if (next == wanted) return@post
                 wanted = next
                 if (wanted) startIfVisible(context)

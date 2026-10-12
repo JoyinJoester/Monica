@@ -29,6 +29,8 @@ import java.util.Date
 
 internal fun nearbyStageLabel(context: Context, state: DeviceSyncState): String = context.getString(when {
     state.error != null -> if (state.failureStage == "preparing") R.string.nearby_status_prepare_failed else R.string.nearby_status_failed
+    !state.appVisible -> R.string.nearby_status_background
+    state.phase == "waiting_for_app" -> R.string.nearby_status_waiting_apps
     state.passkeyReview != null -> R.string.nearby_status_review
     state.phase == "locked" -> R.string.device_sync_locked
     else -> when (state.progress?.stage ?: state.phase) {
@@ -50,6 +52,9 @@ internal fun nearbyStageLabel(context: Context, state: DeviceSyncState): String 
 })
 
 internal fun nearbyNextStep(context: Context, state: DeviceSyncState): String = context.getString(when {
+    !state.appVisible -> R.string.nearby_hint_background
+    state.enabled && !state.nearbyDiscoveryAvailable -> R.string.nearby_hint_presence_unavailable
+    state.phase == "waiting_for_app" -> R.string.nearby_hint_waiting_apps
     state.error == "sync_database_unavailable" -> R.string.nearby_hint_database
     state.error in setOf("sync_direction_conflict", "sync_direction_unsupported") -> R.string.device_sync_direction_hint
     state.error in setOf("unsupported_protocol", "native_unavailable", "device_sync_unavailable") -> R.string.nearby_hint_update
@@ -165,6 +170,7 @@ internal fun nearbyDiagnosticRows(context: Context, state: DeviceSyncState, data
         label(R.string.nearby_database) to "$database · $direction",
         label(R.string.device_sync_automatic) to label(if (state.enabled) R.string.nearby_automatic_hint else R.string.nearby_manual_hint),
         label(R.string.nearby_diagnostic_network) to network,
+        label(R.string.nearby_diagnostic_presence) to context.getString(R.string.nearby_diagnostic_presence_value, state.nearbyAppCount),
         label(R.string.nearby_diagnostic_connection) to context.getString(R.string.nearby_diagnostic_connection_value,
             state.peers.size, state.activeConnections, state.listeningPeers, state.connectionAttempts),
         label(R.string.nearby_diagnostic_discovery) to context.getString(R.string.nearby_diagnostic_discovery_value,

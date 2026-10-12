@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="nearby_status_background">Paused in background</string>
+    <string name="nearby_status_waiting_apps">Waiting for the other app</string>
+    <string name="nearby_hint_background">Keep Monica open and unlocked on both devices. Automatic discovery and connections pause in the background.</string>
+    <string name="nearby_hint_waiting_apps">Open and unlock both apps. Small system discovery messages continue while waiting.</string>
+    <string name="nearby_hint_presence_unavailable">Automatic app discovery is unavailable on this network. Keep both apps open and use Sync now on both devices, or try another Wi-Fi network.</string>
+    <string name="nearby_diagnostic_presence">Available paired apps</string>
+    <string name="nearby_diagnostic_presence_value">%1$d discovered by the local network service</string>
     <string name="nearby_menu_sync">Manual Wi-Fi sync</string>
     <string name="nearby_menu_progress">View Wi-Fi sync progress</string>
     <string name="nearby_intro">Keep devices in sync on the same Wi-Fi. Encrypted device-to-device connections, without a cloud relay.</string>
@@ -15,7 +22,7 @@
     <string name="nearby_cancel_pairing">Cancel pairing</string>
     <string name="nearby_no_devices_title">No paired devices yet</string>
     <string name="nearby_settings">Sync settings</string>
-    <string name="nearby_automatic_hint">Connect to paired devices while unlocked</string>
+    <string name="nearby_automatic_hint">Sync while both apps are open and unlocked</string>
     <string name="nearby_details">Sync contents and diagnostics</string>
     <string name="nearby_scope_summary">Passwords, 2FA, Steam tokens, passkeys and more</string>
     <string name="nearby_database">Sync database</string>

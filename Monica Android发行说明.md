@@ -4,6 +4,10 @@
 
 ## 中文
 
+- 修复刚解锁时附近同步偶发误判会话过期，导致自动同步或开关点击失效的问题。
+
+- 优化附近自动同步流量：仅在两端 Monica 均处于前台且已解锁时参与自动同步，本机退到后台即暂停发现和连接；未发现可用的已配对应用时，不准备数据、不反复定向探测或重连。改用 Android 系统局域网服务发现，仍有少量发现报文；数据未变化时重新打开不会强制重传。诊断显示可用应用数量，旧版或服务发现受限的网络可在两端手动同步。
+
 - 已配对附近设备后，各主要页面右上角菜单新增“手动 Wi-Fi 同步”，关闭自动同步后仍可使用；点击进入同步页并按已配置的数据库和方向立即同步，进行中可直接查看进度而不重复启动。
 
 - 通行密钥跨设备限制弹窗可勾选“不再提醒”，点击继续后保存并在重启后保留；取消不保存。同步内容与连接诊断中可查看受限条目、重新检查所选库及恢复提醒，非零签名计数跳过和不可导出密钥的限制保持不变。
@@ -50,6 +54,10 @@
 - 修复仅绑定 Bitwarden／Vaultwarden 时密码库首页和搜索可能看不到已同步条目：未保存数据库范围时默认显示“全部”，旧版省略范围的设置同步采用该默认值；明确保存的本地库或具体数据库选择继续保留，锁定库仍不参与展示与搜索。
 
 ## English
+
+- Fix nearby sync occasionally treating a just-unlocked session as expired, preventing automatic sync or toggle actions.
+
+- Reduce nearby automatic-sync traffic: participate only while both Monica apps are visible and unlocked, and pause discovery/connections in the background. With no available paired app, skip data preparation and repeated direct probes/reconnects. Android LAN service discovery still uses small discovery messages. Reopening unchanged data no longer forces a full resend; diagnostics show available apps, with manual sync on both ends for older clients or restricted discovery networks.
 
 - After pairing a nearby device, main-page overflow menus offer manual Wi-Fi sync even with automatic sync off. The shortcut opens sync status and starts a round using the configured database and direction; during a round it shows progress without starting another transfer.
 

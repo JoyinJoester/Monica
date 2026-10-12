@@ -22,7 +22,7 @@ import java.util.UUID
 class NearbyAutomaticSyncTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
-    private inner class Fixture(id: String, peer: String, mode: DeviceSyncMode) {
+    private inner class Fixture(id: String, peer: String, mode: DeviceSyncMode, realPresence: Boolean = false) {
         val root = File(context.cacheDir, "automatic-fixture-${UUID.randomUUID()}")
         val db = Room.inMemoryDatabaseBuilder(context, PasswordDatabase::class.java).build()
         val steam = Room.inMemoryDatabaseBuilder(context, SteamDatabase::class.java).build()
@@ -35,6 +35,13 @@ class NearbyAutomaticSyncTest {
         val coordinator = DeviceSyncCoordinator::class.java.getDeclaredConstructor(Context::class.java).apply { isAccessible = true }.newInstance(context)
         val gate: Mutex
         init {
+            coordinator.setAppVisible(true)
+            if (!realPresence) set("presence", object : DeviceSyncPresence {
+                override val online = kotlinx.coroutines.flow.MutableStateFlow(setOf(peer))
+                override val available = true
+                override fun start(deviceId: String, peers: Set<String>) = Unit
+                override fun stop() = Unit
+            })
             set("preferences", settings); set("store\$delegate", lazyOf(store)); set("dataProvider", lazyOf(provider))
             // The harness drives tick under the production mutex; no competing ticker.
             set("running", Job())
@@ -73,6 +80,56 @@ class NearbyAutomaticSyncTest {
             }
             provider.pause(); db.close(); steam.close(); context.deleteSharedPreferences(preferenceName); root.deleteRecursively()
         }
+    }
+
+    @Test fun real_presence_gates_transfers_and_unchanged_reopening_does_not_resend() = runBlocking {
+        SessionManager.markUnlocked()
+        val id = UUID.randomUUID().toString().replace("-", "")
+        val sender = Fixture("z$id", "a$id", DeviceSyncMode.SEND_ONLY, realPresence = true)
+        val receiver = Fixture("a$id", "z$id", DeviceSyncMode.RECEIVE_ONLY, realPresence = true)
+        suspend fun awaitState(message: String, condition: () -> Boolean) {
+            val deadline = System.nanoTime() + 90_000_000_000L
+            while (!condition() && System.nanoTime() < deadline) {
+                sender.tick(); receiver.tick(); delay(50)
+                assertNull(sender.coordinator.state.value.error); assertNull(receiver.coordinator.state.value.error)
+            }
+            assertTrue(message, condition())
+        }
+        try {
+            val source = sender.db.passwordEntryDao().insertPasswordEntry(takagi.ru.monica.data.PasswordEntry(
+                title = "Presence fixture", website = "example.test", username = "fixture", password = sender.security.encryptData("first")))
+            repeat(5) { sender.tick(); delay(100) }
+            assertEquals("waiting_for_app", sender.coordinator.state.value.phase)
+            assertNull(sender.get("snapshot"))
+            assertEquals(0L, sender.coordinator.state.value.lastAttemptAt)
+            awaitState("Real NSD must allow initial automatic synchronization") {
+                sender.settings.peers.single().lastSyncedAt > 0 && receiver.settings.peers.single().lastSyncedAt > 0
+            }
+            val senderSynced = sender.settings.peers.single().lastSyncedAt
+            val receiverSynced = receiver.settings.peers.single().lastSyncedAt
+            receiver.coordinator.setAppVisible(false)
+            awaitState("Background peer must stop its listener and disappear") {
+                sender.coordinator.state.value.phase == "waiting_for_app" && receiver.coordinator.state.value.phase == "background"
+            }
+            val discovery = sender.coordinator.state.value.lastDiscoveryAt
+            repeat(5) { sender.tick(); receiver.tick(); delay(100) }
+            assertEquals(discovery, sender.coordinator.state.value.lastDiscoveryAt)
+            assertEquals(0, sender.coordinator.state.value.activeConnections)
+            assertEquals(0, receiver.coordinator.state.value.activeConnections)
+            receiver.coordinator.setAppVisible(true)
+            awaitState("Unchanged reopened peer must be online without another transfer") {
+                receiver.coordinator.state.value.peers.single().status == "online"
+            }
+            repeat(3) { sender.tick(); receiver.tick() }
+            assertEquals(senderSynced, sender.settings.peers.single().lastSyncedAt)
+            assertEquals(receiverSynced, receiver.settings.peers.single().lastSyncedAt)
+            val entry = sender.db.passwordEntryDao().getPasswordEntryById(source)!!
+            sender.db.passwordEntryDao().updatePasswordEntry(entry.copy(password = sender.security.encryptData("second")))
+            awaitState("A real edit after reopening must still synchronize") {
+                receiver.settings.peers.single().lastSyncedAt > receiverSynced
+            }
+            assertEquals("second", receiver.security.decryptDataIfMonicaCiphertext(receiver.db.passwordEntryDao().getDeviceSyncLocalPasswords().single().password))
+        } finally { sender.close(); receiver.close(); SessionManager.markLocked() }
     }
 
     @Test fun toggling_during_export_and_import_preserves_data_and_stops_later_automatic_rounds() = runBlocking {

@@ -301,6 +301,13 @@ class DeviceVaultProviderTest {
         ReflectionHelpers.setField(coordinator, "dataProvider", lazyOf(provider))
         val settings = DeviceSyncPreferences(peers = mutableListOf(SavedSyncPeer("peer", "Fixture", "pair", "unused")))
         ReflectionHelpers.setField(coordinator, "preferences", settings)
+        coordinator.setAppVisible(true)
+        ReflectionHelpers.setField(coordinator, "presence", object : DeviceSyncPresence {
+            override val online = kotlinx.coroutines.flow.MutableStateFlow(setOf("peer"))
+            override val available = true
+            override fun start(deviceId: String, peers: Set<String>) = Unit
+            override fun stop() = Unit
+        })
         suspend fun invoke(name: String): Any? = kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn { continuation ->
             val method = DeviceSyncCoordinator::class.java.getDeclaredMethod(name, kotlin.coroutines.Continuation::class.java)
             method.isAccessible = true

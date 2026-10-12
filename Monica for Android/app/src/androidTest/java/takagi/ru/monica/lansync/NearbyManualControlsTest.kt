@@ -22,6 +22,18 @@ class NearbyManualControlsTest {
     @After fun lock() { SessionManager.markLocked() }
     private fun text(id: Int) = compose.activity.getString(id)
 
+    @Test fun waiting_for_closed_peer_explains_discovery_and_keeps_manual_sync_available() {
+        SessionManager.markUnlocked()
+        val state = DeviceSyncState(phase = "waiting_for_app", nearbyAppCount = 0,
+            peers = listOf(DeviceSyncPeerState("fixture", "Android fixture", "app_closed", 0)))
+        compose.setContent { MonicaTheme { NearbySyncContent(state, NearbySyncActions()) } }
+        compose.onNodeWithText(text(R.string.nearby_hint_waiting_apps)).performScrollTo().assertIsDisplayed()
+        capture("presence")
+        compose.onNodeWithText(text(R.string.device_sync_now)).performScrollTo().assertIsEnabled()
+        compose.onNodeWithText(text(R.string.nearby_details)).performScrollTo().performClick()
+        compose.onNodeWithText(text(R.string.nearby_diagnostic_presence)).performScrollTo().assertIsDisplayed()
+    }
+
     @Test fun hidden_passkey_notice_remains_viewable_and_can_be_reenabled_in_diagnostics() {
         SessionManager.markUnlocked()
         val issue = DevicePasskeySyncIssue("fixture", "Synthetic account", "example.test",

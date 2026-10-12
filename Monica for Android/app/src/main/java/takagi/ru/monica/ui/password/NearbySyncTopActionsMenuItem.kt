@@ -26,7 +26,7 @@ internal class NearbySyncMenuActions(
     fun open() {
         // Read the latest state: pairing/locking may have changed after the menu opened.
         val current = state.value
-        if (current.peers.isEmpty() || current.pairing || current.phase == "locked") return
+        if (current.peers.isEmpty() || current.pairing || !current.appVisible || current.phase == "locked") return
         openStatus()
         if (!current.hasSyncInProgress) syncNow()
     }
@@ -44,7 +44,7 @@ internal fun NearbySyncTopActionsMenuItem(onDismissMenu: () -> Unit) {
     DropdownMenuItem(
         text = { Text(stringResource(if (state.hasSyncInProgress) R.string.nearby_menu_progress else R.string.nearby_menu_sync)) },
         leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
-        enabled = !state.pairing && state.phase != "locked",
+        enabled = state.appVisible && !state.pairing && state.phase != "locked",
         modifier = Modifier.testTag("nearby_sync_menu"),
         onClick = {
             onDismissMenu()

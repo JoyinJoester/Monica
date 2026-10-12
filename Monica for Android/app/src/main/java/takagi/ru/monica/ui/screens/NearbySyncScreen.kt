@@ -233,6 +233,7 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
                         "syncing" -> R.string.device_sync_syncing
                         "online" -> R.string.device_sync_online
                         "scheduled" -> R.string.device_sync_scheduled
+                        "app_closed" -> R.string.nearby_status_waiting_apps
                         "manual" -> R.string.nearby_wait_manual
                         "paused" -> R.string.device_sync_paused
                         "locked" -> R.string.device_sync_locked

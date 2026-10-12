@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="nearby_status_background">后台已暂停</string>
+    <string name="nearby_status_waiting_apps">等待对方打开 Monica</string>
+    <string name="nearby_hint_background">两端均需打开 Monica 并保持解锁，退到后台后暂停自动发现和连接。</string>
+    <string name="nearby_hint_waiting_apps">请在两端打开 Monica 并解锁。等待时仅保留少量系统发现报文。</string>
+    <string name="nearby_hint_presence_unavailable">当前网络无法自动发现应用，请保持两端打开并分别点击立即同步，或更换 Wi-Fi。</string>
+    <string name="nearby_diagnostic_presence">已打开的配对应用</string>
+    <string name="nearby_diagnostic_presence_value">局域网服务发现 %1$d 台</string>
     <string name="nearby_menu_sync">手动 Wi-Fi 同步</string>
     <string name="nearby_menu_progress">查看 Wi-Fi 同步进度</string>
     <string name="nearby_intro">同一 Wi-Fi，让设备上的内容保持一致。设备之间加密直连，无需云中转。</string>
@@ -15,7 +22,7 @@
     <string name="nearby_cancel_pairing">取消配对</string>
     <string name="nearby_no_devices_title">还没有配对设备</string>
     <string name="nearby_settings">同步设置</string>
-    <string name="nearby_automatic_hint">解锁后自动连接已配对设备</string>
+    <string name="nearby_automatic_hint">两端在前台解锁后自动同步</string>
     <string name="nearby_details">同步内容与连接诊断</string>
     <string name="nearby_scope_summary">密码、验证器、Steam 令牌、通行密钥等</string>
     <string name="nearby_database">同步数据库</string>
