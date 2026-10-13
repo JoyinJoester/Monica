@@ -71,6 +71,7 @@ class CipherUploadProcessor(
         )
         private val LEGACY_CARD_FIELD_NAMES = setOf(
             "monica_bank_name",
+            "monica_bank_branch",
             "monica_card_type",
             "monica_billing_address",
             "monica_nickname",
@@ -87,6 +88,7 @@ class CipherUploadProcessor(
         )
         private val READABLE_CARD_FIELD_NAMES = setOf(
             "bank name",
+            "bank branch",
             "card type",
             "billing address",
             "nickname",
@@ -1497,6 +1499,7 @@ class CipherUploadProcessor(
             .ifBlank { cardData.billingAddress }
         val reserved = buildList {
             add("Bank Name" to cardData.bankName)
+            add("Bank Branch" to cardData.bankBranch)
             add("Card Type" to cardData.cardType.name)
             add("Billing Address" to billingAddressDisplay)
             add("Nickname" to cardData.nickname)

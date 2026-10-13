@@ -169,7 +169,10 @@ class UnifiedWalletEditorsDeviceTest {
         compose.onNodeWithTag("entry_payment_holder").performTextInput("SYNTHETIC HOLDER")
         androidx.test.espresso.Espresso.closeSoftKeyboard()
         walletScroll("bank_item_editor", "item_editor_title")
-        capture("bank-light")
+        walletScroll("bank_item_editor", "bank_branch")
+        compose.onNodeWithTag("bank_branch").assertIsDisplayed().performTextInput("中国工商银行北京海淀支行")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        capture("bank-branch-320")
         add("custom_hidden", wallet = "bank_item_editor")
         compose.onNodeWithTag("wallet_custom_name_0").performTextInput("Recovery")
         input(R.string.custom_field_value, "Synthetic secret")
@@ -184,6 +187,7 @@ class UnifiedWalletEditorsDeviceTest {
         val item = runBlocking { fixture.db.secureItemDao().getAllItems().first().single { it.title == fixture.prefix } }
         assertEquals(target.databaseId, item.mdbxDatabaseId)
         val data = requireNotNull(CardWalletDataCodec.parseBankCardData(item.itemData, fixture.security::decryptDataIfMonicaCiphertext))
+        assertEquals("中国工商银行北京海淀支行", data.bankBranch)
         assertEquals("Synthetic secret", data.customFields.single().value)
         assertTrue(data.customFields.single().isProtected())
         assertEquals(listOf("notes", "custom"), data.editorSectionOrder)
@@ -196,6 +200,15 @@ class UnifiedWalletEditorsDeviceTest {
         }
         compose.runOnIdle { reopenId = item.id }
         compose.waitUntil(15000) { compose.onAllNodesWithTag("bank_item_editor").fetchSemanticsNodes().isNotEmpty() }
+        walletScroll("bank_item_editor", "bank_branch")
+        compose.onNodeWithTag("bank_branch").assertTextContains("中国工商银行北京海淀支行")
+            .performTextReplacement("中国工商银行北京中关村支行")
+        compose.runOnIdle { closed = false }
+        save()
+        compose.waitUntil(30000) { closed }
+        val edited = runBlocking { requireNotNull(fixture.secureItems.getItemById(item.id)) }
+        assertEquals("中国工商银行北京中关村支行", CardWalletDataCodec.parseBankCardData(
+            edited.itemData, fixture.security::decryptDataIfMonicaCiphertext)!!.bankBranch)
         walletScroll("bank_item_editor", "wallet_content_custom")
         compose.onNodeWithTag("wallet_content_custom").performClick()
         compose.onNodeWithText("Recovery").assertIsDisplayed()
@@ -203,6 +216,36 @@ class UnifiedWalletEditorsDeviceTest {
         walletScroll("bank_item_editor", "wallet_content_notes")
         compose.onNodeWithTag("wallet_content_notes").performClick()
         compose.onNodeWithText("Bank notes").assertIsDisplayed()
+    }
+
+    @Test fun bankBranchDetailCopiesFullValueAndEditorCanClearIt() {
+        val branch = "中国工商银行北京海淀支行"
+        val original = BankCardData("4242424242424242", "Synthetic Holder", "12", "2030",
+            bankName = "Example Bank", bankBranch = branch, branchCode = "0102")
+        val id = runBlocking { fixture.db.secureItemDao().insertItem(SecureItem(itemType = ItemType.BANK_CARD,
+            title = fixture.prefix, itemData = CardWalletDataCodec.encodeBankCardData(original))) }
+        var editing by mutableStateOf(false)
+        var closed = false
+        compose.setContent { CompositionLocalProvider(LocalUiSecurityManager provides fixture.security) { EditorTheme {
+            if (editing) AddEditBankCardScreen(bank, cardId = id, onNavigateBack = { closed = true })
+            else BankCardDetailScreen(bank, id, onNavigateBack = {}, onEditCard = { editing = true })
+        } } }
+        compose.waitUntil(15000) { compose.onAllNodesWithText(branch).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(branch).performScrollTo().performClick()
+        compose.onNodeWithText(text(R.string.copy), useUnmergedTree = true).performClick()
+        compose.runOnIdle {
+            val clipboard = fixture.context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            assertEquals(branch, clipboard.primaryClip!!.getItemAt(0).text.toString())
+            editing = true
+        }
+        compose.waitUntil(15000) { compose.onAllNodesWithTag("bank_branch").fetchSemanticsNodes().isNotEmpty() }
+        walletScroll("bank_item_editor", "bank_branch")
+        compose.onNodeWithTag("bank_branch").assertTextContains(branch).performTextClearance()
+        save()
+        compose.waitUntil(30000) { closed }
+        val saved = runBlocking { fixture.secureItems.getItemById(id)!! }
+        assertEquals(original.copy(bankBranch = ""), CardWalletDataCodec.parseBankCardData(saved.itemData,
+            fixture.security::decryptDataIfMonicaCiphertext))
     }
 
     @Test fun documentEditKeepsRareFieldsAndAddsNotes() {

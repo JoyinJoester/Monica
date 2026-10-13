@@ -10,7 +10,7 @@ import takagi.ru.monica.data.model.displayFullName
 
 /** Explicit allowlist: passwords, PINs and identity/card numbers never become suggestions. */
 enum class CommonSuggestionField(val key: String) {
-    BANK_NAME("bankName"), BRANCH_CODE("branchCode"), CUSTOMER_SERVICE_PHONE("customerServicePhone"),
+    BANK_NAME("bankName"), BANK_BRANCH("bankBranch"), BRANCH_CODE("branchCode"), CUSTOMER_SERVICE_PHONE("customerServicePhone"),
     CREDENTIAL_LABEL("credentialLabel"), WEBSITE("website"), ISSUED_BY("issuedBy"),
     FULL_NAME("fullName"), FIRST_NAME("firstName"), MIDDLE_NAME("middleName"), LAST_NAME("lastName"),
     STREET("streetAddress"), APARTMENT("apartment"), ADDRESS_LINE_3("address3"),
@@ -19,6 +19,7 @@ enum class CommonSuggestionField(val key: String) {
     companion object {
         fun forSupplementalKey(key: String): CommonSuggestionField? = when (key) {
             "bankName" -> BANK_NAME
+            "bankBranch" -> BANK_BRANCH
             "branchCode" -> BRANCH_CODE
             "customerServicePhone" -> CUSTOMER_SERVICE_PHONE
             "issuedBy" -> ISSUED_BY
@@ -82,7 +83,7 @@ class CommonFieldSuggestionIndex(values: List<String>, field: CommonSuggestionFi
 /** Source types and field mappings are explicit; unrelated JSON/custom values are never indexed. */
 internal fun CommonSuggestionField.walletKinds(): List<EmbeddedWalletContent.Kind> = when (this) {
     CommonSuggestionField.WEBSITE, CommonSuggestionField.CREDENTIAL_LABEL -> emptyList()
-    CommonSuggestionField.BANK_NAME, CommonSuggestionField.BRANCH_CODE, CommonSuggestionField.CUSTOMER_SERVICE_PHONE -> listOf(EmbeddedWalletContent.Kind.BANK_CARD)
+    CommonSuggestionField.BANK_NAME, CommonSuggestionField.BANK_BRANCH, CommonSuggestionField.BRANCH_CODE, CommonSuggestionField.CUSTOMER_SERVICE_PHONE -> listOf(EmbeddedWalletContent.Kind.BANK_CARD)
     CommonSuggestionField.ISSUED_BY, CommonSuggestionField.FIRST_NAME, CommonSuggestionField.MIDDLE_NAME,
     CommonSuggestionField.LAST_NAME, CommonSuggestionField.ADDRESS_LINE_3 -> listOf(EmbeddedWalletContent.Kind.DOCUMENT)
     else -> listOf(EmbeddedWalletContent.Kind.BANK_CARD, EmbeddedWalletContent.Kind.DOCUMENT, EmbeddedWalletContent.Kind.ADDRESS)
@@ -92,7 +93,7 @@ internal fun CommonSuggestionField.metadataTitles(): List<String> {
     val scalar = when (this) {
         CommonSuggestionField.WEBSITE -> emptyList()
         CommonSuggestionField.CREDENTIAL_LABEL -> listOf(ProjectCredentialGroup.FIELD)
-        CommonSuggestionField.BANK_NAME, CommonSuggestionField.BRANCH_CODE, CommonSuggestionField.CUSTOMER_SERVICE_PHONE -> listOf(EntryContentFields.key("PAYMENT", key))
+        CommonSuggestionField.BANK_NAME, CommonSuggestionField.BANK_BRANCH, CommonSuggestionField.BRANCH_CODE, CommonSuggestionField.CUSTOMER_SERVICE_PHONE -> listOf(EntryContentFields.key("PAYMENT", key))
         CommonSuggestionField.FULL_NAME -> listOf(EntryContentFields.key("CONTACT", "fullName"), EntryContentFields.key("ADDRESS", "fullName"))
         CommonSuggestionField.STREET -> listOf(EntryContentFields.key("CONTACT", "address1"), EntryContentFields.key("ADDRESS", "streetAddress"))
         CommonSuggestionField.APARTMENT -> listOf(EntryContentFields.key("CONTACT", "address2"), EntryContentFields.key("ADDRESS", "apartment"))
@@ -128,6 +129,7 @@ internal fun CommonSuggestionField.walletValue(raw: String, type: ItemType = wal
     return when (type) {
         ItemType.BANK_CARD -> CardWalletDataCodec.parseBankCardData(raw)?.let { card -> when (this) {
             CommonSuggestionField.BANK_NAME -> card.bankName
+            CommonSuggestionField.BANK_BRANCH -> card.bankBranch
             CommonSuggestionField.BRANCH_CODE -> card.branchCode
             CommonSuggestionField.CUSTOMER_SERVICE_PHONE -> card.customerServicePhone
             CommonSuggestionField.FULL_NAME -> card.cardholderName

@@ -4354,4 +4354,6 @@
     <string name="autofill_keep_unlocked">保持解鎖兩分鐘</string>
     <string name="autofill_keep_unlocked_desc">僅在同一應用程式及網站內重用驗證。關閉此項、鎖定螢幕或從最近任務中清除 Monica 後失效，不會解鎖主應用程式。</string>
     <string name="keepass_delete_failed_reload">未能完成 KDBX 刪除。請重新載入資料庫，檢查檔案或寫入權限後重試。</string>
+    <string name="bank_branch">開戶行</string>
+    <string name="bank_branch_example">例如：中國工商銀行北京海淀支行</string>
 </resources>

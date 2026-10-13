@@ -183,6 +183,7 @@ object CardWalletDataCodec {
             expiryYear = obj.string("expiryYear", "expYear"),
             cvv = obj.string("cvv", "code"),
             bankName = obj.string("bankName"),
+            bankBranch = obj.string("bankBranch"),
             billingAddress = obj.string("billingAddress"),
             brand = obj.string("brand"),
             validFromMonth = obj.string("validFromMonth", "fromMonth"),

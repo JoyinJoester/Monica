@@ -3463,6 +3463,7 @@ private fun bankCardCopyActions(data: BankCardData): List<StructuredCopyAction> 
         addCopyAction(stringResource(R.string.expiry_label), expiry)
         addCopyAction(stringResource(R.string.cvv), data.cvv, sensitive = true)
         addCopyAction(stringResource(R.string.bank_name), data.bankName)
+        addCopyAction(stringResource(R.string.bank_branch), data.bankBranch)
         addCopyAction(stringResource(R.string.bank_card_brand_label), data.brand)
         addCopyAction(stringResource(R.string.bank_card_nickname_label), data.nickname)
         addCopyAction(stringResource(R.string.billing_address), bankCardBillingAddressDisplay(data))

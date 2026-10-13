@@ -328,6 +328,13 @@ fun BankCardDetailScreen(
                                     context = context
                                 )
                             }
+                            if (data.bankBranch.isNotBlank()) {
+                                InfoFieldWithCopy(
+                                    label = stringResource(R.string.bank_branch),
+                                    value = data.bankBranch,
+                                    context = context
+                                )
+                            }
                         }
                     }
                     

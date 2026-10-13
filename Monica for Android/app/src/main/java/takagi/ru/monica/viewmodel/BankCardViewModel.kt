@@ -478,6 +478,7 @@ class BankCardViewModel internal constructor(
             addChange("有效期年份", oldCardData.expiryYear, cardData.expiryYear)
             addChange("CVV", oldCardData.cvv, cardData.cvv)
             addChange("银行", oldCardData.bankName, cardData.bankName)
+            addChange("开户行", oldCardData.bankBranch, cardData.bankBranch)
             addChange("卡类型", oldCardData.cardType, cardData.cardType)
             addChange("账单地址", oldCardData.billingAddress, cardData.billingAddress)
             addChange("卡组织", oldCardData.brand, cardData.brand)

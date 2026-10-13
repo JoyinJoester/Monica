@@ -79,7 +79,9 @@ data class BankCardData(
     /** Monica-managed visual card face. Null keeps the legacy card layout unchanged. */
     val cardFace: CardFaceConfig? = null,
     /** Presentation only; absent on older entries. */
-    val editorSectionOrder: List<String> = emptyList()
+    val editorSectionOrder: List<String> = emptyList(),
+    /** Account-opening branch name; independent of the bank name and branch code. */
+    val bankBranch: String = ""
 )
 
 @Serializable

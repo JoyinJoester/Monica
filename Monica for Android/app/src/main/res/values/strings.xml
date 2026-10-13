@@ -4703,4 +4703,6 @@
     <string name="device_sync_passkey_reference_hint">This entry cannot export a private key. Only credential metadata will sync; it cannot enable sign-in on another device.</string>
     <string name="device_sync_passkey_cancel">Cancel sync</string>
     <string name="device_sync_passkey_continue">Understand and continue</string>
+    <string name="bank_branch">Bank branch</string>
+    <string name="bank_branch_example">Example: ICBC Beijing Haidian Branch</string>
 </resources>

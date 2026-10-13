@@ -98,6 +98,7 @@ internal object SecureItemRestoreTypeResolver {
             "expiryYear",
             "cvv",
             "bankName",
+            "bankBranch",
             "iban",
             "swiftBic",
             "routingNumber",

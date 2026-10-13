@@ -47,7 +47,7 @@ class PasswordContentStorageInstrumentedTest {
                     steamDeviceId = "synthetic-device")),
                 ItemType.NOTE to Json.encodeToString(NoteData(content = note, customFields = fields)),
                 ItemType.BANK_CARD to Json.encodeToString(BankCardData(cardNumber = cardNumber,
-                    cardholderName = "Alice", expiryMonth = "09", expiryYear = "2030", customFields = fields)),
+                    cardholderName = "Alice", expiryMonth = "09", expiryYear = "2030", bankName = "Example Bank", bankBranch = "海淀支行", branchCode = "0102", customFields = fields)),
                 ItemType.BILLING_ADDRESS to Json.encodeToString(BillingAddressData(
                     streetAddress = "12 Example Street", postalCode = "SW1A 1AA", customFields = fields)),
                 ItemType.DOCUMENT to Json.encodeToString(DocumentData(documentType = DocumentType.PASSPORT,
@@ -81,6 +81,11 @@ class PasswordContentStorageInstrumentedTest {
                             assertEquals("JBSWY3DPEHPK3PXP", data.getString("secret"))
                             return@forEach
                         }
+                        if (item.itemType == ItemType.BANK_CARD) {
+                            assertEquals("海淀支行", data.getString("bankBranch"))
+                            assertEquals("Example Bank", data.getString("bankName"))
+                            assertEquals("0102", data.getString("branchCode"))
+                        }
                         val restored = data.getJSONArray("customFields")
                         assertEquals(3, restored.length())
                         assertEquals("HIDDEN", restored.getJSONObject(0).getString("type"))
@@ -111,7 +116,7 @@ class PasswordContentStorageInstrumentedTest {
                 ItemType.TOTP to Json.encodeToString(TotpData(secret="JBSWY3DPEHPK3PXP", issuer="Example")),
                 ItemType.NOTE to Json.encodeToString(NoteData(content=note, customFields=fields)),
                 ItemType.BANK_CARD to Json.encodeToString(BankCardData(cardNumber=cardNumber, cardholderName="Alice",
-                    expiryMonth="09", expiryYear="2030", customFields=fields)),
+                    expiryMonth="09", expiryYear="2030", bankName="Example Bank", bankBranch="海淀支行", branchCode="0102", customFields=fields)),
                 ItemType.BILLING_ADDRESS to Json.encodeToString(BillingAddressData(streetAddress="12 Example Street",
                     postalCode="SW1A 1AA", customFields=fields)),
                 ItemType.DOCUMENT to Json.encodeToString(DocumentData(documentType=DocumentType.PASSPORT,
@@ -140,7 +145,12 @@ class PasswordContentStorageInstrumentedTest {
                     assertEquals("HIDDEN",extra.getJSONObject(0).getString("type"))
                     assertEquals("help@example.invalid",extra.getJSONObject(1).getString("value"))
                     if (item.itemType == ItemType.NOTE) assertEquals(note,data.getString("content"))
-                    if (item.itemType == ItemType.BANK_CARD) assertEquals("2030",data.getString("expiryYear"))
+                    if (item.itemType == ItemType.BANK_CARD) {
+                        assertEquals("2030", data.getString("expiryYear"))
+                        assertEquals("海淀支行", data.getString("bankBranch"))
+                        assertEquals("Example Bank", data.getString("bankName"))
+                        assertEquals("0102", data.getString("branchCode"))
+                    }
                 }
                 if (pass == 0) service.addOrUpdateSecureItems(target.databaseId,
                     reopened.map { it.copy(title=it.title+" renamed") }, forceSyncWrite=true).getOrThrow()

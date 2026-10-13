@@ -2609,6 +2609,7 @@ fun VaultV2Pane(
 				searchableValues = listOf(
 					displayTitle,
 					data?.bankName.orEmpty(),
+					data?.bankBranch.orEmpty(),
 					data?.cardholderName.orEmpty(),
 					data?.cardNumber.orEmpty(),
 					item.notes,

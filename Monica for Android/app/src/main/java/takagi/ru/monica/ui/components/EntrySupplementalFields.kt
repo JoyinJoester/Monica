@@ -29,6 +29,7 @@ data class EntrySupplementalSpec(val key: String, @StringRes val label: Int = 0,
 object EntrySupplementalSpecs {
     val payment = listOf(
         EntrySupplementalSpec("bankName", R.string.bank_name),
+        EntrySupplementalSpec("bankBranch", R.string.bank_branch),
         EntrySupplementalSpec("cardType", R.string.card_type),
         EntrySupplementalSpec("brand", R.string.bank_card_brand_label, legacyOnly = true),
         EntrySupplementalSpec("nickname", R.string.bank_card_nickname_label, legacyOnly = true),

@@ -283,6 +283,7 @@ private fun appendCardItems(
             if (!item.matchesAggregateQuery(
                     searchQuery,
                     data?.bankName,
+                    data?.bankBranch,
                     data?.cardholderName,
                     data?.brand,
                     data?.nickname,

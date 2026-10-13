@@ -469,6 +469,7 @@ class KeePassKdbxService(
         private const val FIELD_MONICA_IMAGE_PATHS = "MonicaImagePaths"
         private const val FIELD_MONICA_IS_FAVORITE = "MonicaIsFavorite"
         private const val FIELD_BANK_NAME = "Bank Name"
+        private const val FIELD_BANK_BRANCH = "Bank Branch"
         private const val FIELD_CARD_TYPE = "Card Type"
         private const val FIELD_BILLING_ADDRESS = "Billing Address"
         private const val FIELD_BRAND = "Brand"
@@ -5020,6 +5021,7 @@ class KeePassKdbxService(
         addPlain("Expiry Year", cardData.expiryYear)
         addProtected(FIELD_CARD_CVV, cardData.cvv)
         addPlain(FIELD_BANK_NAME, cardData.bankName)
+        addPlain(FIELD_BANK_BRANCH, cardData.bankBranch)
         addPlain(FIELD_CARD_TYPE, cardData.cardType.name)
         addPlain(FIELD_BILLING_ADDRESS, billingAddressDisplay)
         addPlain(FIELD_BRAND, cardData.brand)
@@ -6338,6 +6340,7 @@ class KeePassKdbxService(
             expiryYear = expiryYear.ifBlank { fallbackExpiry.second },
             cvv = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_CARD_CVV, "CardCVV", "CVV", "CVC"),
             bankName = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_BANK_NAME),
+            bankBranch = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_BANK_BRANCH),
             cardType = parseKeePassCardType(getFieldValueIgnoreCase(entry, resolutionContext, FIELD_CARD_TYPE)),
             billingAddress = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_BILLING_ADDRESS),
             brand = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_BRAND),
@@ -6361,6 +6364,7 @@ class KeePassKdbxService(
             data.expiryYear,
             data.cvv,
             data.bankName,
+            data.bankBranch,
             data.billingAddress,
             data.brand,
             data.nickname,
@@ -6460,6 +6464,7 @@ class KeePassKdbxService(
             "CVV",
             "CVC",
             FIELD_BANK_NAME,
+            FIELD_BANK_BRANCH,
             FIELD_CARD_TYPE,
             FIELD_BILLING_ADDRESS,
             FIELD_BRAND,

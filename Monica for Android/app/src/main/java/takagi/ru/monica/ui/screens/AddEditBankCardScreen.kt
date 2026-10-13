@@ -153,6 +153,7 @@ fun AddEditBankCardScreen(
     var expiryYear by rememberSaveable { mutableStateOf("") }
     var cvv by rememberSaveable { mutableStateOf("") }
     var bankName by rememberSaveable { mutableStateOf("") }
+    var bankBranch by rememberSaveable { mutableStateOf("") }
     var cardType by rememberSaveable { mutableStateOf(CardType.DEBIT) }
     var brand by rememberSaveable { mutableStateOf("") }
     var nickname by rememberSaveable { mutableStateOf("") }
@@ -417,6 +418,7 @@ fun AddEditBankCardScreen(
                     expiryYear = data.expiryYear
                     cvv = data.cvv
                     bankName = data.bankName
+                    bankBranch = data.bankBranch
                     cardType = data.cardType
                     brand = data.brand
                     nickname = data.nickname
@@ -459,6 +461,7 @@ fun AddEditBankCardScreen(
             expiryYear = ""
             cvv = ""
             bankName = ""
+            bankBranch = ""
             cardType = CardType.DEBIT
             brand = ""
             nickname = ""
@@ -560,6 +563,7 @@ fun AddEditBankCardScreen(
             expiryYear = expiryYear,
             cvv = cvv,
             bankName = bankName,
+            bankBranch = bankBranch,
             cardType = cardType,
             billingAddress = billingAddressJson,
             brand = brand,
@@ -766,7 +770,7 @@ fun AddEditBankCardScreen(
             InfoCard(title = stringResource(R.string.extended_fields_title)) {
                 takagi.ru.monica.ui.components.EntryOptionalFields(
                     specs = takagi.ru.monica.ui.components.EntrySupplementalSpecs.payment.filterNot {
-                        it.key in setOf("bankName", "cardType", "billingAddress")
+                        it.key in setOf("bankName", "bankBranch", "cardType", "billingAddress")
                     },
                     values = mapOf(
                         "brand" to brand,
@@ -930,6 +934,18 @@ fun AddEditBankCardScreen(
                         placeholder = { Text(stringResource(R.string.bank_name_example)) },
                         leadingIcon = { Icon(Icons.Default.AccountBalance, contentDescription = null) },
                         modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    SuggestedOutlinedTextField(
+                        suggestionField = CommonSuggestionField.BANK_BRANCH,
+                        value = bankBranch,
+                        onValueChange = { bankBranch = it },
+                        label = { Text(stringResource(R.string.bank_branch)) },
+                        placeholder = { Text(stringResource(R.string.bank_branch_example)) },
+                        leadingIcon = { Icon(Icons.Default.AccountBalance, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth().testTag("bank_branch"),
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp)
                     )

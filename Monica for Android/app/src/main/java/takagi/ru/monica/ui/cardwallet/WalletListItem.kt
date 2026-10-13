@@ -113,6 +113,7 @@ fun SecureItem.toBillingAddressWalletListItem(addressData: BillingAddressData): 
 private fun BankCardData.matchesBankCardSearch(query: String): Boolean =
     cardNumber.contains(query, ignoreCase = true) ||
         bankName.contains(query, ignoreCase = true) ||
+        bankBranch.contains(query, ignoreCase = true) ||
         cardholderName.contains(query, ignoreCase = true) ||
         nickname.contains(query, ignoreCase = true) ||
         brand.contains(query, ignoreCase = true)

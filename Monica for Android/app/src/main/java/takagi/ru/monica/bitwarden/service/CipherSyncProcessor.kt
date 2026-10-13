@@ -59,6 +59,7 @@ class CipherSyncProcessor(
         )
         private val LEGACY_CARD_FIELD_NAMES = setOf(
             "monica_bank_name",
+            "monica_bank_branch",
             "monica_card_type",
             "monica_billing_address",
             "monica_nickname",
@@ -75,6 +76,7 @@ class CipherSyncProcessor(
         )
         private val READABLE_CARD_FIELD_NAMES = setOf(
             "bank name",
+            "bank branch",
             "card type",
             "billing address",
             "nickname",
@@ -1104,6 +1106,7 @@ class CipherSyncProcessor(
             expiryYear = expYear,
             cvv = cvv,
             bankName = fieldMap.valueByNames("Bank Name", "monica_bank_name"),
+            bankBranch = fieldMap.valueByNames("Bank Branch", "monica_bank_branch"),
             cardType = parseCardType(fieldMap.valueByNames("Card Type", "monica_card_type")),
             billingAddress = resolveSyncedCardBillingAddress(existingCardData, remoteBillingAddress),
             brand = brand,
