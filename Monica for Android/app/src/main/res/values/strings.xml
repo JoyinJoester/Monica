@@ -4705,4 +4705,7 @@
     <string name="device_sync_passkey_continue">Understand and continue</string>
     <string name="bank_branch">Bank branch</string>
     <string name="bank_branch_example">Example: ICBC Beijing Haidian Branch</string>
+    <string name="import_type_csv_bitwarden_auth_title">Bitwarden Auth.</string>
+    <string name="import_type_csv_bitwarden_auth_desc">Import standalone authenticators from Bitwarden Authenticator</string>
+    <string name="import_type_csv_bitwarden_auth_file_hint">Select a Bitwarden Authenticator .csv file</string>
 </resources>

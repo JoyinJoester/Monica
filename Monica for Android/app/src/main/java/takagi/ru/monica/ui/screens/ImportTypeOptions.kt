@@ -80,6 +80,13 @@ fun csvImportTypeOptions(): List<ImportTypeInfo> {
             fileHint = stringResource(R.string.import_type_csv_bitwarden_file_hint)
         ),
         ImportTypeInfo(
+            key = "bitwarden_authenticator_csv",
+            icon = Icons.Default.Security,
+            title = stringResource(R.string.import_type_csv_bitwarden_auth_title),
+            description = stringResource(R.string.import_type_csv_bitwarden_auth_desc),
+            fileHint = stringResource(R.string.import_type_csv_bitwarden_auth_file_hint)
+        ),
+        ImportTypeInfo(
             key = "proton_pass_csv",
             icon = Icons.Default.Security,
             title = stringResource(R.string.import_type_csv_proton_pass_title),

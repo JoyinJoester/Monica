@@ -127,6 +127,9 @@ fun ImportDataScreen(
     onImportKdbx: suspend (Uri, String, Uri?) -> Result<Int> = { _, _, _ -> Result.failure(Exception("Not implemented")) },  // KDBX导入
     onImportKeePassCsv: suspend (Uri) -> Result<Int> = onImport,  // KeePass CSV导入
     onImportBitwardenCsv: suspend (Uri) -> Result<Int> = onImport,  // Bitwarden CSV导入
+    onImportBitwardenAuthenticatorCsv: suspend (Uri) -> Result<Int> = {
+        Result.failure(IllegalStateException("Bitwarden Authenticator import is unavailable"))
+    },
     onImportProtonPassCsv: suspend (Uri) -> Result<Int> = onImport,  // Proton Pass CSV导入
     onImportChromeCsv: suspend (Uri) -> Result<Int> = onImport,  // Chrome CSV导入
     onImportPasswordKeyboardCsv: suspend (
@@ -501,6 +504,11 @@ fun ImportDataScreen(
                                                 }
                                                 "bitwarden_csv" -> {
                                                     val result = backgroundImporter.run(onImportBitwardenCsv, uri)
+                                                    localImporting = false
+                                                    handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                }
+                                                "bitwarden_authenticator_csv" -> {
+                                                    val result = backgroundImporter.run(onImportBitwardenAuthenticatorCsv, uri)
                                                     localImporting = false
                                                     handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
                                                 }

@@ -81,6 +81,22 @@ class DataExportImportManager(private val context: Context) {
      */
     data class CsvImportResult(val items: List<ExportItem>, val rejectedCount: Int)
 
+    suspend fun importBitwardenAuthenticatorCsv(inputUri: Uri): Result<CsvImportResult> = withContext(Dispatchers.IO) {
+        try {
+            val input = context.contentResolver.openInputStream(inputUri)
+                ?: return@withContext Result.failure(Exception(strings.get(R.string.import_csv_file_unreadable)))
+            val report = input.bufferedReader(Charsets.UTF_8).use(BitwardenAuthenticatorCsv::read)
+            if (report.items.isEmpty()) {
+                Result.failure(Exception(strings.get(R.string.import_csv_no_data_found)))
+            } else Result.success(report)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Do not include source rows, OTP URIs or secrets in diagnostics.
+            Result.failure(Exception(strings.get(R.string.import_csv_invalid_format)))
+        }
+    }
+
     suspend fun importData(
         inputUri: Uri,
         formatHint: CsvFormat? = null,

@@ -533,6 +533,14 @@ class DataExportImportViewModel(
         return importData(inputUri, DataExportImportManager.CsvFormat.BITWARDEN_PASSWORD, destination = destination)
     }
 
+    suspend fun importBitwardenAuthenticatorCsv(
+        inputUri: Uri,
+        destination: ImportDestination = ImportDestination.Local,
+    ): Result<Int> = targetedImport {
+        val report = exportManager.importBitwardenAuthenticatorCsv(inputUri).getOrThrow()
+        targetedImporter.apply(csvImportContent(report.items), destination, parseFailures = report.rejectedCount)
+    }
+
     /**
      * 导入 Proton Pass CSV 文件
      */
