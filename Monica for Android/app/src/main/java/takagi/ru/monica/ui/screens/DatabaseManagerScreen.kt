@@ -4,8 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,11 +16,9 @@ import androidx.compose.runtime.saveable.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -40,6 +36,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
+import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.credentialexchange.*
 import takagi.ru.monica.repository.*
 import takagi.ru.monica.security.SessionManager
@@ -47,32 +44,11 @@ import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.MdbxViewModel
 import java.util.Locale
 
-@Stable
-internal class DatabaseManagerPane(initial: String? = null) {
-    var databaseKey by mutableStateOf(initial)
-    var folderId by mutableStateOf<String?>(null)
-    var query by mutableStateOf("")
-    var search by mutableStateOf(false)
-    var descending by mutableStateOf(false)
-    var selected by mutableStateOf(emptySet<String>())
-    var snapshot by mutableStateOf<DatabaseManagerSnapshot?>(null)
-    var error by mutableStateOf<String?>(null)
-    var loading by mutableStateOf(false)
-    val location get() = databaseKey?.let { DatabaseManagerLocation(ImportDestination.fromKey(it), folderId) }
-    fun navigate(key: String?, folder: String? = null) {
-        databaseKey = key; folderId = folder; query = ""; selected = emptySet(); error = null
-    }
-    companion object {
-        val Saver = listSaver<DatabaseManagerPane, Any>(save = {
-            listOf(it.databaseKey.orEmpty(), it.folderId.orEmpty(), it.query, it.search, it.descending, it.selected.toList())
-        }, restore = {
-            DatabaseManagerPane((it[0] as String).ifBlank { null }).apply {
-                folderId = (it[1] as String).ifBlank { null }; query = it[2] as String; search = it[3] as Boolean
-                descending = it[4] as Boolean; selected = (it[5] as List<*>).filterIsInstance<String>().toSet()
-            }
-        })
-    }
-}
+private data class ManagerActionRequest(val pane: DatabaseManagerPane, val paneIndex: Int,
+    val location: DatabaseManagerLocation, val ids: Set<String>, val rows: List<MdbxStructureNode>,
+    val title: String, val revision: String)
+private data class ManagerTransferRequest(val source: ManagerActionRequest, val target: DatabaseManagerLocation,
+    val targetTitle: String, val targetPath: String, val copy: Boolean)
 
 private data class ManagerNameRequest(val location: DatabaseManagerLocation, val row: MdbxStructureNode? = null)
 
@@ -98,7 +74,8 @@ internal fun DatabaseManagerScreen(initialDatabaseKey: String?, mdbxViewModel: M
     var nameRequest by remember { mutableStateOf<ManagerNameRequest?>(null) }
     var report by remember { mutableStateOf<DatabaseManagerReport?>(null) }
     var detail by remember { mutableStateOf<Pair<DatabaseManagerLocation, MdbxStructureNode>?>(null) }
-    var transferCopy by remember { mutableStateOf<Boolean?>(null) }
+    var transferRequest by remember { mutableStateOf<ManagerTransferRequest?>(null) }
+    var actionRequest by remember { mutableStateOf<ManagerActionRequest?>(null) }
     val scope = rememberCoroutineScope()
     val unlocked by SessionManager.isUnlocked.collectAsState()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -106,13 +83,13 @@ internal fun DatabaseManagerScreen(initialDatabaseKey: String?, mdbxViewModel: M
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, _ ->
             foreground = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-            if (!foreground) { left.snapshot = null; right.snapshot = null; detail = null; nameRequest = null; transferCopy = null; report = null }
+            if (!foreground) { left.snapshot = null; right.snapshot = null; detail = null; nameRequest = null; transferRequest = null; actionRequest = null; report = null }
         }
         lifecycle.addObserver(observer); onDispose { lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(revision, foreground, unlocked) {
         if (foreground && unlocked) stores = repo.stores() else {
-            stores = emptyList(); detail = null; nameRequest = null; transferCopy = null; report = null
+            stores = emptyList(); detail = null; nameRequest = null; transferRequest = null; actionRequest = null; report = null
         }
     }
     listOf(left, right).forEach { pane ->
@@ -151,13 +128,33 @@ internal fun DatabaseManagerScreen(initialDatabaseKey: String?, mdbxViewModel: M
         it.id == current.location?.database?.mdbxId && (it.tigaModeEnum == takagi.ru.monica.data.MdbxTigaMode.GLITTER ||
             takagi.ru.monica.repository.MdbxClientModePolicy.isEnvelope(it.encryptedPassword))
     }
-    // Browsing the destination must not discard the opposite pane's transfer selection.
-    val transferSource = if (databaseManagerSourcePane(active, left.selected.size, right.selected.size, twoPanes) == 0) left else right
-    val transferTarget = if (transferSource === left) right else left
+    val other = if (active == 0) right else left
+    fun requestFor(pane: DatabaseManagerPane, paneIndex: Int, ids: Set<String>): ManagerActionRequest? {
+        val location = pane.location ?: return null
+        val snapshot = pane.snapshot ?: return null
+        if (!pane.isReady) return null
+        val rows = snapshot.nodes.filter { it.id in ids }
+        if (rows.size != ids.size) return null
+        return ManagerActionRequest(pane, paneIndex, location, ids.toSet(), rows, snapshot.title, snapshot.revision)
+    }
+    fun chooseDestination(request: ManagerActionRequest) {
+        actionRequest = null
+        request.pane.selected = request.ids; request.pane.selectionMode = true
+        twoPanes = true; active = 1 - request.paneIndex
+    }
+    fun beginTransfer(request: ManagerActionRequest, copy: Boolean) {
+        val target = if (request.paneIndex == 0) right else left
+        val targetLocation = target.location ?: return
+        val targetSnapshot = target.snapshot ?: return
+        if (!twoPanes || !target.isReady || busy) return
+        actionRequest = null
+        transferRequest = ManagerTransferRequest(request, targetLocation, targetSnapshot.title,
+            targetSnapshot.index.ancestors(target.folderId).joinToString(" / ") { it.name }, copy)
+    }
     fun back() {
         when {
             busy -> Unit
-            current.selected.isNotEmpty() -> current.selected = emptySet()
+            current.isSelecting -> current.clearSelection()
             current.query.isNotBlank() -> current.query = ""
             current.search -> current.search = false
             current.folderId != null -> current.navigate(current.databaseKey, current.snapshot?.index?.folders?.get(current.folderId)?.parentId)
@@ -207,42 +204,27 @@ internal fun DatabaseManagerScreen(initialDatabaseKey: String?, mdbxViewModel: M
                 IconButton(onClick = { revision++ }, enabled = !busy) { Icon(Icons.Default.Refresh, stringResource(R.string.refresh)) }
             })
     }, bottomBar = {
-        Surface(tonalElevation = 2.dp) {
-            Column(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
-                if (busy) LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                if (transferSource.selected.isNotEmpty()) {
-                    val other = transferTarget
-                    Text(stringResource(R.string.manager_selection_destination, transferSource.selected.size,
-                        other.snapshot?.index?.folders?.get(other.folderId)?.name ?: other.snapshot?.title ?: stringResource(R.string.manager_choose_destination)),
-                        style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (!twoPanes) FilledTonalButton(onClick = { twoPanes = true }, modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.manager_choose_destination))
-                        } else {
-                            FilledTonalButton(onClick = { transferCopy = true }, enabled = !busy && other.location != null && other.error == null,
-                                modifier = Modifier.weight(1f)) { Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.copy)) }
-                            Button(onClick = { transferCopy = false }, enabled = !busy && other.location != null && other.error == null,
-                                modifier = Modifier.weight(1f)) { Icon(Icons.Default.DriveFileMove, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.move)) }
-                        }
-                    }
-                } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = { current.location?.let { nameRequest = ManagerNameRequest(it) } }, enabled = current.location != null && !busy) {
-                        Icon(Icons.Default.CreateNewFolder, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.keepass_native_create_group))
-                    }
-                    TextButton(onClick = { current.search = !current.search }) { Icon(Icons.Default.Search, stringResource(R.string.search)) }
-                }
-            }
-        }
+        DatabaseManagerActionBar(current, other, active, twoPanes, busy, progress,
+            onBack = { current.goBack() }, onForward = { current.goForward() },
+            onCreate = { current.location?.let { nameRequest = ManagerNameRequest(it) } },
+            onSwitch = { active = 1 - active },
+            onParent = { if (current.folderId != null) current.navigate(current.databaseKey,
+                current.snapshot?.index?.folders?.get(current.folderId)?.parentId) else current.navigate(null) },
+            onCopy = { requestFor(current, active, current.selected)?.let { beginTransfer(it, true) } },
+            onMove = { requestFor(current, active, current.selected)?.let { beginTransfer(it, false) } },
+            onChooseDestination = { requestFor(current, active, current.selected)?.let(::chooseDestination) },
+            onMore = { actionRequest = requestFor(current, active, current.selected) },
+            onClear = { current.clearSelection() })
     }) { padding ->
         if (foreground && unlocked) Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(left, right).take(if (twoPanes) 2 else 1).forEachIndexed { index, pane ->
                 DatabaseManagerPaneContent(pane, stores, index.toString(), twoPanes, active == index, !busy,
                     onActivate = { active = index }, onOpen = { row -> pane.location?.let { detail = it to row } },
-                    onRename = { row -> pane.location?.let { nameRequest = ManagerNameRequest(it, row) } },
                     modifier = Modifier.weight(1f),
                     onCreateFolder = { pane.location?.let { nameRequest = ManagerNameRequest(it) } },
-                    onManageDatabase = { pane.location?.database?.let(onManageDatabase) })
+                    onManageDatabase = { pane.location?.database?.let(onManageDatabase) },
+                    onActions = { ids -> active = index; actionRequest = requestFor(pane, index, ids) })
             }
         }
     }
@@ -256,31 +238,46 @@ internal fun DatabaseManagerScreen(initialDatabaseKey: String?, mdbxViewModel: M
                 }
             }) { Text(stringResource(R.string.save)) } }, dismissButton = { TextButton(onClick = { nameRequest = null }) { Text(stringResource(R.string.cancel)) } })
     }
-    transferCopy?.let { copy ->
-        val sourcePane = transferSource
-        val target = transferTarget
-        AlertDialog(onDismissRequest = { transferCopy = null }, title = { Text(stringResource(if (copy) R.string.copy else R.string.move)) },
-            text = { Text(stringResource(R.string.manager_confirm_transfer, sourcePane.selected.size,
-                sourcePane.snapshot?.title.orEmpty(), target.snapshot?.title.orEmpty(),
-                target.snapshot?.index?.ancestors(target.folderId)?.joinToString(" / ") { it.name }.orEmpty())) },
-            confirmButton = { TextButton(onClick = {
-                transferCopy = null
-                val from = sourcePane.location ?: return@TextButton
-                val to = target.location ?: return@TextButton
-                val selected = sourcePane.selected
-                val observedRevision = sourcePane.snapshot?.revision
+    actionRequest?.takeIf { foreground && unlocked }?.let { request ->
+        val target = if (request.paneIndex == 0) right else left
+        DatabaseManagerActionsSheet(request.title, request.paneIndex, request.rows, twoPanes,
+            canTransfer = twoPanes && target.isReady && !busy,
+            onDismiss = { actionRequest = null },
+            onCopy = { beginTransfer(request, true) }, onMove = { beginTransfer(request, false) },
+            onChooseDestination = { chooseDestination(request) },
+            onOpen = {
+                actionRequest = null
+                request.rows.singleOrNull()?.let { row ->
+                    if (row.type == MdbxStructureNodeType.FOLDER) request.pane.navigate(request.location.database.key, row.id)
+                    else detail = request.location to row
+                }
+            },
+            onRename = { actionRequest = null; request.rows.singleOrNull()?.let { nameRequest = ManagerNameRequest(request.location, it) } },
+            onSelect = { actionRequest = null; request.rows.singleOrNull()?.let { request.pane.toggleSelection(it.id) } },
+            onSelectAll = { actionRequest = null; request.pane.selectAll(request.pane.visibleIds) },
+            onClear = { actionRequest = null; request.pane.clearSelection() })
+    }
+    transferRequest?.let { request ->
+        val source = request.source
+        AlertDialog(onDismissRequest = { transferRequest = null }, title = { Text(stringResource(if (request.copy) R.string.copy else R.string.move)) },
+            text = { Text(stringResource(R.string.manager_confirm_transfer, source.ids.size,
+                source.title, request.targetTitle, request.targetPath)) },
+            confirmButton = { TextButton(modifier = Modifier.testTag("manager-confirm-transfer"), onClick = {
+                transferRequest = null
                 busy = true; progress = 0f
                 scope.launch {
                     try {
-                        report = repo.transfer(from, to, selected, copy, observedRevision) { done, total -> progress = done.toFloat() / total.coerceAtLeast(1) }
-                        sourcePane.selected = emptySet()
-                        refreshDatabases(from.database, to.database)
+                        report = repo.transfer(source.location, request.target, source.ids, request.copy, source.revision) { done, total ->
+                            progress = done.toFloat() / total.coerceAtLeast(1)
+                        }
+                        source.pane.clearSelection()
+                        refreshDatabases(source.location.database, request.target.database)
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (error: Exception) { report = DatabaseManagerReport(0, listOf(DatabaseManagerFailure("", error.message.orEmpty()))) }
                     finally { busy = false; revision++ }
                 }
-            }) { Text(stringResource(if (copy) R.string.copy else R.string.move)) } },
-            dismissButton = { TextButton(onClick = { transferCopy = null }) { Text(stringResource(R.string.cancel)) } })
+            }) { Text(stringResource(if (request.copy) R.string.copy else R.string.move)) } },
+            dismissButton = { TextButton(onClick = { transferRequest = null }) { Text(stringResource(R.string.cancel)) } })
     }
     report?.takeIf { foreground && unlocked }?.let { result ->
         AlertDialog(onDismissRequest = { report = null }, title = { Text(stringResource(R.string.manager_result)) },
@@ -301,8 +298,9 @@ internal fun DatabaseManagerScreen(initialDatabaseKey: String?, mdbxViewModel: M
 @Composable
 internal fun DatabaseManagerPaneContent(pane: DatabaseManagerPane, stores: List<DatabaseManagerStore>, paneId: String,
     compact: Boolean, active: Boolean, enabled: Boolean, onActivate: () -> Unit,
-    onOpen: (MdbxStructureNode) -> Unit, onRename: (MdbxStructureNode) -> Unit, modifier: Modifier = Modifier,
-    onCreateFolder: () -> Unit = {}, onManageDatabase: () -> Unit = {}) {
+    onOpen: (MdbxStructureNode) -> Unit, modifier: Modifier = Modifier,
+    onCreateFolder: () -> Unit = {}, onManageDatabase: () -> Unit = {},
+    onActions: (Set<String>) -> Unit = {}) {
     val index = pane.snapshot?.index
     val folderId = pane.folderId?.takeIf { it in index?.folders.orEmpty() }
     val typeNames = pane.snapshot?.nodes.orEmpty().map { it.metadata }.distinct().associateWith { mdbxBrowserTypeName(it) }
@@ -312,13 +310,17 @@ internal fun DatabaseManagerPaneContent(pane: DatabaseManagerPane, stores: List<
         }).sortedWith(compareBy<MdbxStructureNode> { it.type != MdbxStructureNodeType.FOLDER }
             .thenComparator { a, b -> (if (pane.descending) -1 else 1) * a.name.lowercase(Locale.ROOT).compareTo(b.name.lowercase(Locale.ROOT)) }.thenBy { it.id })
     }
+    LaunchedEffect(visible) { pane.visibleIds = visible.map { it.id } }
     val stateHolder = rememberSaveableStateHolder()
-    Column(modifier.fillMaxHeight().testTag("manager-pane-$paneId")) {
+    val activate by rememberUpdatedState(onActivate)
+    Column(modifier.fillMaxHeight().testTag("manager-pane-$paneId").pointerInput(enabled) {
+        if (enabled) awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial); activate() }
+    }) {
         Surface(shape = RoundedCornerShape(16.dp), color = if (active && compact) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
-            modifier = Modifier.fillMaxWidth(), onClick = onActivate) {
+            modifier = Modifier.fillMaxWidth().testTag("manager-header-$paneId"), enabled = enabled, onClick = onActivate) {
             Row(Modifier.heightIn(min = if (compact) 40.dp else 48.dp).padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(pane.snapshot?.title ?: stringResource(R.string.manager_databases), Modifier.weight(1f),
-                    fontSize = if (compact) 13.sp else 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    fontSize = if (compact) 13.sp else 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Box {
                     var menu by remember { mutableStateOf(false) }
                     IconButton(onClick = { onActivate(); menu = true }, enabled = enabled, modifier = Modifier.size(40.dp)) {
@@ -334,11 +336,11 @@ internal fun DatabaseManagerPaneContent(pane: DatabaseManagerPane, stores: List<
         }
         if (pane.databaseKey != null) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("manager-path-$paneId"), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { onActivate(); pane.navigate(pane.databaseKey) }, modifier = if (compact) Modifier.height(36.dp) else Modifier, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                TextButton(onClick = { onActivate(); pane.navigate(pane.databaseKey) }, enabled = enabled, modifier = if (compact) Modifier.height(36.dp) else Modifier, contentPadding = PaddingValues(horizontal = 4.dp)) {
                     Text("/", fontSize = 12.sp)
                 }
                 index?.ancestors(folderId).orEmpty().forEach { folder ->
-                    TextButton(onClick = { onActivate(); pane.navigate(pane.databaseKey, folder.id) }, modifier = if (compact) Modifier.height(36.dp) else Modifier, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                    TextButton(onClick = { onActivate(); pane.navigate(pane.databaseKey, folder.id) }, enabled = enabled, modifier = if (compact) Modifier.height(36.dp) else Modifier, contentPadding = PaddingValues(horizontal = 4.dp)) {
                         Text(folder.name, fontSize = 12.sp, maxLines = 1)
                     }
                 }
@@ -348,19 +350,19 @@ internal fun DatabaseManagerPaneContent(pane: DatabaseManagerPane, stores: List<
                 Text(if (compact) "${visible.size} · ✓ ${pane.selected.size}" else selectionDescription,
                     Modifier.weight(1f).semantics { contentDescription = selectionDescription },
                     style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                IconButton(onClick = { onActivate(); pane.selected = if (pane.selected.containsAll(visible.map { it.id })) emptySet() else visible.map { it.id }.toSet() }, modifier = Modifier.size(32.dp), enabled = enabled) {
+                IconButton(onClick = { onActivate(); pane.selectAll(visible.map { it.id }) }, modifier = Modifier.size(32.dp), enabled = enabled) {
                     Icon(Icons.Default.SelectAll, stringResource(R.string.select_all), Modifier.size(18.dp))
                 }
-                IconButton(onClick = { pane.descending = !pane.descending }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Sort, stringResource(R.string.keepass_native_sort), Modifier.size(18.dp)) }
+                IconButton(onClick = { onActivate(); pane.selectionAnchor = null; pane.descending = !pane.descending }, enabled = enabled, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Sort, stringResource(R.string.keepass_native_sort), Modifier.size(18.dp)) }
             }
         }
-        if (pane.search) OutlinedTextField(pane.query, { pane.query = it }, singleLine = true,
+        if (pane.search) OutlinedTextField(pane.query, { onActivate(); pane.clearSelection(); pane.query = it }, singleLine = true, enabled = enabled,
             modifier = Modifier.fillMaxWidth().testTag("manager-search-$paneId"), shape = RoundedCornerShape(16.dp),
             placeholder = { Text(stringResource(R.string.search), fontSize = 12.sp) })
         if (pane.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         pane.error?.let { error ->
             Text(managerFailureText(error), Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = onManageDatabase) { Text(stringResource(R.string.manager_open_database)) }
+            TextButton(onClick = onManageDatabase, enabled = enabled) { Text(stringResource(R.string.manager_open_database)) }
         }
         if (pane.databaseKey == null) LazyColumn(Modifier.weight(1f).testTag("manager-list-$paneId"), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             stores.filter { it.title.contains(pane.query, true) }.groupBy { it.key.kind }.forEach { (kind, databases) ->
@@ -379,109 +381,70 @@ internal fun DatabaseManagerPaneContent(pane: DatabaseManagerPane, stores: List<
             }
         } else stateHolder.SaveableStateProvider("${pane.databaseKey}:$folderId:${pane.query.isNotBlank()}") {
             val state = rememberLazyListState()
-            ManagerEntryList(visible, pane, paneId, compact, enabled, state, onActivate, onOpen, onRename,
+            ManagerEntryList(visible, pane, paneId, compact, enabled, state, onActivate, onOpen, onActions,
                 onParent = { pane.navigate(pane.databaseKey, index?.folders?.get(folderId)?.parentId) }, hasParent = folderId != null,
                 modifier = Modifier.weight(1f))
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ManagerEntryList(rows: List<MdbxStructureNode>, pane: DatabaseManagerPane, paneId: String, compact: Boolean,
     enabled: Boolean, state: LazyListState, onActivate: () -> Unit, onOpen: (MdbxStructureNode) -> Unit,
-    onRename: (MdbxStructureNode) -> Unit, onParent: () -> Unit, hasParent: Boolean, modifier: Modifier = Modifier) {
-    val haptic = LocalHapticFeedback.current
-    var edgeScroll by remember { mutableFloatStateOf(0f) }
-    var dragY by remember { mutableFloatStateOf(0f) }
-    var anchor by remember { mutableIntStateOf(-1) }
-    var initial by remember { mutableStateOf(emptySet<String>()) }
-    var selecting by remember { mutableStateOf(true) }
-    val latestRows by rememberUpdatedState(rows)
-    fun updateAt(y: Float) {
-        val item = state.layoutInfo.visibleItemsInfo.firstOrNull { y >= it.offset && y < it.offset + it.size } ?: return
-        val position = latestRows.indexOfFirst { it.id == item.key }
-        if (anchor >= 0 && position >= 0) pane.selected = databaseManagerSelectionRange(initial, latestRows.map { it.id }, anchor, position, selecting)
-    }
-    LaunchedEffect(edgeScroll) {
-        while (edgeScroll != 0f) { withFrameNanos { }; state.scrollBy(edgeScroll); updateAt(dragY) }
-    }
-    val selectLabel = stringResource(R.string.select_all)
-    BoxWithConstraints(modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))) {
-        val contentWidth = if (compact) maxOf(maxWidth, minOf(360.dp, ((rows.maxOfOrNull { it.name.length } ?: 0) * 6 + 64).dp)) else maxWidth
-        Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState(), enabled = anchor < 0)) {
-            LazyColumn(state = state, userScrollEnabled = anchor < 0 && enabled, modifier = Modifier.width(contentWidth).fillMaxHeight().testTag("manager-list-$paneId")
-                .pointerInput(rows, enabled) {
-                    if (!enabled) return@pointerInput
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val held = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
-                        val position = held.position
-                        val item = state.layoutInfo.visibleItemsInfo.firstOrNull { position.y >= it.offset && position.y < it.offset + it.size }
-                        anchor = rows.indexOfFirst { it.id == item?.key }
-                        if (anchor < 0) return@awaitEachGesture
-                        try {
-                            held.consume()
-                            onActivate(); initial = pane.selected; selecting = rows[anchor].id !in initial
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            dragY = position.y; updateAt(dragY)
-                            while (true) {
-                                // Consume release before the row's clickable handles it, including
-                                // a long press with no movement, so selection is not toggled off.
-                                val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == held.id } ?: break
-                                change.consume()
-                                if (!change.pressed) break
-                                dragY = change.position.y; updateAt(dragY)
-                                edgeScroll = when { dragY < 48 -> -12f; dragY > size.height - 48 -> 12f; else -> 0f }
-                            }
-                        } finally { anchor = -1; edgeScroll = 0f }
-                    }
-                }, verticalArrangement = Arrangement.spacedBy(2.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
-                if (hasParent) item("parent") { TextButton(onClick = { onActivate(); onParent() }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.ArrowUpward, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("..")
-                } }
-                itemsIndexed(rows, key = { _, row -> row.id }) { position, row ->
-                    val selected = row.id in pane.selected
-                    var menu by remember { mutableStateOf(false) }
-                    Surface(shape = settingsSectionItemShape(position, rows.size),
-                        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
-                        modifier = Modifier.fillMaxWidth().testTag("manager-row-$paneId-${row.id}").semantics {
-                            customActions = listOf(CustomAccessibilityAction(selectLabel) {
-                                onActivate(); pane.selected = if (selected) pane.selected - row.id else pane.selected + row.id; true
-                            })
-                        }.clip(settingsSectionItemShape(position, rows.size)).clickable(enabled) {
-                            onActivate()
-                            when {
-                                pane.selected.isNotEmpty() -> pane.selected = if (selected) pane.selected - row.id else pane.selected + row.id
-                                row.type == MdbxStructureNodeType.FOLDER -> pane.navigate(pane.databaseKey, row.id)
-                                else -> onOpen(row)
-                            }
-                        }) {
-                        Row(Modifier.heightIn(min = if (compact) 50.dp else 64.dp).padding(start = 8.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp)) {
-                            Icon(if (selected) Icons.Default.CheckCircle else if (row.type == MdbxStructureNodeType.FOLDER) Icons.Default.Folder else Icons.Default.Description,
-                                null, Modifier.size(if (compact) 20.dp else 24.dp), tint = MaterialTheme.colorScheme.primary)
-                            Column(Modifier.weight(1f)) {
-                                Text(row.name, fontSize = if (compact) 12.sp else 16.sp, lineHeight = if (compact) 16.sp else 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                if (row.type != MdbxStructureNodeType.FOLDER) Text(mdbxBrowserTypeName(row.metadata),
-                                    fontSize = if (compact) 10.sp else 12.sp, lineHeight = if (compact) 14.sp else 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                            }
-                            Box {
-                                IconButton(onClick = { menu = true }, enabled = enabled, modifier = Modifier.size(if (compact) 32.dp else 40.dp)) {
-                                    Icon(Icons.Default.MoreVert, stringResource(R.string.more_options), Modifier.size(18.dp))
-                                }
-                                DropdownMenu(menu, { menu = false }) {
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.rename_category)) }, onClick = { menu = false; onRename(row) })
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.manager_select)) }, onClick = {
-                                        menu = false; onActivate(); pane.selected = if (selected) pane.selected - row.id else pane.selected + row.id
-                                    })
-                                }
-                            }
+    onActions: (Set<String>) -> Unit, onParent: () -> Unit, hasParent: Boolean, modifier: Modifier = Modifier) {
+    val selectLabel = stringResource(R.string.manager_select)
+    val orderedIds = rows.map { it.id }
+    LazyColumn(state = state, userScrollEnabled = enabled,
+        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).testTag("manager-list-$paneId"),
+        verticalArrangement = Arrangement.spacedBy(2.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
+        if (hasParent) item("parent") { TextButton(onClick = { onActivate(); onParent() }, enabled = enabled,
+            modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.ArrowUpward, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("..")
+        } }
+        itemsIndexed(rows, key = { _, row -> row.id }) { position, row ->
+            val selected = row.id in pane.selected
+            val shape = settingsSectionItemShape(position, rows.size)
+            fun actions() { onActivate(); onActions(if (selected) pane.selected else setOf(row.id)) }
+            SwipeActions(onSwipeLeft = {}, onSwipeRight = { onActivate(); pane.swipeSelect(row.id, orderedIds) },
+                enabled = enabled, allowSwipeLeft = false, isSwiped = selected, cardShape = shape) {
+                Surface(shape = shape,
+                    color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+                    modifier = Modifier.fillMaxWidth().testTag("manager-row-$paneId-${row.id}").semantics {
+                        customActions = listOf(CustomAccessibilityAction(selectLabel) {
+                            if (enabled) { onActivate(); pane.toggleSelection(row.id) }
+                            enabled
+                        })
+                    }.clip(shape).combinedClickable(enabled = enabled, onLongClick = ::actions, onClick = {
+                        onActivate()
+                        when {
+                            pane.isSelecting -> pane.toggleSelection(row.id)
+                            row.type == MdbxStructureNodeType.FOLDER -> pane.navigate(pane.databaseKey, row.id)
+                            else -> onOpen(row)
+                        }
+                    })) {
+                    Row(Modifier.heightIn(min = if (compact) 58.dp else 64.dp)
+                        .padding(start = 8.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp)) {
+                        Icon(if (selected) Icons.Default.CheckCircle else if (row.type == MdbxStructureNodeType.FOLDER) Icons.Default.Folder else Icons.Default.Description,
+                            null, Modifier.size(if (compact) 20.dp else 24.dp), tint = MaterialTheme.colorScheme.primary)
+                        Column(Modifier.weight(1f)) {
+                            Text(row.name, modifier = Modifier.testTag("manager-title-$paneId-${row.id}"),
+                                fontSize = if (compact) 12.sp else 16.sp, lineHeight = if (compact) 16.sp else 24.sp,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            if (row.type != MdbxStructureNodeType.FOLDER) Text(mdbxBrowserTypeName(row.metadata),
+                                fontSize = if (compact) 10.sp else 12.sp, lineHeight = if (compact) 14.sp else 18.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                        IconButton(onClick = ::actions, enabled = enabled,
+                            modifier = Modifier.size(if (compact) 32.dp else 40.dp).testTag("manager-menu-$paneId-${row.id}")) {
+                            Icon(Icons.Default.MoreVert, stringResource(R.string.more_options), Modifier.size(18.dp))
                         }
                     }
                 }
-                if (rows.isEmpty()) item { Text(stringResource(R.string.keepass_native_empty_group), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall) }
             }
         }
+        if (rows.isEmpty()) item { Text(stringResource(R.string.keepass_native_empty_group), Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall) }
     }
 }
 

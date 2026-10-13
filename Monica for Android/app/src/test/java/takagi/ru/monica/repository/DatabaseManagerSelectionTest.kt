@@ -4,12 +4,6 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DatabaseManagerSelectionTest {
-    @Test fun navigatingTheOppositePaneRetainsTheSelectedSource() {
-        assertEquals(0, databaseManagerSourcePane(active = 1, leftSelected = 3, rightSelected = 0, dual = true))
-        assertEquals(1, databaseManagerSourcePane(active = 0, leftSelected = 0, rightSelected = 2, dual = true))
-        assertEquals(1, databaseManagerSourcePane(active = 1, leftSelected = 3, rightSelected = 2, dual = true))
-        assertEquals(0, databaseManagerSourcePane(active = 0, leftSelected = 0, rightSelected = 2, dual = false))
-    }
     private fun row(id: String, parent: String? = null, folder: Boolean = false) = MdbxStructureNode(id, parent, id,
         if (folder) MdbxStructureNodeType.FOLDER else MdbxStructureNodeType.ENTRY, id, MdbxStructureNodeStatus.UNCHANGED, 0, "")
     @Test fun swipeRangeCanReverseWithoutTogglingAlreadySelectedRows() {

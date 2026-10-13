@@ -16,13 +16,6 @@ internal class DatabaseManagerTransferContext {
     var portableSnapshotRevision: String? = null
 }
 
-internal fun databaseManagerSourcePane(active: Int, leftSelected: Int, rightSelected: Int, dual: Boolean): Int = when {
-    active == 1 && dual && rightSelected > 0 -> 1
-    leftSelected > 0 -> 0
-    dual && rightSelected > 0 -> 1
-    else -> active.takeIf { dual } ?: 0
-}
-
 /** Normalize a range without toggling rows repeatedly when the pointer crosses them twice. */
 internal fun databaseManagerSelectionRange(initial: Set<String>, rows: List<String>, start: Int, end: Int,
     select: Boolean): Set<String> {

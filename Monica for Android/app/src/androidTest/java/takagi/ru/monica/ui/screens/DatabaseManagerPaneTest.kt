@@ -24,13 +24,17 @@ import takagi.ru.monica.repository.*
 
 class DatabaseManagerPaneTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
-    @Before fun wake() { compose.activity.setShowWhenLocked(true); compose.activity.setTurnScreenOn(true) }
+    @Before fun wake() {
+        compose.activity.setShowWhenLocked(true); compose.activity.setTurnScreenOn(true)
+        compose.runOnUiThread { compose.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+        compose.waitUntil(10_000) { compose.activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT }
+    }
     private val database = ImportDestination(ImportDestinationKind.MDBX, 123)
     private val nodes = listOf(row("folder", null, true)) + (0..120).map { row("entry%03d".format(it), "folder") }
     private fun row(id: String, parent: String? = null, folder: Boolean = false) = MdbxStructureNode(id, parent, id,
         if (folder) MdbxStructureNodeType.FOLDER else MdbxStructureNodeType.ENTRY, id, MdbxStructureNodeStatus.UNCHANGED, 0, "login")
     private fun pane() = DatabaseManagerPane(database.key).apply { snapshot = DatabaseManagerSnapshot(DatabaseManagerLocation(database), "Synthetic vault", nodes) }
-    @Test fun actualScreenCopiesSelectedEntryIntoTheOppositeDatabaseFolder() = runBlocking<Unit> {
+    @Test fun actualScreenCopiesSelectionRightAndMovesOneItemLeftIntoFocusedFolders() = runBlocking<Unit> {
         val fixture = TransferFixture()
         val app = fixture.context.applicationContext as android.app.Application
         val db = fixture.db
@@ -41,50 +45,83 @@ class DatabaseManagerPaneTest {
         try {
             val repo = DatabaseManagerRepository(fixture.context)
             val source = fixture.mdbx(); val target = fixture.keepass()
-            fixture.passwords.insertPasswordEntry(takagi.ru.monica.data.PasswordEntry(title = fixture.prefix,
-                website = "", username = "synthetic", password = fixture.security.encryptData("never show this secret"), mdbxDatabaseId = source.databaseId))
-            val id = repo.mdbx.nativeBrowser(source.databaseId).objects.keys.single()
+            repeat(2) { index -> fixture.passwords.insertPasswordEntry(takagi.ru.monica.data.PasswordEntry(title = "${fixture.prefix}-$index",
+                website = "", username = "synthetic", password = fixture.security.encryptData("never show this secret"), mdbxDatabaseId = source.databaseId)) }
+            val ids = repo.mdbx.nativeBrowser(source.databaseId).objects.keys.toList()
+            val id = ids.first()
             val folder = repo.createFolder(DatabaseManagerLocation(target), "Target folder")
             compose.setContent { if (show) MaterialTheme { DatabaseManagerScreen(source.key, mdbxVm, keepassVm, {}) } }
             compose.waitUntil(30_000) { compose.onAllNodesWithTag("manager-row-0-$id").fetchSemanticsNodes().isNotEmpty() }
             if (compose.onAllNodesWithTag("manager-pane-1").fetchSemanticsNodes().isEmpty()) {
                 compose.onNodeWithContentDescription(fixture.context.getString(takagi.ru.monica.R.string.manager_dual)).performClick()
             }
-            compose.onNodeWithTag("manager-row-0-$id").performTouchInput { down(Offset(30f, height / 2f)) }
-            compose.waitForIdle(); compose.mainClock.advanceTimeBy(900)
-            compose.waitUntil(3000) { compose.onAllNodesWithText(fixture.context.getString(takagi.ru.monica.R.string.copy)).fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithTag("manager-row-0-$id").performTouchInput { up() }
+            compose.onNodeWithTag("manager-row-0-${ids.first()}").performTouchInput { swipeRight() }
+            compose.onNodeWithTag("manager-row-0-${ids.last()}").performTouchInput { swipeRight() }
+            compose.onNodeWithTag("manager-action-destination").assertIsEnabled()
             compose.onNodeWithTag("manager-list-1").performScrollToKey(target.key)
             compose.onNodeWithTag("manager-store-1-${target.key}").performClick()
             compose.waitUntil(30_000) { compose.onAllNodesWithTag("manager-row-1-$folder").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("manager-row-1-$folder").performClick()
             compose.onNodeWithText("never show this secret").assertDoesNotExist()
             screenshot("screen-transfer")
-            val copy = fixture.context.getString(takagi.ru.monica.R.string.copy)
-            compose.onNodeWithText(copy).assertIsEnabled().performClick()
-            compose.onNode(hasText(copy) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+            compose.onNodeWithTag("manager-action-back").performClick()
+            compose.onNodeWithTag("manager-row-1-$folder").assertIsDisplayed()
+            compose.onNodeWithTag("manager-action-forward").performClick()
+            compose.onNodeWithTag("manager-row-1-$folder").assertDoesNotExist()
+            // Browsing the destination activates it, without making the left selection its source.
+            compose.onNodeWithTag("manager-action-copy").assertDoesNotExist()
+            compose.onNodeWithTag("manager-header-0").performClick()
+            screenshot("focused-selection")
+            compose.onNodeWithTag("manager-action-copy").assertIsEnabled().performClick()
+            compose.onNodeWithTag("manager-confirm-transfer").performClick()
             compose.waitUntil(30_000) { compose.onAllNodesWithText(fixture.context.getString(takagi.ru.monica.R.string.manager_result)).fetchSemanticsNodes().isNotEmpty() }
-            assertEquals(fixture.prefix, repo.keepass.openNativeBrowser(target.databaseId).getOrThrow().entries.single().title)
-            assertTrue(repo.mdbx.nativeBrowser(source.databaseId).objects.containsKey(id))
+            val targetEntries = repo.keepass.openNativeBrowser(target.databaseId).getOrThrow().entries
+            assertEquals(compose.onNode(isDialog()).printToString(), setOf("${fixture.prefix}-0", "${fixture.prefix}-1"), targetEntries.map { it.title }.toSet())
+            assertTrue(targetEntries.all { it.parentGroup.groupUuid.toString() == folder })
+            assertTrue(repo.mdbx.nativeBrowser(source.databaseId).objects.keys.containsAll(ids))
+            compose.onNode(hasText(fixture.context.getString(takagi.ru.monica.R.string.close)) and hasAnyAncestor(isDialog())).performClick()
+            // A right-pane single-item menu transfers in the opposite direction, independent of left history.
+            val rightId = targetEntries.first().identity.entryUuid.toString()
+            compose.waitUntil(30_000) { compose.onAllNodesWithTag("manager-row-1-$rightId").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("manager-row-1-$rightId").performTouchInput { longClick() }
+            compose.onNodeWithTag("manager-menu-rename").assertIsDisplayed()
+            screenshot("single-menu")
+            compose.onNodeWithTag("manager-menu-move").assertIsEnabled().performClick()
+            compose.onNodeWithTag("manager-confirm-transfer").performClick()
+            compose.waitUntil(30_000) { compose.onAllNodesWithText(fixture.context.getString(takagi.ru.monica.R.string.manager_result)).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText(fixture.context.getString(takagi.ru.monica.R.string.manager_result_count, 1, 0)).assertIsDisplayed()
+            assertEquals(3, repo.mdbx.nativeBrowser(source.databaseId).objects.size)
+            val remaining = repo.keepass.openNativeBrowser(target.databaseId).getOrThrow().entries
+            assertEquals(1, remaining.count { it.parentGroup.groupUuid.toString() == folder })
+            assertTrue(remaining.single { it.identity.entryUuid.toString() == rightId }.isInRecycleBin)
         } finally {
             compose.runOnIdle { show = false }
             mdbxVm.viewModelScope.cancel(); keepassVm.viewModelScope.cancel()
             fixture.close()
         }
     }
-    @Test fun horizontalScrollingDoesNotMoveTheOppositePane() {
+    @Test fun longTitlesWrapWithinPaneAndKeepMenuVisibleWithoutHorizontalScrolling() {
         val left = pane(); val right = pane()
-        left.snapshot = DatabaseManagerSnapshot(DatabaseManagerLocation(database), "Long names", listOf(row("long").copy(name = "A long original entry title that needs independent horizontal scrolling to read")))
+        left.snapshot = DatabaseManagerSnapshot(DatabaseManagerLocation(database), "Long names",
+            listOf(row("long").copy(name = "A long original entry title that must wrap into at most two lines within its pane")))
         compose.setContent { MaterialTheme { Surface { Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DatabaseManagerPaneContent(left, emptyList(), "left", true, true, true, {}, {}, {}, Modifier.weight(1f))
-            DatabaseManagerPaneContent(right, emptyList(), "right", true, false, true, {}, {}, {}, Modifier.weight(1f))
+            DatabaseManagerPaneContent(left, emptyList(), "left", true, true, true, {}, {}, Modifier.weight(1f))
+            DatabaseManagerPaneContent(right, emptyList(), "right", true, false, true, {}, {}, Modifier.weight(1f))
         } } } }
-        val initialLeft = compose.onNodeWithTag("manager-row-left-long").getUnclippedBoundsInRoot().left
-        val initialRight = compose.onNodeWithTag("manager-row-right-folder").getUnclippedBoundsInRoot().left
-        compose.onNodeWithTag("manager-list-left").performTouchInput { swipeLeft(durationMillis = 250) }
-        assertTrue(compose.onNodeWithTag("manager-row-left-long").getUnclippedBoundsInRoot().left < initialLeft)
-        assertEquals(initialRight, compose.onNodeWithTag("manager-row-right-folder").getUnclippedBoundsInRoot().left)
-        screenshot("horizontal")
+        val paneBounds = compose.onNodeWithTag("manager-pane-left").getUnclippedBoundsInRoot()
+        val rowBounds = compose.onNodeWithTag("manager-row-left-long").getUnclippedBoundsInRoot()
+        assertEquals(paneBounds.right - paneBounds.left, rowBounds.right - rowBounds.left)
+        compose.onNodeWithTag("manager-menu-left-long").assertIsDisplayed()
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithTag("manager-title-left-long", useUnmergedTree = true)
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertEquals(2, layouts.single().lineCount)
+        assertTrue(rowBounds.bottom - rowBounds.top < 100.dp)
+        val initialRight = compose.onNodeWithTag("manager-row-right-folder").getUnclippedBoundsInRoot()
+        compose.onNodeWithTag("manager-list-left").performTouchInput { swipeLeft() }
+        assertEquals(rowBounds.left, compose.onNodeWithTag("manager-row-left-long").getUnclippedBoundsInRoot().left)
+        assertEquals(initialRight, compose.onNodeWithTag("manager-row-right-folder").getUnclippedBoundsInRoot())
+        screenshot("bounded-titles")
     }
 
     @Test fun landscapeDarkLargeTextKeepsBothPathsIndependent() {
@@ -94,8 +131,8 @@ class DatabaseManagerPaneTest {
         compose.setContent {
             CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(androidx.compose.ui.platform.LocalDensity.current.density, 1.4f)) {
                 MaterialTheme(colorScheme = darkColorScheme()) { Surface { Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DatabaseManagerPaneContent(left, emptyList(), "left", true, false, true, {}, {}, {}, Modifier.weight(1f))
-                    DatabaseManagerPaneContent(right, emptyList(), "right", true, true, true, {}, {}, {}, Modifier.weight(1f))
+                    DatabaseManagerPaneContent(left, emptyList(), "left", true, false, true, {}, {}, Modifier.weight(1f))
+                    DatabaseManagerPaneContent(right, emptyList(), "right", true, true, true, {}, {}, Modifier.weight(1f))
                 } } }
             }
         }
@@ -117,8 +154,8 @@ class DatabaseManagerPaneTest {
     @Test fun dualPanesNavigateAndScrollIndependently() {
         val left = pane(); val right = pane()
         compose.setContent { MaterialTheme { Surface { Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DatabaseManagerPaneContent(left, emptyList(), "left", true, true, true, {}, {}, {}, Modifier.weight(1f))
-            DatabaseManagerPaneContent(right, emptyList(), "right", true, false, true, {}, {}, {}, Modifier.weight(1f))
+            DatabaseManagerPaneContent(left, emptyList(), "left", true, true, true, {}, {}, Modifier.weight(1f))
+            DatabaseManagerPaneContent(right, emptyList(), "right", true, false, true, {}, {}, Modifier.weight(1f))
         } } } }
         compose.onNodeWithTag("manager-row-left-folder").performClick()
         compose.onNodeWithTag("manager-list-left").performScrollToKey("entry100")
@@ -127,25 +164,38 @@ class DatabaseManagerPaneTest {
         compose.runOnIdle { assertEquals("folder", left.folderId); assertNull(right.folderId) }
         screenshot("independent")
     }
-    @Test fun longPressAndVerticalDragSelectRangeWithoutMovingOtherPane() {
+    @Test fun swipeEntersSelectionTapTogglesOnlyOneAndAnotherSwipeSelectsRange() {
         val left = pane().apply { folderId = "folder" }; val right = pane()
+        var opens = 0
         compose.setContent { MaterialTheme { Surface { Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DatabaseManagerPaneContent(left, emptyList(), "left", true, true, true, {}, {}, {}, Modifier.weight(1f))
-            DatabaseManagerPaneContent(right, emptyList(), "right", true, false, true, {}, {}, {}, Modifier.weight(1f))
+            DatabaseManagerPaneContent(left, emptyList(), "left", true, true, true, {}, { opens++ }, Modifier.weight(1f))
+            DatabaseManagerPaneContent(right, emptyList(), "right", true, false, true, {}, {}, Modifier.weight(1f))
         } } } }
-        compose.onNodeWithTag("manager-row-left-entry000").performTouchInput { down(center) }
-        compose.waitForIdle()
-        compose.mainClock.advanceTimeBy(900)
-        compose.waitUntil(3000) { left.selected.isNotEmpty() }
-        compose.onNodeWithTag("manager-row-left-entry000").performTouchInput {
-            moveTo(center + Offset(0f, 280f), delayMillis = 400); up()
-        }
-        compose.runOnIdle {
-            assertTrue("Long-press drag must select a range; count=${left.selected.size}", left.selected.size >= 2)
-            assertTrue(right.selected.isEmpty()); assertNull(right.folderId)
-        }
-        screenshot("selection")
+        compose.onNodeWithTag("manager-row-left-entry000").performTouchInput { swipeRight() }
+        compose.runOnIdle { assertEquals(setOf("entry000"), left.selected) }
+        compose.onNodeWithTag("manager-row-left-entry003").performTouchInput { swipeRight() }
+        compose.runOnIdle { assertEquals((0..3).map { "entry%03d".format(it) }.toSet(), left.selected) }
+        compose.onNodeWithTag("manager-row-left-entry001").performClick()
+        compose.runOnIdle { assertEquals(setOf("entry000", "entry002", "entry003"), left.selected); assertEquals(0, opens) }
+        compose.onNodeWithTag("manager-row-left-entry002").performTouchInput { swipeRight() }
+        compose.runOnIdle { assertEquals(setOf("entry001", "entry002"), left.selected); assertTrue(right.selected.isEmpty()) }
+        screenshot("swipe-selection")
     }
+
+    @Test fun longPressUsesTheTouchedPanesSingleOrMultipleItemsAndNeverOpensThem() {
+        val left = pane().apply { folderId = "folder"; selected = setOf("entry000", "entry001") }
+        val right = pane().apply { folderId = "folder" }
+        var active = -1; var menuIds = emptySet<String>(); var opens = 0
+        compose.setContent { MaterialTheme { Surface { Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DatabaseManagerPaneContent(left, emptyList(), "left", true, true, true, { active = 0 }, { opens++ }, Modifier.weight(1f), onActions = { menuIds = it })
+            DatabaseManagerPaneContent(right, emptyList(), "right", true, false, true, { active = 1 }, { opens++ }, Modifier.weight(1f), onActions = { menuIds = it })
+        } } } }
+        compose.onNodeWithTag("manager-row-left-entry000").performTouchInput { longClick() }
+        compose.runOnIdle { assertEquals(0, active); assertEquals(setOf("entry000", "entry001"), menuIds) }
+        compose.onNodeWithTag("manager-row-right-entry002").performTouchInput { longClick() }
+        compose.runOnIdle { assertEquals(1, active); assertEquals(setOf("entry002"), menuIds); assertEquals(0, opens); assertTrue(right.selected.isEmpty()) }
+    }
+
     @Test fun paneRestorationRetainsItsOwnFolderSearchAndSelection() {
         lateinit var restored: DatabaseManagerPane
         val restorer = StateRestorationTester(compose)
@@ -153,7 +203,7 @@ class DatabaseManagerPaneTest {
             val state = rememberSaveable(saver = DatabaseManagerPane.Saver) { pane() }
             restored = state
             LaunchedEffect(state) { state.snapshot = DatabaseManagerSnapshot(DatabaseManagerLocation(database), "Synthetic vault", nodes) }
-            MaterialTheme { Surface { DatabaseManagerPaneContent(state, emptyList(), "left", true, true, true, {}, {}, {}, Modifier.fillMaxSize()) } }
+            MaterialTheme { Surface { DatabaseManagerPaneContent(state, emptyList(), "left", true, true, true, {}, {}, Modifier.fillMaxSize()) } }
         }
         compose.runOnIdle { restored.folderId = "folder"; restored.query = "entry"; restored.search = true; restored.selected = setOf("entry001", "entry002") }
         restorer.emulateSavedInstanceStateRestore()

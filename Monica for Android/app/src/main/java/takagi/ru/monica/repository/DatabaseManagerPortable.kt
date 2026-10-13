@@ -37,7 +37,7 @@ internal suspend fun managerPreflightPortable(repo: DatabaseManagerRepository, s
             try {
                 check(value.summary.version == 1u && value.labels.isEmpty()) { "This native schema or label cannot be transferred losslessly to another format. Choose an MDBX destination." }
                 val allowed = setOf("kind", "monica_entry_id", "room_id", "password_group_id", "website", "username", "app_package_name", "app_name",
-                    "password_plain", "monica_password_encoding", "notes", "sort_order", "category_id", "mdbx_folder_id", "bound_note_room_id", "bound_note_entry_id",
+                    "password_plain", "monica_password_encoding", "notes", "sort_order", "is_favorite", "created_at", "category_id", "mdbx_folder_id", "bound_note_room_id", "bound_note_entry_id",
                     "login_type", "ssh_key_data", "authenticator_key", "passkey_bindings", "custom_fields", "bitwarden_mode", "keepass_mode",
                     "email", "wifi_metadata", "phone", "address_line", "city", "state", "zip_code", "country", "credit_card_number_plain",
                     "credit_card_holder", "credit_card_expiry", "credit_card_cvv_plain", "item_data", "image_paths", "bound_password_entry_id")

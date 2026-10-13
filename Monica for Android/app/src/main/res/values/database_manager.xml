@@ -15,4 +15,19 @@
     <string name="manager_failure_changed">The data changed or verification failed. The source was retained. Refresh both panes and review the destination before retrying.</string>
     <string name="manager_failure_locked">The database needs to be unlocked or its original file is unavailable. Open it in database settings, then refresh this pane.</string>
     <string name="manager_failure_general">This operation could not complete. Check both panes and the details before retrying: the destination may contain a partial copy.</string>
+    <string name="manager_left_pane">Left pane</string>
+    <string name="manager_right_pane">Right pane</string>
+    <string name="manager_copy_left">← Copy</string>
+    <string name="manager_copy_right">Copy →</string>
+    <string name="manager_move_left">← Move</string>
+    <string name="manager_move_right">Move →</string>
+    <string name="manager_focused_selection">Active: %1$s · %2$d selected</string>
+    <string name="manager_focused_location">Active: %1$s · %2$s</string>
+    <string name="manager_history_back">Back</string>
+    <string name="manager_history_forward">Forward</string>
+    <string name="manager_new_folder_short">New folder</string>
+    <string name="manager_switch_pane">Switch pane</string>
+    <string name="manager_parent">Up</string>
+    <string name="manager_open_item">Open</string>
+    <string name="manager_clear_selection">Clear selection</string>
 </resources>

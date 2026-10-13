@@ -10,6 +10,51 @@ import uniffi.mdbx_ffi.*
 import java.util.UUID
 
 class DatabaseManagerTransferTest {
+    @Test fun nativeFavoriteAndCreationDateTransferWithoutARoomProjection() = runBlocking {
+        val fixture = TransferFixture()
+        try {
+            val source = fixture.mdbx(); val repo = DatabaseManagerRepository(fixture.context)
+            val path = fixture.db.localMdbxDatabaseDao().getDatabaseById(source.databaseId)!!.filePath
+            val logicalId = UUID.randomUUID().toString()
+            val payload = org.json.JSONObject().put("kind", "password").put("monica_entry_id", logicalId)
+                .put("username", "synthetic").put("password_plain", "synthetic").put("is_favorite", true)
+                .put("created_at", 1_700_000_000_000L).toString()
+            val id = openVault(path, "Synthetic transfer fixture password", "manager-test").use { vault ->
+                vault.createObject(Mdbx2VaultSessionExecutor.rootProjectId(vault.info().vaultId), "login", fixture.prefix, payload, 1u).objectId
+            }
+            Mdbx2NativeReadSessions.clear()
+            assertTrue(fixture.importedPasswords(source).isEmpty())
+            val result = repo.transfer(DatabaseManagerLocation(source), DatabaseManagerLocation(ImportDestination.Local), setOf(id), true)
+            assertEquals(result.failures.toString(), 1, result.completed)
+            val copied = fixture.importedPasswords(ImportDestination.Local).single()
+            assertTrue(copied.isFavorite)
+            assertEquals(1_700_000_000_000L, copied.createdAt.time)
+            assertNotNull(repo.mdbx.nativeBrowser(source.databaseId).objects[id])
+        } finally { fixture.close() }
+    }
+
+    @Test fun unknownFieldInKnownSchemaStillBlocksPortableMove() = runBlocking {
+        val fixture = TransferFixture()
+        try {
+            val source = fixture.mdbx(); val repo = DatabaseManagerRepository(fixture.context)
+            val path = fixture.db.localMdbxDatabaseDao().getDatabaseById(source.databaseId)!!.filePath
+            val payload = """{"kind":"password","password_plain":"synthetic","future_secret":"must remain"}"""
+            val id = openVault(path, "Synthetic transfer fixture password", "manager-test").use { vault ->
+                vault.createObject(Mdbx2VaultSessionExecutor.rootProjectId(vault.info().vaultId), "login", fixture.prefix, payload, 1u).objectId
+            }
+            Mdbx2NativeReadSessions.clear()
+            val result = repo.transfer(DatabaseManagerLocation(source), DatabaseManagerLocation(ImportDestination.Local), setOf(id), false)
+            assertEquals(0, result.completed)
+            assertTrue(result.failures.single().reason.contains("fields unknown"))
+            val retained = org.json.JSONObject(repo.mdbx.nativeObject(source.databaseId, id).payload)
+            assertEquals(setOf("kind", "password_plain", "future_secret"), retained.keys().asSequence().toSet())
+            assertEquals("must remain", retained.getString("future_secret"))
+            assertEquals("synthetic", retained.getString("password_plain"))
+            assertEquals("password", retained.getString("kind"))
+            assertTrue(fixture.importedPasswords(ImportDestination.Local).isEmpty())
+        } finally { fixture.close() }
+    }
+
     @Test fun keePassNoteWithUnmappedNativeFieldCannotLoseItInPortableMove() = runBlocking {
         val fixture = TransferFixture()
         try {

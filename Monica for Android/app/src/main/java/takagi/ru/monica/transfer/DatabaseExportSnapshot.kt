@@ -182,6 +182,8 @@ internal class DatabaseExportSnapshotLoader(context: Context) {
                         sshKeyData = data.readMdbxSshKeyData(previous?.sshKeyData.orEmpty()),
                         loginType = data.optString("login_type", "PASSWORD"), categoryId = data.category(),
                         sortOrder = data.optInt("sort_order"),
+                        isFavorite = data.optBoolean("is_favorite", previous?.isFavorite ?: false),
+                        createdAt = Date(data.optLong("created_at", previous?.createdAt?.time ?: System.currentTimeMillis())),
                         mdbxDatabaseId = source.databaseId, replicaGroupId = entry.entryId, isDeleted = entry.deleted,
                     ).let { MdbxPasswordContentFields.readInto(data, it, previous) }
                 }
@@ -195,8 +197,8 @@ internal class DatabaseExportSnapshotLoader(context: Context) {
                         itemData = security.encryptData(data.optString("item_data")), notes = data.optString("notes"),
                         imagePaths = data.optString("image_paths"), categoryId = data.category(),
                         mdbxDatabaseId = source.databaseId, replicaGroupId = entry.entryId, isDeleted = entry.deleted,
-                        createdAt = previous?.createdAt ?: Date(), updatedAt = previous?.updatedAt ?: Date(),
-                        isFavorite = previous?.isFavorite ?: false, sortOrder = data.optInt("sort_order"))
+                        createdAt = Date(data.optLong("created_at", previous?.createdAt?.time ?: System.currentTimeMillis())), updatedAt = previous?.updatedAt ?: Date(),
+                        isFavorite = data.optBoolean("is_favorite", previous?.isFavorite ?: false), sortOrder = data.optInt("sort_order"))
                 }
                 keys = stored.filter { it.entryType == "passkey" && !it.deleted }.map { entry ->
                     val data = JSONObject(entry.payloadJson)
