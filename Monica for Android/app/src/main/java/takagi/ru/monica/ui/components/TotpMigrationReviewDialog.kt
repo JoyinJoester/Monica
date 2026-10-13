@@ -225,9 +225,7 @@ private fun MigrationReviewRow(
     onCheckedChange: (Boolean) -> Unit
 ) {
     val data = entry.item.totpData
-    val title = entry.item.label
-        .ifBlank { data.issuer }
-        .ifBlank { data.accountName }
+    val title = entry.item.suggestedTitle
         .ifBlank { stringResource(R.string.untitled) }
     val identityText = listOf(data.issuer, data.accountName)
         .filter { it.isNotBlank() }

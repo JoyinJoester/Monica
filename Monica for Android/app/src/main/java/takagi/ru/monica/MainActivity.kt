@@ -2623,10 +2623,7 @@ fun MonicaContent(
                 takagi.ru.monica.ui.screens.QrScannerScreen(
                     onQrCodeScanned = onQrCodeScanned@{ qrData ->
                     fun resolveTitle(item: takagi.ru.monica.util.TotpParseResult): String {
-                        return item.label.takeIf { it.isNotBlank() }
-                            ?: item.totpData.issuer.takeIf { it.isNotBlank() }
-                            ?: item.totpData.accountName.takeIf { it.isNotBlank() }
-                            ?: context.getString(R.string.untitled)
+                        return item.suggestedTitle.ifBlank { context.getString(R.string.untitled) }
                     }
 
                     fun saveScannedTotp(

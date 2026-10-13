@@ -810,7 +810,10 @@ data class TotpParseResult(
     val totpData: TotpData,
     val label: String,
     val accountName: String
-)
+) {
+    /** Suggested local name; the original URI label remains available for round trips. */
+    val suggestedTitle: String get() = suggestedTotpTitle(totpData, label)
+}
 
 sealed class TotpScanParseResult {
     data class Single(val item: TotpParseResult) : TotpScanParseResult()

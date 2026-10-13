@@ -468,10 +468,7 @@ fun AddEditTotpScreen(
     }
 
     fun resolveImportedTitle(item: TotpParseResult): String {
-        return item.label.takeIf { it.isNotBlank() }
-            ?: item.totpData.issuer.takeIf { it.isNotBlank() }
-            ?: item.totpData.accountName.takeIf { it.isNotBlank() }
-            ?: ""
+        return item.suggestedTitle
     }
 
     fun applyImportedTotp(item: TotpParseResult) {

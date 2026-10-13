@@ -1422,9 +1422,7 @@ class TotpViewModel internal constructor(
             var importedCount = 0
             var failedCount = 0
             readyPlan.items.forEach { item ->
-                val title = item.label
-                    .ifBlank { item.totpData.issuer }
-                    .ifBlank { item.totpData.accountName }
+                val title = item.suggestedTitle
                 val saved = saveTotpAcrossTargetsAwait(
                     title = title,
                     totpData = item.totpData,

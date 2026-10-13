@@ -906,10 +906,7 @@ private fun PasswordEntryEditor(
                     data = imported
                 ).takeIf { it.isNotBlank() && it != imported.secret }
                 if (title.isBlank()) {
-                    title = scanResult.item.label
-                        .substringBefore(":")
-                        .ifBlank { imported.issuer }
-                        .ifBlank { title }
+                    title = scanResult.item.suggestedTitle
                 }
                 if (authenticatorAccountName.isBlank()) {
                     if (!isMultiCredentialMode) {

@@ -51,6 +51,8 @@ class TotpUriParserMigrationTest {
         assertTrue(result is TotpScanParseResult.Single)
         val item = (result as TotpScanParseResult.Single).item
         assertEquals("Example:counter@example.com", item.label)
+        assertEquals("Example", item.suggestedTitle)
+        assertEquals("counter@example.com", item.totpData.accountName)
         assertEquals(OtpType.HOTP, item.totpData.otpType)
         assertEquals("SHA256", item.totpData.algorithm)
         assertEquals(8, item.totpData.digits)

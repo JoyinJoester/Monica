@@ -52,9 +52,7 @@ internal fun migrationImportIdentityKey(data: TotpData): String {
 
 private fun isValidMigrationImportItem(item: TotpParseResult): Boolean {
     val data = item.totpData
-    val title = item.label
-        .ifBlank { data.issuer }
-        .ifBlank { data.accountName }
+    val title = item.suggestedTitle
     return title.isNotBlank() &&
         data.secret.isNotBlank() &&
         data.algorithm.uppercase(Locale.ROOT) in setOf("SHA1", "SHA256", "SHA512") &&

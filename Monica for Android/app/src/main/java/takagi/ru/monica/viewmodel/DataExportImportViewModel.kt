@@ -742,14 +742,7 @@ class DataExportImportViewModel(
     }
 
     private fun buildImportedAuthenticatorTitle(passwordTitle: String, totpData: TotpData): String {
-        val issuer = totpData.issuer.trim()
-        val account = totpData.accountName.trim()
-        return when {
-            issuer.isNotBlank() && account.isNotBlank() -> "$issuer: $account"
-            issuer.isNotBlank() -> issuer
-            account.isNotBlank() -> account
-            else -> passwordTitle
-        }
+        return takagi.ru.monica.util.suggestedTotpTitle(totpData, passwordTitle)
     }
 
     private fun normalizeTotpSecret(secret: String): String {
@@ -878,11 +871,7 @@ class DataExportImportViewModel(
                                     )
                                     
                                     val itemData = Json.encodeToString(totpData)
-                                    val title = if (aegisEntry.issuer.isNotBlank()) {
-                                        "${aegisEntry.issuer}: ${aegisEntry.name}"
-                                    } else {
-                                        aegisEntry.name
-                                    }
+                                    val title = takagi.ru.monica.util.suggestedTotpTitle(totpData)
                                     
                                     val secureItem = SecureItem(
                                         id = 0,
@@ -973,11 +962,7 @@ class DataExportImportViewModel(
                                 )
                                 
                                 val itemData = Json.encodeToString(totpData)
-                                val title = if (aegisEntry.issuer.isNotBlank()) {
-                                    "${aegisEntry.issuer}: ${aegisEntry.name}"
-                                } else {
-                                    aegisEntry.name
-                                }
+                                val title = takagi.ru.monica.util.suggestedTotpTitle(totpData)
                                 
                                 val secureItem = SecureItem(
                                     id = 0,
