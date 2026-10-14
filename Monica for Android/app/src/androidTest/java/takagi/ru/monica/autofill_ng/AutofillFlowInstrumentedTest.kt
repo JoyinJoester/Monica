@@ -89,6 +89,21 @@ class AutofillFlowInstrumentedTest {
             android.os.Process.myUid() / 100000 > 0 &&
                 InstrumentationRegistry.getArguments().getString("autofillIsolatedUser") == "true")
         ui = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        // User switching may finish showing the system keyguard after the host
+        // driver has dismissed it. Establish the device baseline before each
+        // scenario; in-test screen-off and application-lock assertions stay intact.
+        val power = context.getSystemService(android.os.PowerManager::class.java)
+        val keyguard = context.getSystemService(android.app.KeyguardManager::class.java)
+        val readyDeadline = SystemClock.elapsedRealtime() + 10_000
+        while ((!power.isInteractive || keyguard.isKeyguardLocked) &&
+            SystemClock.elapsedRealtime() < readyDeadline) {
+            shell("input keyevent KEYCODE_WAKEUP")
+            shell("wm dismiss-keyguard")
+            delay(250)
+        }
+        check(power.isInteractive && !keyguard.isKeyguardLocked) {
+            "The isolated device must be awake and outside the system keyguard"
+        }
         ui.serviceInfo = ui.serviceInfo.apply {
             flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
                 android.accessibilityservice.AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
@@ -117,6 +132,10 @@ class AutofillFlowInstrumentedTest {
         preferences.setOtpNotificationEnabled(false)
         preferences.setAutoCopyOtpEnabled(false)
         SessionManager.attachAppContext(context)
+        // Tests change DataStore without visiting Settings/MainActivity. Restore the
+        // runtime timeout too: a previous immediate-lock case must not revoke this
+        // case's fresh session before the next settings collector receives it.
+        SessionManager.updateAutoLockTimeout(5)
         SessionManager.markUnlocked()
         insertedIds += dao.insertPasswordEntry(PasswordEntry(
             title = NATIVE_TITLE, website = "", appPackageName = fixturePackage,
@@ -153,6 +172,7 @@ class AutofillFlowInstrumentedTest {
             settings.updateBiometricEnabled(it.biometricEnabled)
             settings.updateScreenshotProtectionEnabled(it.screenshotProtectionEnabled)
             settings.updateAutoLockMinutes(it.autoLockMinutes)
+            SessionManager.updateAutoLockTimeout(it.autoLockMinutes)
             AutofillSessionGrants.clear()
         }
         oldIme?.let { selectIme(it) }
@@ -482,6 +502,32 @@ class AutofillFlowInstrumentedTest {
         assertFalse(SessionManager.isUnlocked.value)
     }
 
+    @Test fun verifiedSaveClosesWhenAlreadyLockedMainSessionIsLockedAgain() = runBlocking {
+        settings.updateAutofillAuthRequired(true)
+        SessionManager.markLocked()
+        val original = requireNotNull(dao.getPasswordEntryById(insertedIds.first()))
+        val intent = Intent(context, AutofillSaveTransparentActivity::class.java).apply {
+            putExtra(AutofillSaveTransparentActivity.EXTRA_USERNAME, AutofillFormFixtureActivity.USERNAME)
+            putExtra(AutofillSaveTransparentActivity.EXTRA_PASSWORD, "Never-commit-after-lock")
+            putExtra(AutofillSaveTransparentActivity.EXTRA_PACKAGE_NAME, fixturePackage)
+        }
+        androidx.test.core.app.ActivityScenario.launch<AutofillSaveTransparentActivity>(intent).use { activity ->
+            val field = waitNode { it.isEditable && it.packageName?.toString() == context.packageName }
+            assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, MASTER_PASSWORD)
+            }))
+            tap(waitNode { it.text?.toString() == context.getString(R.string.confirm) })
+            waitNode { it.text?.toString() == context.getString(R.string.autofill_save_review_title) }
+            assertFalse("Save verification must not unlock the main app", SessionManager.isUnlocked.value)
+            SessionManager.markLocked()
+            val deadline = SystemClock.elapsedRealtime() + 5000
+            while (activity.state != androidx.lifecycle.Lifecycle.State.DESTROYED && SystemClock.elapsedRealtime() < deadline) delay(50)
+            assertEquals("Explicit lock must close an independently authorized save editor",
+                androidx.lifecycle.Lifecycle.State.DESTROYED, activity.state)
+            assertEquals(original, dao.getPasswordEntryById(original.id))
+        }
+    }
+
     @Test fun smallAndLargeVaultLongFormLatency() = runBlocking {
         suspend fun measure(label: String, scenario: String) {
             val samples = mutableListOf<Long>()
@@ -533,6 +579,25 @@ class AutofillFlowInstrumentedTest {
             waitNode { it.text?.toString() == WEB_TITLE }
             typeUsernameFromKeyboard()
         }
+    }
+
+    @Test fun webKeyboardRemainsUsableWithoutAutofill() = runBlocking {
+        preferences.setAutofillEnabled(false)
+        open("web")
+        waitNode { it.contentDescription?.toString() == "fixture-status" && it.text?.contains("web=READY") == true }
+        focusFirstField(web = true)
+        delay(1000)
+        typeUsernameFromKeyboard()
+    }
+
+    @Test fun webDropdownCanResumeTypingAfterOneFieldTap() {
+        open("web")
+        waitNode { it.contentDescription?.toString() == "fixture-status" && it.text?.contains("web=READY") == true }
+        focusFirstField(web = true)
+        waitNode { it.text?.toString() == WEB_TITLE }
+        // A separate recovery case; the no-refocus regression above remains strict.
+        focusFirstField(web = true)
+        typeUsernameFromKeyboard()
     }
 
     @Test fun cancellingVerificationAllowsTypingAfterOneFieldTap() = runBlocking {
@@ -1080,6 +1145,125 @@ class AutofillFlowInstrumentedTest {
         expectStatus("user=OK password=OK")
     }
 
+    @Test fun accessibilityRegistrationLeavesNewAndConfirmationEmpty() {
+        open("signup", accessibilityOnly = true)
+        assertTrue(fillWithAccessibility())
+        expectStatus("user=OK password=ABSENT")
+        expectStatus("new=EMPTY confirmation=EMPTY")
+    }
+
+    @Test fun accessibilityChangePasswordOnlyFillsTheCurrentPassword() {
+        open("change", accessibilityOnly = true)
+        focusFirstField()
+        awaitAccessibility()
+        tap(waitNode { it.contentDescription?.toString() == "fixture-field-2" })
+        val filled = runBlocking { withContext(Dispatchers.Main) {
+            MonicaAccessibilityService.requestCredentialFill(fixturePackage,
+                AutofillFormFixtureActivity.USERNAME, AutofillFormFixtureActivity.PASSWORD, true)
+        } }
+        assertTrue(filled)
+        expectStatus("password=OK")
+        expectStatus("new=EMPTY confirmation=EMPTY")
+    }
+
+    @Test fun generatorCancellationPreservesAllExistingFields() = runBlocking {
+        preferences.setPasswordSuggestionEnabled(true)
+        open("change")
+        fillFromSystem(NATIVE_TITLE)
+        tap(waitNode { it.contentDescription?.toString() == "fixture-field-2" })
+        tap(waitNode { it.text?.toString() == context.getString(R.string.password_suggestion_title) })
+        waitNode { it.text?.toString() == context.getString(R.string.password_suggestion_accept) }
+        ui.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        expectStatus("user=OK password=OK")
+        expectStatus("new=EMPTY confirmation=EMPTY")
+    }
+
+    @Test fun repeatedNativeWebAndSignupSwitchesDoNotReuseStaleTargets() {
+        repeat(4) {
+            open("standard")
+            fillFromSystem(NATIVE_TITLE)
+            expectStatus("user=OK password=OK")
+            open("web_forms")
+            fillFromSystem(WEB_TITLE, web = true)
+            expectStatus("user=OK password=OK")
+            expectStatus("newsletter=EMPTY")
+            open("signup")
+            fillFromSystem(NATIVE_TITLE)
+            expectStatus("new=EMPTY confirmation=EMPTY")
+        }
+    }
+
+    @Test fun changedCredentialIsUsedOnTheNextRequestInsteadOfCachedValue() = runBlocking {
+        open("standard")
+        fillFromSystem(NATIVE_TITLE)
+        expectStatus("user=OK password=OK")
+        expectedPassword = "Changed-synthetic-84!"
+        val current = requireNotNull(dao.getPasswordEntryById(insertedIds.first()))
+        dao.updatePasswordEntry(current.copy(password = security.encryptData(requireNotNull(expectedPassword))))
+        open("standard")
+        fillFromSystem(NATIVE_TITLE)
+        expectStatus("user=OK password=OK")
+    }
+
+    @Test fun actualChromeLoginAndRegistrationRespectPasswordRoles() = runBlocking {
+        val browser = "com.android.chrome"
+        assertNotNull("Install Chrome in the isolated test user", context.packageManager.getLaunchIntentForPackage(browser))
+        val server = java.net.ServerSocket(0, 4, java.net.InetAddress.getByName("127.0.0.1"))
+        val origin = "http://127.0.0.1:${server.localPort}"
+        val title = "Chrome loopback fixture"
+        insertedIds += dao.insertPasswordEntry(PasswordEntry(title = title, website = origin,
+            username = security.encryptData(AutofillFormFixtureActivity.USERNAME),
+            password = security.encryptData(AutofillFormFixtureActivity.PASSWORD)))
+        val worker = kotlin.concurrent.thread(isDaemon = true, name = "autofill-loopback-fixture") {
+            while (!server.isClosed) runCatching {
+                server.accept().use { client ->
+                    client.soTimeout = 1500
+                    val reader = client.getInputStream().bufferedReader()
+                    val request = reader.readLine().orEmpty()
+                    while (!reader.readLine().isNullOrEmpty()) { /* headers only; never accept credentials */ }
+                    val signup = request.contains("/signup")
+                    val html = """<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1">
+                        <style>input{display:block;font-size:20px;margin:20px;height:48px}</style>
+                        <h1>Monica local ${if (signup) "registration" else "login"} test</h1>
+                        <form><input id="u" placeholder="Username" autocomplete="username">
+                        <input id="p" placeholder="${if (signup) "New password" else "Password"}" type="password"
+                          autocomplete="${if (signup) "new-password" else "current-password"}"></form>
+                        <p id="status">browser user=EMPTY password=EMPTY</p>
+                        <script>function update(){document.getElementById('status').textContent='browser user='+
+                          (u.value==='employee-1042'?'OK':u.value?'BAD':'EMPTY')+' password='+
+                          (p.value==='Audit-password-42!'?'OK':p.value?'BAD':'EMPTY')}
+                        document.addEventListener('input',update);document.addEventListener('change',update);</script>""".trimIndent().toByteArray(Charsets.UTF_8)
+                    client.getOutputStream().apply {
+                        write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${html.size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".toByteArray())
+                        write(html); flush()
+                    }
+                }
+            }
+        }
+        try {
+            selectIme("$fixturePackage/takagi.ru.monica.autofill_ng.fixture.AutofillFixtureInputMethodService")
+            for (signup in listOf(false, true)) {
+                context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("$origin/${if (signup) "signup" else "login"}"))
+                    .setPackage(browser).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                // ACTION_VIEW completes asynchronously. Do not tap an editable from
+                // the previous document while Chrome is replacing the page.
+                waitNode { it.packageName?.toString() == browser &&
+                    it.text?.toString() == "Monica local ${if (signup) "registration" else "login"} test" }
+                tap(waitNode { it.packageName?.toString() == browser && it.isEditable && !it.isPassword &&
+                    generateSequence(it.parent) { parent -> parent.parent }
+                        .any { parent -> parent.className?.toString() == "android.webkit.WebView" } })
+                tap(waitNode { it.text?.toString() == title || it.contentDescription?.contains(title) == true })
+                val expected = "browser user=OK password=${if (signup) "EMPTY" else "OK"}"
+                waitNode { it.packageName?.toString() == browser && it.text?.contains(expected) == true }
+            }
+        } finally {
+            server.close()
+            worker.join(2500)
+            // Only close the test's current browser page; retain browser/user data.
+            ui.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        }
+    }
+
     @Test fun accessibilityHandlesBothStepsAndReportsSuccess() {
         open("step", accessibilityOnly = true)
         assertTrue(fillWithAccessibility())
@@ -1112,10 +1296,12 @@ class AutofillFlowInstrumentedTest {
     }
 
     @Test fun accessibilityPickerHandlesAWebViewThatReplacesThePasswordField() {
-        open("web_dynamic", accessibilityOnly = true)
-        waitNode { it.contentDescription?.toString() == "fixture-status" && it.text?.contains("web=READY") == true }
-        fillThroughAccessibilityPicker(WEB_TITLE, web = true)
-        expectStatus("user=OK password=OK")
+        repeat(4) {
+            open("web_dynamic", accessibilityOnly = true)
+            waitNode { it.contentDescription?.toString() == "fixture-status" && it.text?.contains("web=READY") == true }
+            fillThroughAccessibilityPicker(WEB_TITLE, web = true)
+            expectStatus("user=OK password=OK")
+        }
     }
 
     @Test fun accessibilityWillNotFillAnotherActiveApp() {
@@ -1204,8 +1390,8 @@ class AutofillFlowInstrumentedTest {
     }
 
     private fun fillWithAccessibility(web: Boolean = false): Boolean {
-        focusFirstField(web)
         awaitAccessibility()
+        focusFirstField(web)
         return runBlocking {
             withContext(Dispatchers.Main) {
                 MonicaAccessibilityService.requestCredentialFill(
@@ -1216,16 +1402,40 @@ class AutofillFlowInstrumentedTest {
     }
 
     private fun fillThroughAccessibilityPicker(title: String, web: Boolean = false) {
-        focusFirstField(web)
         awaitAccessibility()
+        focusFirstField(web)
+        val requestedAt = System.currentTimeMillis()
         context.startActivity(Intent(context,AutofillPickerActivityV2::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra(AutofillPickerActivityV2.EXTRA_MANUAL_MODE,true)
             putExtra(AutofillPickerActivityV2.EXTRA_MANUAL_TARGET_PACKAGE,fixturePackage)
         })
-        tap(waitNode { it.text?.toString() == title })
+        val first = waitNode { it.text?.toString() == title ||
+            (it.packageName?.toString() == context.packageName && it.isEditable && it.isPassword) }
+        if (first.isEditable && first.isPassword) {
+            // A removed main task correctly revokes a fixture's direct session
+            // setup. Follow the real picker verification instead of bypassing it.
+            assertTrue(first.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, MASTER_PASSWORD)
+            }))
+            tap(waitNode { it.text?.toString() == context.getString(R.string.unlock) })
+            tap(waitNode { it.text?.toString() == title })
+        } else {
+            tap(first)
+        }
         // The regular vault list opens the entry's actions first.
         tap(waitNode { it.text?.toString() == context.getString(R.string.autofill) })
+        // A DOM input event can report the values before the bounded background
+        // fill has finished checking them. Await its completion before opening
+        // another fixture, while callers still assert the actual field contents.
+        val deadline = SystemClock.elapsedRealtime() + 10000
+        fun completed() = takagi.ru.monica.autofill_ng.core.AutofillLogger.getRecentLogs(100).any {
+            it.timestamp >= requestedAt && it.category == "PICKER" &&
+                it.message.startsWith("Manual accessibility fill attempt:") &&
+                it.message.contains("filled=true,") && it.message.contains("expectedPackage=$fixturePackage")
+        }
+        while (!completed() && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(50)
+        assertTrue("Wait for the scheduled accessibility fill to complete", completed())
     }
 
     private fun expectStatus(expected: String) {
@@ -1287,7 +1497,10 @@ class AutofillFlowInstrumentedTest {
     }
 
     private fun waitNode(scroll: Boolean = false, predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo {
-        val end = SystemClock.elapsedRealtime() + 10000
+        // SwiftShader occasionally delays the system's inline-suggestion surface
+        // beyond 10s even after rendering it. Keep the operation bounded while
+        // recording application phase timings separately from system UI latency.
+        val end = SystemClock.elapsedRealtime() + 20000
         var fixtureStatus: String? = null
         var lastScroll = 0L
         do {
@@ -1298,6 +1511,9 @@ class AutofillFlowInstrumentedTest {
             val scrollable = mutableListOf<AccessibilityNodeInfo>()
             while (queue.isNotEmpty() && count++ < 600) {
                 val node = queue.removeFirst()
+                // Chromium replaces virtual descendants across documents; refresh
+                // the WebView boundary before reading a cached child count.
+                if (node.className?.toString() == "android.webkit.WebView") node.refresh()
                 if (node.contentDescription?.toString() == "fixture-status") {
                     fixtureStatus = node.text?.toString()
                 }
@@ -1318,15 +1534,19 @@ class AutofillFlowInstrumentedTest {
             var count=0
             while(nodes.isNotEmpty() && count++<1000) {
                 val node=nodes.removeFirst()
-                output.appendLine("${node.packageName}|${node.className}|${node.text}|${node.contentDescription}|enabled=${node.isEnabled}")
+                output.appendLine("${node.packageName}|${node.className}|${node.text}|${node.contentDescription}|enabled=${node.isEnabled}|editable=${node.isEditable}|focused=${node.isFocused}|bounds=${Rect().also(node::getBoundsInScreen)}")
                 for(index in 0 until node.childCount) node.getChild(index)?.let(nodes::add)
             }
-            java.io.File(context.filesDir,"autofill-failure.txt").writeText(output.toString())
-            java.io.File(context.filesDir, "autofill-failure.png").outputStream().use {
+            val failureId = System.currentTimeMillis()
+            ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand("dumpsys input_method")).use { stream ->
+                java.io.File(context.filesDir,"autofill-failure-$failureId-ime.txt").writeText(stream.bufferedReader().readText())
+            }
+            java.io.File(context.filesDir,"autofill-failure-$failureId.txt").writeText(output.toString())
+            java.io.File(context.filesDir, "autofill-failure-$failureId.png").outputStream().use {
                 ui.takeScreenshot()?.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
             }
         }
-        throw AssertionError("Expected autofill UI/status did not appear within 10 seconds; " +
+        throw AssertionError("Expected autofill UI/status did not appear within 20 seconds; " +
             "activeRoot=${ui.rootInActiveWindow?.className}, windows=${ui.windows.size}, " +
             "flags=${ui.serviceInfo.flags}, fixtureStatus=$fixtureStatus")
     }
@@ -1335,25 +1555,31 @@ class AutofillFlowInstrumentedTest {
         val rect = Rect().also(node::getBoundsInScreen)
         val downTime = SystemClock.uptimeMillis()
         listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP).forEach { action ->
+            if (action == MotionEvent.ACTION_UP) SystemClock.sleep(60)
             val event = MotionEvent.obtain(downTime,SystemClock.uptimeMillis(),action,rect.exactCenterX(),rect.exactCenterY(),0)
             event.source = InputDevice.SOURCE_TOUCHSCREEN
-            try { check(ui.injectInputEvent(event,true)) } finally { event.recycle() }
+            // Do not block after DOWN: a busy renderer can turn a synchronous
+            // injection into an accidental long press before UP is dispatched.
+            try { check(ui.injectInputEvent(event,action == MotionEvent.ACTION_UP)) } finally { event.recycle() }
         }
     }
 
     private fun selectIme(component: String) {
         val user = android.os.Process.myUid() / 100000
-        listOf("ime enable --user $user ${componentArgument(component)}", "ime set --user $user ${componentArgument(component)}").forEach(::shell)
+        if (Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD) != component) {
+            listOf("ime enable --user $user ${componentArgument(component)}", "ime set --user $user ${componentArgument(component)}").forEach(::shell)
+        }
         check(Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD) == component) {
             "Could not select test input method $component"
         }
     }
 
     private fun shell(command: String) {
-        ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand(command)).use { stream ->
-            stream.bufferedReader().readText()
-        }
+        shellOutput(command)
     }
+
+    private fun shellOutput(command: String): String =
+        ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand(command)).use { it.bufferedReader().readText() }
 
     private fun componentArgument(value: String): String {
         // UiAutomation passes this command to Runtime.exec, not to a shell.

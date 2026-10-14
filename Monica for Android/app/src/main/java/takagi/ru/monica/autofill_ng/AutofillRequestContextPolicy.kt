@@ -36,6 +36,9 @@ internal object AutofillRequestContextPolicy {
         "com.kiwibrowser.browser",
     )
 
+    fun isKnownBrowser(packageName: String): Boolean =
+        packageName.trim().lowercase(Locale.ROOT) in knownBrowserPackages
+
     fun allowPackageMatching(
         packageName: String,
         webDomain: String?,
@@ -43,6 +46,6 @@ internal object AutofillRequestContextPolicy {
     ): Boolean {
         if (!webDomain.isNullOrBlank()) return true
         if (isWebView) return false
-        return packageName.trim().lowercase(Locale.ROOT) !in knownBrowserPackages
+        return !isKnownBrowser(packageName)
     }
 }

@@ -866,7 +866,11 @@ class EnhancedAutofillStructureParserV2(
         val isInSelfHostedServer = kotlin.run {
             val webDomain = rawStructure?.webDomain
             val webView = rawStructure?.webView == true
-            webView && (webDomain == "127.0.0.1" || webDomain == "localhost")
+            // Hybrid apps may serve their own UI from loopback. A browser's
+            // loopback page is still a website and must keep its reported origin.
+            webView && !AutofillRequestContextPolicy.isKnownBrowser(
+                structure.activityComponent?.packageName ?: applicationId.orEmpty()) &&
+                (webDomain == "127.0.0.1" || webDomain == "localhost")
         }
 
         val effectiveWebDomain = rawStructure?.webDomain.takeUnless { isInSelfHostedServer }

@@ -129,7 +129,12 @@ class AutofillSaveTransparentActivity : androidx.fragment.app.FragmentActivity()
         val customFieldRepository = CustomFieldRepository(database.customFieldDao())
         val application = applicationContext as Application
 
+        val lockGenerationAtOpen = SessionManager.lockGeneration.value
         setContent {
+            val lockGeneration by SessionManager.lockGeneration.collectAsState()
+            LaunchedEffect(lockGeneration) {
+                if (lockGeneration != lockGenerationAtOpen) finish()
+            }
             val unlocked by SessionManager.isUnlocked.collectAsState()
             var authorized by remember { mutableStateOf(unlocked || !securityManager.isMasterPasswordSet()) }
             var wasUnlocked by remember { mutableStateOf(unlocked) }

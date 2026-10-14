@@ -92,6 +92,25 @@ class AutofillStructureIntegrationTest {
         }
     }
 
+    @Test fun browserLoopbackPagesKeepTheirOriginForMatching() {
+        for (domain in listOf("127.0.0.1", "localhost")) {
+            val field = node(hints = arrayOf(View.AUTOFILL_HINT_USERNAME), focused = true)
+            val input = structure(node(domain = domain, children = arrayOf(field)))
+            ReflectionHelpers.setField(input, "mActivityComponent", ComponentName("com.android.chrome", "com.android.chrome.Main"))
+            val parsed = parser.parse(input)
+            assertEquals(domain, parsed.webDomain)
+            assertTrue(parsed.webView)
+        }
+    }
+
+    @Test fun nativeHybridLoopbackUiRetainsPackageMatchingCompatibility() {
+        val field = node(hints = arrayOf(View.AUTOFILL_HINT_USERNAME), focused = true)
+        val parsed = parse(node(domain = "localhost", children = arrayOf(field)))
+        assertNull(parsed.webDomain)
+        assertFalse(parsed.webView)
+        assertEquals(listOf(field.autofillId), parsed.items.map { it.id })
+    }
+
     @Test fun nativeLoginIsNotDroppedBecauseThePageHasAnUnrelatedWebView() {
         val user = node(hints=arrayOf(View.AUTOFILL_HINT_USERNAME),focused=true)
         val pass = node(inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)

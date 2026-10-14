@@ -32,11 +32,11 @@ internal class AutofillOtpActions(context: Context, private val bindingCache: Au
     /** Do this before obtaining any API 30 inline objects in the fill-request coroutine. */
     suspend fun eligiblePasswordIds(passwords: List<PasswordEntry>): Set<Long> {
         val ids = mutableSetOf<Long>()
-        optional { withTimeoutOrNull(100) {
+        val indexResolved = optional { withTimeoutOrNull(100) {
             val preferences = AutofillPreferences(context)
             if (passwords.isEmpty() ||
                 (!preferences.isOtpNotificationEnabled.first() && !preferences.isAutoCopyOtpEnabled.first())
-            ) return@withTimeoutOrNull
+            ) return@withTimeoutOrNull true
             passwords.filter { it.authenticatorKey.isNotBlank() }.mapTo(ids) { it.id }
             if (ids.size < passwords.size) {
                 val candidates = passwords.mapTo(hashSetOf()) { it.id }
@@ -44,8 +44,12 @@ internal class AutofillOtpActions(context: Context, private val bindingCache: Au
                 val bound = bindingCache?.getOrLoad(load)?.await() ?: load()
                 ids.addAll(bound.filter { it in candidates })
             }
+            true
         } }
-        // Even a cold/large bound-validator scan cannot hold up inline-key candidates.
+        // Keep the request bounded without dropping a cold binding's post-fill
+        // action. Selection checks preferences and the authoritative binding again;
+        // credentials with no OTP simply complete without an optional action.
+        if (indexResolved != true) passwords.mapTo(ids) { it.id }
         return ids
     }
 

@@ -369,6 +369,25 @@ class MonicaAccessibilityService : AccessibilityService() {
                 }?.node,
             ) ?: return@runCatching false
             passwordFilled = setNodeText(currentPassword.node, password)
+            if (passwordFilled && isWebInput(currentPassword.node)) {
+                // A renderer may acknowledge SET_TEXT before a pending input
+                // handler replaces the control. Do not stop the caller's bounded
+                // retry while the destination has disappeared or is still empty.
+                delay(WEB_FORM_UPDATE_DELAY_MS)
+                val verifiedRoot = rootInActiveWindow ?: return@runCatching false
+                if (verifiedRoot.windowId != activeWindowId ||
+                    verifiedRoot.packageName?.toString() != activePackageName ||
+                    (browserSpec != null && findBrowserUrl(verifiedRoot, browserSpec) != originalUrl)
+                ) return@runCatching false
+                val node = currentPassword.node
+                passwordFilled = node.refresh() && node.isVisibleToUser && node.isEnabled &&
+                    classifyFillCandidate(node).let { candidate ->
+                        candidate.type == FillFieldType.PASSWORD ||
+                            (preferPasswordField && candidate.isFocused && candidate.type == FillFieldType.UNKNOWN)
+                    } && node.text?.isNotEmpty() != false
+                // Null text can be intentionally redacted; masked nonempty values
+                // also remain supported. Never log or expose the returned text.
+            }
         }
 
         if (!usernameFilled && !passwordFilled) {
@@ -569,7 +588,7 @@ class MonicaAccessibilityService : AccessibilityService() {
 
     private fun classifyFillCandidate(node: AccessibilityNodeInfo): FillCandidate {
         val bounds = Rect().also { runCatching { node.getBoundsInScreen(it) } }
-        val signals = buildList {
+        val signalParts = buildList {
             add(node.viewIdResourceName.orEmpty().substringAfterLast('/'))
             add(node.hintText?.toString().orEmpty())
             add(node.contentDescription?.toString().orEmpty())
@@ -580,9 +599,14 @@ class MonicaAccessibilityService : AccessibilityService() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 add(node.tooltipText?.toString().orEmpty())
             }
-        }.joinToString(" ").lowercase()
+        }
+        val signals = signalParts.joinToString(" ").lowercase()
 
-        if (AutofillDetectionPolicy.matchesOtpField(signals) ||
+        // This path fills existing credentials only. Share the system parser's
+        // new/confirmation semantics, including camelCase IDs, before scoring
+        // masked controls or falling back to an unknown focused field.
+        if (signalParts.any(takagi.ru.monica.autofill_ng.AutofillFormPurposePolicy::isNewPasswordLabel) ||
+            AutofillDetectionPolicy.matchesOtpField(signals) ||
             AutofillDetectionPolicy.matchesSearchField(signals) ||
             signals.contains("url_bar") || signals.contains("location_bar") ||
             signals.contains("address_bar")

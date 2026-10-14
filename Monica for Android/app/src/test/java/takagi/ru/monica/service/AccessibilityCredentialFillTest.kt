@@ -84,6 +84,46 @@ class AccessibilityCredentialFillTest {
         assertTrue(filled)
     }
 
+    @Test fun registrationNeverReceivesAnExistingPassword() {
+        field("username", "Username", InputType.TYPE_CLASS_TEXT, focused = true)
+        field("newPassword", "New password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, top = 220)
+        field("confirmation", "Confirm password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, top = 340)
+        assertTrue(fill())
+        assertEquals(mapOf("username" to "test-account"), writes)
+    }
+
+    @Test fun focusedNewPasswordDoesNotStealTheCurrentPasswordOnAChangeForm() {
+        field("current", "Current password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
+        field("newPassword", "New password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, focused = true, top = 220)
+        field("confirmation", "Confirm password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, top = 340)
+        assertTrue(fill(preferPassword = true))
+        assertEquals(mapOf("current" to "test-secret"), writes)
+    }
+
+    @Test fun resetOnlyFormCannotUseTheUnknownFieldFallback() {
+        field("reset", "新密码", InputType.TYPE_CLASS_TEXT, focused = true)
+        field("confirmation", "确认密码", InputType.TYPE_CLASS_TEXT, top = 220)
+        assertFalse(fill(preferPassword = true))
+        assertTrue(writes.isEmpty())
+    }
+
+    @Test fun currentPasswordReplacedWithNewPasswordAfterAccountInputIsNotFilled() {
+        val account = field("username", "Username", InputType.TYPE_CLASS_TEXT, focused = true)
+        field("current", "Current password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, top = 220)
+        shadowOf(account).setOnPerformActionListener { action, args ->
+            if (action != AccessibilityNodeInfo.ACTION_SET_TEXT) false else {
+                writes["username"] = args.getCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE).toString()
+                root = AccessibilityNodeInfo.obtain(View(RuntimeEnvironment.getApplication())).apply { packageName = "audit.login" }
+                shadowOf(service).setRootInActiveWindow(root)
+                field("replacement", "New password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, top = 220)
+                AccessibilityNodeInfo::class.java.getDeclaredMethod("setSealed", Boolean::class.javaPrimitiveType).invoke(root, true)
+                true
+            }
+        }
+        fill()
+        assertEquals(mapOf("username" to "test-account"), writes)
+    }
+
     @Test fun standardLoginFillsBothFields() {
         field("username","Username",InputType.TYPE_CLASS_TEXT,focused=true)
         field("password","Password",InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,top=220)
@@ -163,6 +203,20 @@ class AccessibilityCredentialFillTest {
         shadowOf(rejected).setOnPerformActionListener { _, _ -> false }
         assertFalse(fill())
         assertEquals(mapOf("first" to "test-account"),writes)
+    }
+
+    @Test fun webPasswordAcknowledgmentWithAnEmptyControlDoesNotReportSuccess() {
+        root.className = "android.webkit.WebView"
+        field("password", "Password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, focused = true).text = ""
+        assertFalse(fill(username = ""))
+        assertEquals(mapOf("password" to "test-secret"), writes)
+    }
+
+    @Test fun maskedWebPasswordRemainsCompatibleWithPostWriteVerification() {
+        root.className = "android.webkit.WebView"
+        field("password", "Password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, focused = true).text = "••••••••"
+        assertTrue(fill(username = ""))
+        assertEquals(mapOf("password" to "test-secret"), writes)
     }
 
     @Test fun aPasswordControlReplacedAfterUsernameInputIsResolvedAgain() {

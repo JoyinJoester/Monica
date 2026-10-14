@@ -35,6 +35,7 @@ public class AutofillFormFixtureActivity extends Activity {
     private LinearLayout layout;
     private TextView status;
     private WebView webView;
+    private boolean webVisualReady;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -222,17 +223,28 @@ public class AutofillFormFixtureActivity extends Activity {
 
     public class WebReporter {
         @JavascriptInterface public void report(String user,String password) {
-            runOnUiThread(() -> status.setText("user=" + state(user,USERNAME) + " password=" + state(password,PASSWORD) + " web=READY"));
+            runOnUiThread(() -> status.setText("user=" + state(user,USERNAME) + " password=" + state(password,PASSWORD) + (webVisualReady ? " web=READY" : " web=LOADING")));
         }
         @JavascriptInterface public void reportForms(String user,String password,String newsletter) {
             runOnUiThread(() -> status.setText("user=" + state(user,USERNAME) + " password=" + state(password,PASSWORD)
-                    + " newsletter=" + state(newsletter,"unused") + " web=READY"));
+                    + " newsletter=" + state(newsletter,"unused") + (webVisualReady ? " web=READY" : " web=LOADING")));
         }
     }
 
     @SuppressWarnings("SetJavaScriptEnabled")
     private void addWebForm(String scenario) {
         webView = new WebView(this);
+        webVisualReady = false;
+        webView.setWebViewClient(new android.webkit.WebViewClient() {
+            @Override public void onPageFinished(WebView view, String url) {
+                view.postVisualStateCallback(0, new WebView.VisualStateCallback() {
+                    @Override public void onComplete(long requestId) {
+                        webVisualReady = true;
+                        view.evaluateJavascript("report()", null);
+                    }
+                });
+            }
+        });
         webView.getSettings().setJavaScriptEnabled(true);
         if (getIntent().getBooleanExtra("accessibilityOnly",false)) webView.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
         webView.addJavascriptInterface(new WebReporter(),"Fixture");

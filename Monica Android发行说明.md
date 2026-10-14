@@ -4,7 +4,13 @@
 
 ## 中文
 
+- 修复冷启动或绑定验证器查询超时时，自动填充后偶尔不显示验证码通知的问题；密码填充仍优先完成。
+
+- 修复浏览器访问本机自托管网页时无法匹配已保存凭据的问题，保留应用内嵌页面的兼容行为。
+
 - 升级注册、改密和分步登录的自动填充：已保存密码不会覆盖新密码框，生成密码仅填入新密码与确认框；保存时优先使用新密码，并可确认更新匹配的原条目，保留文件夹、备注、附件和其他账户。
+
+- 无障碍补充填充同样避开新密码与确认框，并校验动态网页的密码写入结果以便必要时重试；再次锁定时立即关闭单独验证过的自动填充保存页。
 
 - 改进验证返回与连续登录，限制临时上下文的来源和有效期；增加可取消的请求时限、缓存失效处理和不含凭据的分阶段耗时诊断。
 
@@ -20,7 +26,13 @@
 
 ## English
 
+- Fixed missing post-fill OTP notifications when a cold bound-authenticator lookup times out, without delaying credential filling.
+
+- Fixed saved-credential matching on browser loopback pages while preserving hybrid-app compatibility.
+
 - Improved autofill for sign-up, password changes and multi-step login. Stored passwords leave new-password fields untouched; generated passwords fill the new/confirmation pair. Saving prefers the new password and offers a reviewed update to a matching entry, preserving folders, notes, attachments and other accounts.
+
+- Accessibility fallback also leaves new-password and confirmation fields untouched and verifies dynamic web writes before completing. Locking closes independently verified autofill save screens.
 
 - Improved authentication return and login continuity with origin-scoped, expiring context; added cancellable request deadlines, cache invalidation and credential-free phase timing diagnostics.
 

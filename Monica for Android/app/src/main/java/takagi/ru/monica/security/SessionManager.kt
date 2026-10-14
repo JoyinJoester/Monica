@@ -7,6 +7,7 @@ import android.os.SystemClock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 private const val MILLIS_PER_MINUTE = 60_000L
 private const val SESSION_ACTIVITY_UPDATE_INTERVAL_MS = 1_000L
@@ -86,6 +87,9 @@ object SessionManager {
 
     private val _isUnlocked = MutableStateFlow(false)
     val isUnlocked: StateFlow<Boolean> = _isUnlocked.asStateFlow()
+    private val _lockGeneration = MutableStateFlow(0L)
+    /** Also advances for explicit locks while the main session is already locked. */
+    val lockGeneration: StateFlow<Long> = _lockGeneration.asStateFlow()
 
     private var unlockElapsedTimestamp: Long = 0L
     private var unlockWallTimestamp: Long = 0L
@@ -170,6 +174,7 @@ object SessionManager {
         if (clearSecondarySession) {
             SecondarySessionManager.markLocked(clearRuntimeUnlockCache = false)
         }
+        _lockGeneration.update { it + 1 }
         android.util.Log.d(TAG, "Session locked, PID=$processId")
     }
 

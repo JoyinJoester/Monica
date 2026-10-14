@@ -28,6 +28,27 @@ class AutofillSaveContextPolicyTest {
         assertEquals("",AutofillSaveContextPolicy.username(listOf(step(AutofillFormPurpose.USERNAME_STEP,"alice"),
             step(AutofillFormPurpose.UNKNOWN), step(AutofillFormPurpose.PASSWORD_STEP))))
     }
+
+    @Test fun latestAccountWinsAndRecoveryStopsAtTheBoundedHistory() {
+        assertEquals("bob", AutofillSaveContextPolicy.username(listOf(
+            step(AutofillFormPurpose.USERNAME_STEP, "alice"), step(AutofillFormPurpose.USERNAME_STEP, "bob"),
+            step(AutofillFormPurpose.PASSWORD_STEP))))
+        for (distance in 1..10) {
+            val contexts = listOf(step(AutofillFormPurpose.USERNAME_STEP, "alice")) +
+                List(distance) { step(AutofillFormPurpose.PASSWORD_STEP) }
+            assertEquals("distance=$distance", if (distance <= 7) "alice" else "", AutofillSaveContextPolicy.username(contexts))
+        }
+    }
+
+    @Test fun maliciousAndUnsupportedUrlsNeverSuggestUpdatingAnExistingWebAccount() {
+        val entry = PasswordEntry(id=1, title="Fixture", username="ciphertext", password="ciphertext",
+            website="https://login.example.test")
+        for (site in listOf("https://login.example.test.evil.test", "https://login.example.test@evil.test",
+            "https://evil.test/login.example.test", "javascript://login.example.test", "file://login.example.test",
+            "https://login.example.test%00.evil.test", "https://login.example.test\\@evil.test")) {
+            assertFalse(site, AutofillSaveMatchPolicy.matches(entry, "alice", "alice", "browser.test", site))
+        }
+    }
     @Test fun updateSuggestionsRequireExactAccountAndHostInsteadOfBrowserPackageOrParentDomain() {
         val entry = PasswordEntry(id=1,title="Fixture",username="encrypted",password="encrypted",
             website="https://login.example.test/path, https://second.test", appPackageName="browser.test")
