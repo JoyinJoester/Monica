@@ -191,6 +191,8 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     putBoolean("save_mode", args.isSaveMode)
                     putString("signature", args.fieldSignatureKey)
                     putBoolean("response_auth", args.responseAuthMode)
+                    putBoolean("save_enabled", args.saveEnabled)
+                    putBoolean("save_compat", args.saveCompatMode)
                     putBoolean("remember", args.rememberLastFilled)
                 })
             }
@@ -214,6 +216,8 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     isSaveMode = bundle.getBoolean("save_mode", false),
                     fieldSignatureKey = bundle.getString("signature"),
                     responseAuthMode = bundle.getBoolean("response_auth", false),
+                    saveEnabled = bundle.getBoolean("save_enabled", false),
+                    saveCompatMode = bundle.getBoolean("save_compat", false),
                     rememberLastFilled = bundle.getBoolean("remember", true),
                 )
             }
@@ -292,8 +296,20 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val isSaveMode: Boolean = false,
         val fieldSignatureKey: String? = null,
         val responseAuthMode: Boolean = false,
+        val saveEnabled: Boolean = false,
+        val saveCompatMode: Boolean = false,
         val rememberLastFilled: Boolean = true,
     ) : Parcelable {
+        internal fun isSameRequestAs(other: Args): Boolean =
+            applicationId == other.applicationId && webDomain == other.webDomain && webScheme == other.webScheme &&
+                interactionIdentifier == other.interactionIdentifier && interactionIdentifierAliases == other.interactionIdentifierAliases &&
+                capturedUsername == other.capturedUsername && capturedPassword == other.capturedPassword &&
+                autofillIds == other.autofillIds && autofillHints == other.autofillHints &&
+                suggestedPasswordIds.contentEquals(other.suggestedPasswordIds) &&
+                fieldSignatureKey == other.fieldSignatureKey && responseAuthMode == other.responseAuthMode &&
+                isSaveMode == other.isSaveMode && saveEnabled == other.saveEnabled &&
+                saveCompatMode == other.saveCompatMode && rememberLastFilled == other.rememberLastFilled
+
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (javaClass != other?.javaClass) return false
@@ -590,8 +606,20 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
         val newArgs = readArgs(intent)
+        val sameTarget = newArgs != null && args.isSameRequestAs(newArgs) &&
+            explicitManualMode == intent.getBooleanExtra(EXTRA_MANUAL_MODE, false) &&
+            manualTargetPackage == intent.getStringExtra(EXTRA_MANUAL_TARGET_PACKAGE) &&
+            imeMode == intent.getBooleanExtra(EXTRA_IME_MODE, false)
+        setIntent(intent)
+        if (!sameTarget) {
+            // Lazy args and prewarmed fill maps belong to the old field IDs. A new
+            // request must get a fresh UI and fresh authentication/selection state.
+            lifecycleScope.coroutineContext[kotlinx.coroutines.Job]?.children?.forEach { it.cancel() }
+            lastLaunchSignature = null
+            recreate()
+            return
+        }
         AutofillLogger.w(
             "PICKER",
             "onNewIntent received while picker is active; reusing current instance",
@@ -783,7 +811,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                             filledValues = preparation.filledValues,
                         )
                         val authResult: Parcelable = if (args.responseAuthMode) {
-                            FillResponse.Builder().addDataset(dataset).build()
+                            buildPickerResponse(dataset)
                         } else {
                             dataset
                         }
@@ -829,10 +857,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             logTag = "AutofillPickerV2",
         )
         val hints = args.autofillHints
-        val hasPasswordTarget = hints?.any {
-            it == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name ||
-                it == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name
-        } == true
+        val hasPasswordTarget = hints?.any(AutofillPasswordRolePolicy::isStoredPasswordHint) == true
         if ((isManualMode || hasPasswordTarget) && decryptedPassword.isNullOrBlank()) {
             return@withContext PasswordAutofillPreparation.Cancel(
                 logMessage = "Autofill canceled: password decryption unavailable"
@@ -883,6 +908,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         autofillIds.forEachIndexed { index, autofillId ->
             val normalizedHint = hints?.getOrNull(index)?.trim()?.lowercase().orEmpty()
             val value = when {
+                AutofillPasswordRolePolicy.isNewPasswordHint(normalizedHint) -> null
                 isOtpHint(normalizedHint) -> selectedOtpCode
                 normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name.lowercase() ||
                     normalizedHint.contains("username") -> accountValue
@@ -914,6 +940,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             autofillIds.forEachIndexed { index, autofillId ->
                 val normalizedHint = hints?.getOrNull(index)?.lowercase().orEmpty()
                 val fallbackValue = when {
+                    AutofillPasswordRolePolicy.isNewPasswordHint(normalizedHint) -> null
                     isOtpHint(normalizedHint) -> selectedOtpCode
                     normalizedHint.contains("pass") -> decryptedPassword
                     normalizedHint.contains("user") ||
@@ -1006,7 +1033,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             filledValues = filledValues
         )
         val authResult: Parcelable = if (args.responseAuthMode) {
-            FillResponse.Builder().addDataset(dataset).build()
+            buildPickerResponse(dataset)
         } else {
             dataset
         }
@@ -1021,14 +1048,28 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         finish()
     }
 
+    private fun buildPickerResponse(dataset: Dataset): FillResponse {
+        val fields = args.autofillIds.orEmpty().mapIndexedNotNull { index, id ->
+            val hint = args.autofillHints?.getOrNull(index)?.let { name ->
+                runCatching { EnhancedAutofillStructureParserV2.FieldHint.valueOf(name) }.getOrNull()
+            }
+            hint?.let { id to it }
+        }
+        return FillResponse.Builder().addDataset(dataset).apply {
+            AutofillSaveInfoPolicy.build(fields, args.saveEnabled, args.saveCompatMode)?.let(::setSaveInfo)
+        }.build()
+    }
+
     private fun buildGeneratedPasswordFillValues(
         autofillIds: List<AutofillId>,
         hints: List<String>?,
         password: String,
     ): Map<AutofillId, String> {
         val filledValues = linkedMapOf<AutofillId, String>()
+        val hasNewPassword = hints.orEmpty().any(AutofillPasswordRolePolicy::isNewPasswordHint)
         autofillIds.forEachIndexed { index, autofillId ->
             val normalizedHint = hints?.getOrNull(index)?.trim()?.lowercase().orEmpty()
+            if (hasNewPassword && !AutofillPasswordRolePolicy.isNewPasswordHint(normalizedHint)) return@forEachIndexed
             val isPasswordTarget =
                 normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name.lowercase() ||
                     normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name.lowercase() ||
@@ -1273,7 +1314,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             filledValues = filledValues,
         )
         val authResult: Parcelable = if (args.responseAuthMode) {
-            FillResponse.Builder().addDataset(dataset).build()
+            buildPickerResponse(dataset)
         } else {
             dataset
         }
@@ -1354,7 +1395,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             filledValues = filledValues,
         )
         val authResult: Parcelable = if (args.responseAuthMode) {
-            FillResponse.Builder().addDataset(dataset).build()
+            buildPickerResponse(dataset)
         } else {
             dataset
         }
@@ -1426,7 +1467,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             filledValues = filledValues,
         )
         val authResult: Parcelable = if (args.responseAuthMode) {
-            FillResponse.Builder().addDataset(dataset).build()
+            buildPickerResponse(dataset)
         } else {
             dataset
         }
@@ -1505,9 +1546,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             )
             withContext(Dispatchers.IO) {
                 val preferences = AutofillPreferences(applicationContext)
-                normalizedIdentifiers.forEach { identifier ->
-                    preferences.completeAutofillInteraction(identifier, passwordId)
-                }
+                preferences.completeAutofillInteraction(primaryIdentifier, passwordId)
             }
         } catch (e: Exception) {
             android.util.Log.e("AutofillPickerV2", "Failed to persist last filled credential", e)

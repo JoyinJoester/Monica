@@ -34,6 +34,9 @@ class AutofillProcessorNg(
         passwordSuggestionEnabled: Boolean = true,
         requireAuthentication: Boolean = true,
         postFillOtpPasswordIds: Set<Long> = emptySet(),
+        saveEnabled: Boolean = true,
+        checkCancelled: () -> Unit = {},
+        autoLockTimeoutMinutes: Int? = null,
     ): FillResponse? {
         val request = parser.parse(
             packageName = packageName,
@@ -43,6 +46,7 @@ class AutofillProcessorNg(
             fieldSignatureKey = fieldSignatureKey,
             isCompatMode = isCompatMode,
             preferDirectAutoFill = preferDirectAutoFill,
+            saveEnabled = saveEnabled,
         )
 
         if (request !is AutofillRequest.Fillable) return null
@@ -50,7 +54,9 @@ class AutofillProcessorNg(
         val filledData = filledDataBuilder.build(
             request = request,
             passwords = passwords,
-            requireAuthentication = requireAuthentication
+            requireAuthentication = requireAuthentication,
+            checkCancelled = checkCancelled,
+            autoLockTimeoutMinutes = autoLockTimeoutMinutes,
         )
         return fillResponseBuilder.build(
             request = request,

@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+
 import takagi.ru.monica.data.model.CredentialExchangeMetadata
 
 import takagi.ru.monica.data.passwordProjectKey
@@ -290,6 +291,7 @@ fun AddEditPasswordScreen(
     mdbxDatabasesFallback: List<takagi.ru.monica.data.LocalMdbxDatabase> = emptyList(),
     passwordId: Long?,
     initialDraft: AddEditPasswordInitialDraft? = null,
+    autofillPasswordUpdate: String? = null,
     forceShowAppBinding: Boolean = false,
     initialCategoryId: Long? = null,
     initialStorageExplicit: Boolean = false,
@@ -357,6 +359,7 @@ fun AddEditPasswordScreen(
         mdbxDatabasesFallback = mdbxDatabasesFallback,
         passwordId = passwordId,
         initialDraft = initialDraft,
+        autofillPasswordUpdate = autofillPasswordUpdate,
         forceShowAppBinding = forceShowAppBinding,
         initialCategoryId = initialCategoryId,
         initialStorageExplicit = initialStorageExplicit,
@@ -394,6 +397,7 @@ private fun PasswordEntryEditor(
     mdbxDatabasesFallback: List<takagi.ru.monica.data.LocalMdbxDatabase> = emptyList(),
     passwordId: Long?,
     initialDraft: AddEditPasswordInitialDraft? = null,
+    autofillPasswordUpdate: String? = null,
     forceShowAppBinding: Boolean = false,
     initialCategoryId: Long? = null,
     initialStorageExplicit: Boolean = false,
@@ -2196,7 +2200,10 @@ private fun PasswordEntryEditor(
                         viewModel.inspectSecretState(rawEntry)
                     }
                     val entry = rawEntry.copy(
-                        password = secretState.plainValueOrEmpty()
+                        password = secretState.plainValueOrEmpty(),
+                        username = if (autofillPasswordUpdate != null) {
+                            takagi.ru.monica.autofill_ng.AutofillSecretResolver.decryptPasswordOrNull(securityManager, rawEntry.username) ?: rawEntry.username
+                        } else rawEntry.username,
                     )
                     title = entry.title
                     replaceWebsiteUrlsFromRaw(entry.website)
@@ -2297,7 +2304,7 @@ private fun PasswordEntryEditor(
                             viewModel.getRawActivePasswordEntries()
                         }
                         val key = withContext(Dispatchers.Default) {
-                            buildPasswordSiblingGroupKey(entry)
+                            buildPasswordSiblingGroupKey(rawEntry)
                         }
                         val siblings = withContext(Dispatchers.Default) {
                             allEntries.filter { item: PasswordEntry ->
@@ -2315,7 +2322,8 @@ private fun PasswordEntryEditor(
                             ProjectCredentialGroup.restore(siblings.map { sibling ->
                                 val state = viewModel.inspectSecretState(sibling)
                                 check(state is SecretValueState.Available || state == SecretValueState.Empty)
-                                sibling.copy(password = state.plainValueOrEmpty(), authenticatorKey = securityManager.decryptDataIfMonicaCiphertext(sibling.authenticatorKey))
+                                sibling.copy(password = state.plainValueOrEmpty(), authenticatorKey = securityManager.decryptDataIfMonicaCiphertext(sibling.authenticatorKey),
+                                    username = if (autofillPasswordUpdate != null) takagi.ru.monica.autofill_ng.AutofillSecretResolver.decryptPasswordOrNull(securityManager, sibling.username) ?: sibling.username else sibling.username)
                             }, projectFields)
                         } catch (_: Exception) { projectCredentialLoadFailed = true; emptyList() } else emptyList()
                         if (restoredGroups.isNotEmpty()) {
@@ -2457,6 +2465,22 @@ private fun PasswordEntryEditor(
                         if (requestedContentSections.isEmpty()) requestedContentSections.addAll(EntryContentFields.order(existingDrafts))
                         if (existingDrafts.isNotEmpty()) {
                             customFieldsExpanded = true
+                        }
+                        // Apply only the explicitly reviewed credential, after restoring all
+                        // project groups and storage metadata. Saving still uses the ordinary editor.
+                        if (!initialDraftApplied && !autofillPasswordUpdate.isNullOrBlank() &&
+                            !hasOwnershipConflict && !projectCredentialLoadFailed && !templateLoadFailed) {
+                            val selectedIndex = originalIds.indexOf(actualId)
+                            if (selectedIndex in passwords.indices && actualId !in unreadablePasswordIds) {
+                                passwords[selectedIndex] = autofillPasswordUpdate
+                            } else {
+                                extraCredentialGroups.replaceAll { group ->
+                                    group.copy(passwords = group.passwords.map { value ->
+                                        if (value.originalEntryId == actualId) value.copy(value = autofillPasswordUpdate) else value
+                                    })
+                                }
+                            }
+                            initialDraftApplied = true
                         }
                         Unit
                     } else {
@@ -3442,7 +3466,7 @@ private fun PasswordEntryEditor(
                             text = { Text(stringResource(R.string.save)) },
                             icon = {
                                 if (isSaving) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                                else Icon(Icons.Default.Save, contentDescription = null)
+                                else Icon(Icons.Default.Save, contentDescription = stringResource(R.string.save))
                             },
                             containerColor = if (canSave) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                         )

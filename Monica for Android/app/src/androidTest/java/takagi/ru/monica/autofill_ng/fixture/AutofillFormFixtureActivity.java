@@ -66,6 +66,13 @@ public class AutofillFormFixtureActivity extends Activity {
         layout.addView(status);
         setContentView(layout);
         switch (scenario) {
+            case "signup": case "change":
+                field("user", "Username", InputType.TYPE_CLASS_TEXT, View.AUTOFILL_HINT_USERNAME);
+                if (scenario.equals("change")) field("password", "Current password", PASSWORD_TYPE, View.AUTOFILL_HINT_PASSWORD);
+                field("new", "New password", PASSWORD_TYPE, "newPassword");
+                field("confirmation", "Confirm password", PASSWORD_TYPE, "newPassword");
+                button("Submit fixture", () -> { getSystemService(AutofillManager.class).commit(); finish(); });
+                break;
             case "computed":
                 field("user", "", InputType.TYPE_CLASS_TEXT, null, "username");
                 field("password", "", InputType.TYPE_CLASS_TEXT, null, "current-password");
@@ -98,19 +105,30 @@ public class AutofillFormFixtureActivity extends Activity {
                 field("user","学号",InputType.TYPE_CLASS_TEXT,null);
                 if (scenario.equals("step")) button("Next step", () -> render("password"));
                 break;
-            case "password": field("password","密码",PASSWORD_TYPE,null); break;
+            case "password":
+                field("password","密码",PASSWORD_TYPE,null);
+                button("Submit fixture", () -> { getSystemService(AutofillManager.class).commit(); finish(); });
+                break;
             case "otp":
                 field("user","工号",InputType.TYPE_CLASS_TEXT,null);
                 field("otp","手机验证码",InputType.TYPE_CLASS_NUMBER,null);
                 break;
             case "search": field("other","搜索工号",InputType.TYPE_CLASS_TEXT,null); break;
             default:
-                boolean standard = scenario.equals("standard") || scenario.equals("inline");
+                boolean standard = scenario.equals("standard") || scenario.equals("inline") || scenario.equals("long");
                 field("user",standard ? "Username" : "工号",InputType.TYPE_CLASS_TEXT,
                         standard ? View.AUTOFILL_HINT_USERNAME : null);
                 field("password",standard ? "Password" : "密码",
                         scenario.equals("plain_chinese") ? InputType.TYPE_CLASS_TEXT : PASSWORD_TYPE,
                         standard ? View.AUTOFILL_HINT_PASSWORD : null);
+                if (scenario.equals("long")) {
+                    for (int index = 0; index < 300; index++) {
+                        TextView unrelated = new TextView(this);
+                        unrelated.setText("Synthetic static field " + index);
+                        unrelated.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);
+                        layout.addView(unrelated, new LinearLayout.LayoutParams(-1, 1));
+                    }
+                }
                 if (scenario.equals("mixed")) {
                     webView = new WebView(this);
                     webView.loadDataWithBaseURL("https://help.example.test","<p>Help only</p>","text/html","UTF-8",null);
@@ -196,7 +214,10 @@ public class AutofillFormFixtureActivity extends Activity {
             status.setText("document=" + state(value("document"), "P-12345") + " person=" + state(value("person"), "Test Person")); return;
         }
         status.setText("user=" + state(value("user"),getIntent().getStringExtra("expectedUsername") == null ? USERNAME : getIntent().getStringExtra("expectedUsername")) + " password=" + state(value("password"),getIntent().getStringExtra("expectedPassword") == null ? PASSWORD : getIntent().getStringExtra("expectedPassword"))
-                + " otp=" + state(value("otp"),"unused") + " other=" + state(value("other"),"unused"));
+                + " otp=" + state(value("otp"),"unused") + " other=" + state(value("other"),"unused")
+                + (fields.containsKey("new") ? " new=" + (value("new").isEmpty() ? "EMPTY" :
+                    value("new").length() >= 12 && value("new").equals(value("confirmation")) && !value("new").equals(PASSWORD) ? "MATCH" : "BAD")
+                    + " confirmation=" + (value("confirmation").isEmpty() ? "EMPTY" : "SET") : ""));
     }
 
     public class WebReporter {

@@ -9,6 +9,11 @@ data class AutofillInteractionContext(
     val primaryIdentifier: String?,
     val aliasIdentifiers: List<String>,
 ) {
+    // App aliases are useful for recording interaction, but must never pull a
+    // credential from another website into a password-only continuation.
+    val continuationIdentifiers: List<String>
+        get() = listOfNotNull(primaryIdentifier)
+
     val allIdentifiers: List<String>
         get() = buildList {
             primaryIdentifier?.let(::add)
@@ -38,6 +43,7 @@ object AutofillInteractionContextResolver {
 
     fun isPasswordOnlyLoginHints(hints: List<FieldHint>): Boolean {
         if (hints.isEmpty()) return false
+        if (FieldHint.NEW_PASSWORD in hints || FieldHint.OTP_CODE in hints) return false
         val loginTargets = hints.filter { hint ->
             hint == FieldHint.USERNAME ||
                 hint == FieldHint.EMAIL_ADDRESS ||
@@ -47,7 +53,7 @@ object AutofillInteractionContextResolver {
         }
         if (loginTargets.isEmpty()) return false
         val hasPasswordTarget = loginTargets.any {
-            it == FieldHint.PASSWORD || it == FieldHint.NEW_PASSWORD
+            it == FieldHint.PASSWORD
         }
         if (!hasPasswordTarget) return false
         val hasAccountTarget = loginTargets.any {

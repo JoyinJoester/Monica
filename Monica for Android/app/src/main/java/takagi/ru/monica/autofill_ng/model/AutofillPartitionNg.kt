@@ -2,6 +2,7 @@ package takagi.ru.monica.autofill_ng.model
 
 import android.service.autofill.SaveInfo
 import android.view.autofill.AutofillId
+import takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2.FieldHint
 
 /**
  * Bitwarden-compatible partition model.
@@ -24,9 +25,7 @@ sealed class AutofillPartition {
                 .map { it.data.autofillId }
 
         override val requiredSaveIds: List<AutofillId>
-            get() = views
-                .filterIsInstance<AutofillView.Login.Password>()
-                .map { it.data.autofillId }
+            get() = preferredPasswordSaveIds(views)
 
         override val saveType: Int
             get() = SaveInfo.SAVE_DATA_TYPE_PASSWORD
@@ -44,11 +43,15 @@ sealed class AutofillPartition {
                 .map { it.data.autofillId }
 
         override val requiredSaveIds: List<AutofillId>
-            get() = loginViews
-                .filterIsInstance<AutofillView.Login.Password>()
-                .map { it.data.autofillId }
+            get() = preferredPasswordSaveIds(loginViews)
 
         override val saveType: Int
             get() = SaveInfo.SAVE_DATA_TYPE_PASSWORD
     }
+}
+
+private fun preferredPasswordSaveIds(views: List<AutofillView.Login>): List<AutofillId> {
+    val passwords = views.filterIsInstance<AutofillView.Login.Password>()
+    val new = passwords.filter { it.data.hint == FieldHint.NEW_PASSWORD }
+    return new.ifEmpty { passwords }.map { it.data.autofillId }.distinct()
 }

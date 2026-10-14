@@ -262,6 +262,7 @@ class FillResponseBuilderNg(
         if (filledData.ignoreAutofillIds.isNotEmpty()) {
             responseBuilder.setIgnoredIds(*filledData.ignoreAutofillIds.toTypedArray())
         }
+        attachSaveInfoIfNeeded(responseBuilder, request)
         AutofillLogger.i(
             "AUTH",
             "Locked vault response contains one response-level unlock action",
@@ -452,7 +453,8 @@ class FillResponseBuilderNg(
                 PasswordSuggestionActivity.EXTRA_PASSWORD_FIELD_IDS,
                 ArrayList(passwordFieldIds)
             )
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // Authentication is started for a result by Android. NEW_TASK would
+            // cancel that result before the generated password can return.
         }
         return PendingIntent.getActivity(
             context,
@@ -561,6 +563,8 @@ class FillResponseBuilderNg(
             isSaveMode = false,
             fieldSignatureKey = request.fieldSignatureKey,
             responseAuthMode = false,
+            saveEnabled = request.saveEnabled,
+            saveCompatMode = request.isCompatMode,
             rememberLastFilled = true,
         )
         val pickerIntent = AutofillPickerActivityV2.getIntent(context, args)
@@ -628,20 +632,10 @@ class FillResponseBuilderNg(
     ) {
         // Bitwarden-compatible: skip save for login fields in compat mode because password
         // values can be masked and lead to low-quality save prompts.
-        if (request.isCompatMode) return
-        if (!request.partition.canPerformSaveRequest) return
-        val requiredIds = request.partition.requiredSaveIds.toTypedArray()
-        if (requiredIds.isEmpty()) return
-
-        val saveInfoBuilder = SaveInfo.Builder(request.partition.saveType, requiredIds)
-        val requiredSet = requiredIds.toSet()
-        val optionalIds = request.partition.optionalSaveIds
-            .filterNot { requiredSet.contains(it) }
-            .toTypedArray()
-        if (optionalIds.isNotEmpty()) {
-            saveInfoBuilder.setOptionalIds(optionalIds)
-        }
-        responseBuilder.setSaveInfo(saveInfoBuilder.build())
+        takagi.ru.monica.autofill_ng.AutofillSaveInfoPolicy.build(
+            request.partition.views.map { it.data.autofillId to it.data.hint },
+            enabled = request.saveEnabled, compatMode = request.isCompatMode,
+        )?.let(responseBuilder::setSaveInfo)
     }
 }
 
@@ -661,7 +655,8 @@ private fun buildLoginCallbackTargets(views: List<AutofillView>): List<AutofillC
     return views.mapNotNull { view ->
         val target = when (view) {
             is AutofillView.Login.Username -> AutofillCallbackTarget(view.data.autofillId, "USERNAME")
-            is AutofillView.Login.Password -> AutofillCallbackTarget(view.data.autofillId, "PASSWORD")
+            is AutofillView.Login.Password -> if (view.data.hint == FieldHint.NEW_PASSWORD) null
+                else AutofillCallbackTarget(view.data.autofillId, view.data.hint.name)
             is AutofillView.Field -> null
         }
         target?.takeIf { seenIds.add(it.autofillId.toString()) }
@@ -672,7 +667,7 @@ private fun buildAutofillHintNames(views: List<AutofillView>): List<String> {
     return views.map { view ->
         when (view) {
             is AutofillView.Login.Username -> "USERNAME"
-            is AutofillView.Login.Password -> "PASSWORD"
+            is AutofillView.Login.Password -> view.data.hint.name
             is AutofillView.Field -> view.hint.name
         }
     }

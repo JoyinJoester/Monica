@@ -1,0 +1,866 @@
+{
+  "date": "2026-10-15",
+  "version": "1.0.320",
+  "apiDevice": 32,
+  "apiHost": [
+    29,
+    34
+  ],
+  "notes": [
+    "Device cases require an isolated secondary user.",
+    "Regular edition lifecycle and save tests were isolated after four mixed-process failures.",
+    "Final picker argument reuse change: full host rerun and targeted device rerun in both editions.",
+    "Performance fixture labels were clarified from vault to seededRows after measurement; candidate count comes from service diagnostics."
+  ],
+  "Main": {
+    "host": [
+      {
+        "name": "takagi.ru.monica.autofill_ng.ActiveFillHardeningRegressionGuardTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.ActiveFillPromptThrottleTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.auth.AutofillSessionGrantStoreTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillAddPasswordCategoryGuardTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillAuthResultLaunchModeRegressionGuardTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillBillingAddressMappingTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillCallbackArgsRegressionGuardTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillCancellationTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillDetectionIntegrationGuardTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillDetectionPolicyTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillDiagnosticsShareTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillDirectOtpResponseTest",
+        "tests": 24,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillDropdownClickRegressionGuardTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillFieldRolePolicyTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillGeneratorPreferencesTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillHtmlHintTokensTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillInlineClickRegressionGuardTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillInteractionContextResolverTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillMetadataCacheTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillOtpActionSafetyTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillOtpBindingCacheTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillPasswordPurposeResponseTest",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillPasswordSuggestionSettingRegressionGuardTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillPickerRequestProfileTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillRequestContextPolicyTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillResponseCompatibilityTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillResponseUnlockRegressionGuardTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillSaveContextPolicyTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillSaveValuePolicyTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillStructureIntegrationTest",
+        "tests": 80,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillStructureMemoryTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.BitwardenLikeAutofillMatcherNgTest",
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.builder.StrongPasswordSuggestionPolicyTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.defaultmanager.SettingsControllerTest",
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.ManualFillTargetPolicyTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.PasswordSuggestionUiRegressionGuardTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.protection.AccessibilityServiceRestartTest",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.protection.AutofillProtectionStateTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.service.AutofillOtpNotificationServiceRegressionGuardTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.service.AutofillOtpNotificationSessionTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.SmartCopyNotificationTest",
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.ui.FaviconCacheTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "deviceUniqueCasesPassed": 29,
+    "attempts": [
+      {
+        "suite": "final-compatibility",
+        "tests": {
+          "issue153ManualLockRevokesEvenIfKeyIsLoadedAgain": 0,
+          "systemAutofillInlineSelectionReturnsTheChosenCredential": 0,
+          "frameworkSavesTheNewPasswordAfterChangeFormCommit": -2,
+          "saveReviewUpdatesAnExtraProjectAccountAndPreservesMetadata": -2,
+          "systemAutofillRecognizesChineseEnterpriseFields": 0,
+          "systemAutofillFillsWebViewAndDispatchesInputEvents": 0,
+          "lockedSaveRequiresVerificationAndCancellationDoesNotWrite": 0,
+          "cancellingVerificationLeavesTheFormEmptyAndAllowsRetry": 0,
+          "frameworkCarriesUsernameAcrossStepsWhenSavingNewPassword": 0,
+          "issue153WrongPasswordDoesNotGrantAccessAndCanRetry": 0,
+          "issue153TwoStepsSurviveOldTimeoutAndServiceRebind": 0,
+          "systemAutofillUsesComputedHtmlHintsWithoutLabels": 0,
+          "verifiedFillReturnsToTheOriginalForm": 0,
+          "systemAutofillKeepsNativeLoginBesideHelpWebView": 0,
+          "systemAutofillWithoutVerificationStillWorksAfterSessionLock": 0,
+          "lockedChangePasswordKeepsNewFieldsEmptyAfterVerificationReturn": 0,
+          "systemAutofillFillsStandardNativeLoginWithoutVerification": 0,
+          "issue153GrantDoesNotAuthorizeAnotherWebsite": 0,
+          "systemAutofillSupportsUsernameThenPasswordInOneActivity": 0,
+          "changePasswordFillsOldPasswordAndGeneratesOnlyTheNewPair": -2,
+          "saveReviewUpdatesChosenEntryAndPreservesNotesAndSibling": -2,
+          "accessibilityPickerHandlesAWebViewThatReplacesThePasswordField": 0,
+          "registrationSuggestsAccountWithoutOverwritingNewPasswords": 0,
+          "issue153RetentionDisabledRequiresVerificationForNextStep": 0,
+          "systemAutofillKeepsTheOtherHtmlFormEmpty": 0,
+          "issue153RealTwoMinuteExpiryRequiresAuthenticationAgain": 0,
+          "issue153ScreenOffRevokesAcrossServiceLifetime": 0
+        },
+        "runnerCompleted": false,
+        "settingsRestored": true,
+        "apkSha256": {
+          "takagi.ru.monica.test": "364F3EF5A376F3740A14B8787E7F5B817F363A2DA9C4F06F8817BFB9D1C8B6BC",
+          "takagi.ru.monica": "18892649DE619E74A60B2971ECF10AA241B6CAF5F8CD6F5680574C2A8E48DDD5"
+        }
+      },
+      {
+        "suite": "isolated-frameworkSavesTheNewPasswordAfterChangeFormCommit",
+        "tests": {
+          "frameworkSavesTheNewPasswordAfterChangeFormCommit": 0
+        },
+        "runnerCompleted": true,
+        "settingsRestored": true,
+        "apkSha256": {
+          "takagi.ru.monica": "18892649DE619E74A60B2971ECF10AA241B6CAF5F8CD6F5680574C2A8E48DDD5",
+          "takagi.ru.monica.test": "364F3EF5A376F3740A14B8787E7F5B817F363A2DA9C4F06F8817BFB9D1C8B6BC"
+        }
+      },
+      {
+        "suite": "isolated-saveReviewUpdatesAnExtraProjectAccountAndPreservesMetadata",
+        "tests": {
+          "saveReviewUpdatesAnExtraProjectAccountAndPreservesMetadata": 0
+        },
+        "runnerCompleted": true,
+        "settingsRestored": true,
+        "apkSha256": {
+          "takagi.ru.monica": "18892649DE619E74A60B2971ECF10AA241B6CAF5F8CD6F5680574C2A8E48DDD5",
+          "takagi.ru.monica.test": "364F3EF5A376F3740A14B8787E7F5B817F363A2DA9C4F06F8817BFB9D1C8B6BC"
+        }
+      },
+      {
+        "suite": "isolated-changePasswordFillsOldPasswordAndGeneratesOnlyTheNewPair",
+        "tests": {
+          "changePasswordFillsOldPasswordAndGeneratesOnlyTheNewPair": 0
+        },
+        "runnerCompleted": true,
+        "settingsRestored": true,
+        "apkSha256": {
+          "takagi.ru.monica": "18892649DE619E74A60B2971ECF10AA241B6CAF5F8CD6F5680574C2A8E48DDD5",
+          "takagi.ru.monica.test": "364F3EF5A376F3740A14B8787E7F5B817F363A2DA9C4F06F8817BFB9D1C8B6BC"
+        }
+      },
+      {
+        "suite": "isolated-saveReviewUpdatesChosenEntryAndPreservesNotesAndSibling",
+        "tests": {
+          "saveReviewUpdatesChosenEntryAndPreservesNotesAndSibling": 0
+        },
+        "runnerCompleted": true,
+        "settingsRestored": true,
+        "apkSha256": {
+          "takagi.ru.monica": "18892649DE619E74A60B2971ECF10AA241B6CAF5F8CD6F5680574C2A8E48DDD5",
+          "takagi.ru.monica.test": "364F3EF5A376F3740A14B8787E7F5B817F363A2DA9C4F06F8817BFB9D1C8B6BC"
+        }
+      },
+      {
+        "suite": "extended",
+        "tests": {
+          "saveReviewUpdatesAnExtraProjectAccountAndPreservesMetadata": 0,
+          "lockedSaveRequiresVerificationAndCancellationDoesNotWrite": 0,
+          "frameworkCarriesUsernameAcrossStepsWhenSavingNewPassword": 0,
+          "smallAndLargeVaultLongFormLatency": 0
+        },
+        "runnerCompleted": true,
+        "settingsRestored": true,
+        "apkSha256": {
+          "takagi.ru.monica.test": "6D251EFDA35F2BA2D0EE6B42F561574A99BC29D50F7A7F055C7E0EAFF1EFF201",
+          "takagi.ru.monica": "45065B2D28EC759ADD28D3F7683978D408E77B1BADD2AB4677066BD21C6C35D8"
+        }
+      },
+      {
+        "suite": "final-picker",
+        "tests": {
+          "cancellingVerificationLeavesTheFormEmptyAndAllowsRetry": 0,
+          "issue153PickerVerificationAndRecreationGrantFollowingSystemFill": 0,
+          "verifiedFillReturnsToTheOriginalForm": 0
+        },
+        "runnerCompleted": true,
+        "settingsRestored": true,
+        "apkSha256": {
+          "takagi.ru.monica.test": "585BA339EC0C828F15F2E1CB20975D33D4725BFF7C060DEC082FCFD1D15F827E",
+          "takagi.ru.monica": "4D36C3297B12965861FCD0EB2FC69B7D4AD55F0EE8B41BC1F6DE877A3EF851E5"
+        }
+      }
+    ]
+  },
+  "Fdroid": {
+    "host": [
+      {
+        "name": "takagi.ru.monica.autofill_ng.ActiveFillHardeningRegressionGuardTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.ActiveFillPromptThrottleTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.auth.AutofillSessionGrantStoreTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillAddPasswordCategoryGuardTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillAuthResultLaunchModeRegressionGuardTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillBillingAddressMappingTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillCallbackArgsRegressionGuardTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillCancellationTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillDetectionIntegrationGuardTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillDetectionPolicyTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillDiagnosticsShareTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillDirectOtpResponseTest",
+        "tests": 24,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillDropdownClickRegressionGuardTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillFieldRolePolicyTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillGeneratorPreferencesTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillHtmlHintTokensTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillInlineClickRegressionGuardTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillInteractionContextResolverTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillMetadataCacheTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillOtpActionSafetyTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillOtpBindingCacheTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillPasswordPurposeResponseTest",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillPasswordSuggestionSettingRegressionGuardTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillPickerRequestProfileTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillRequestContextPolicyTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillResponseCompatibilityTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillResponseUnlockRegressionGuardTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillSaveContextPolicyTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillSaveValuePolicyTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillStructureIntegrationTest",
+        "tests": 80,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.AutofillStructureMemoryTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.BitwardenLikeAutofillMatcherNgTest",
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.builder.StrongPasswordSuggestionPolicyTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.defaultmanager.SettingsControllerTest",
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.ManualFillTargetPolicyTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.PasswordSuggestionUiRegressionGuardTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.protection.AccessibilityServiceRestartTest",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.protection.AutofillProtectionStateTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.service.AutofillOtpNotificationServiceRegressionGuardTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.service.AutofillOtpNotificationSessionTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.SmartCopyNotificationTest",
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "takagi.ru.monica.autofill_ng.ui.FaviconCacheTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "deviceUniqueCasesPassed": 29,
+    "attempts": [
+      {
+        "suite": "final-core",
+        "tests": {
+          "systemAutofillInlineSelectionReturnsTheChosenCredential": 0,
+          "frameworkSavesTheNewPasswordAfterChangeFormCommit": 0,
+          "saveReviewUpdatesAnExtraProjectAccountAndPreservesMetadata": 0,
+          "systemAutofillRecognizesChineseEnterpriseFields": 0,
+          "systemAutofillFillsWebViewAndDispatchesInputEvents": 0,
+          "lockedSaveRequiresVerificationAndCancellationDoesNotWrite": 0,
+          "cancellingVerificationLeavesTheFormEmptyAndAllowsRetry": 0,
+          "frameworkCarriesUsernameAcrossStepsWhenSavingNewPassword": 0,
+          "systemAutofillUsesComputedHtmlHintsWithoutLabels": 0,
+          "verifiedFillReturnsToTheOriginalForm": 0,
+          "systemAutofillKeepsNativeLoginBesideHelpWebView": 0,
+          "systemAutofillWithoutVerificationStillWorksAfterSessionLock": 0,
+          "lockedChangePasswordKeepsNewFieldsEmptyAfterVerificationReturn": 0,
+          "systemAutofillFillsStandardNativeLoginWithoutVerification": 0,
+          "systemAutofillSupportsUsernameThenPasswordInOneActivity": 0,
+          "changePasswordFillsOldPasswordAndGeneratesOnlyTheNewPair": 0,
+          "saveReviewUpdatesChosenEntryAndPreservesNotesAndSibling": 0,
+          "accessibilityPickerHandlesAWebViewThatReplacesThePasswordField": 0,
+          "registrationSuggestsAccountWithoutOverwritingNewPasswords": 0,
+          "systemAutofillKeepsTheOtherHtmlFormEmpty": 0
+        },
+        "runnerCompleted": true,
+        "settingsRestored": true,
+        "apkSha256": {
+          "takagi.ru.monica.fdroid.test": "477F13B734B3DD0E04F83B2BAA686B8224FE1296BA0C4DCC618F7D7948FD7179",
+          "takagi.ru.monica.fdroid": "ABBB5E0BEA47D602180DEFC19B2474B3916FDA966281C9D5FD6365CDCBA425EE"
+        }
+      },
+      {
+        "suite": "final-lifecycle",
+        "tests": {
+          "issue153ManualLockRevokesEvenIfKeyIsLoadedAgain": 0,
+          "issue153WrongPasswordDoesNotGrantAccessAndCanRetry": 0,
+          "issue153TwoStepsSurviveOldTimeoutAndServiceRebind": 0,
+          "issue153GrantDoesNotAuthorizeAnotherWebsite": 0,
+          "issue153RetentionDisabledRequiresVerificationForNextStep": 0,
+          "issue153RealTwoMinuteExpiryRequiresAuthenticationAgain": 0,
+          "issue153ScreenOffRevokesAcrossServiceLifetime": 0
+        },
+        "runnerCompleted": true,
+        "settingsRestored": true,
+        "apkSha256": {
+          "takagi.ru.monica.fdroid.test": "477F13B734B3DD0E04F83B2BAA686B8224FE1296BA0C4DCC618F7D7948FD7179",
+          "takagi.ru.monica.fdroid": "ABBB5E0BEA47D602180DEFC19B2474B3916FDA966281C9D5FD6365CDCBA425EE"
+        }
+      },
+      {
+        "suite": "final-picker",
+        "tests": {
+          "cancellingVerificationLeavesTheFormEmptyAndAllowsRetry": 0,
+          "issue153PickerVerificationAndRecreationGrantFollowingSystemFill": 0,
+          "smallAndLargeVaultLongFormLatency": 0,
+          "verifiedFillReturnsToTheOriginalForm": 0
+        },
+        "runnerCompleted": true,
+        "settingsRestored": true,
+        "apkSha256": {
+          "takagi.ru.monica.fdroid.test": "477F13B734B3DD0E04F83B2BAA686B8224FE1296BA0C4DCC618F7D7948FD7179",
+          "takagi.ru.monica.fdroid": "C97863F304E7C07776B8AF95FB287ECA21F15DA86C13109EFE2B16045232BA06"
+        }
+      }
+    ]
+  },
+  "productionFilesSha256Lf": {
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/AutofillCipherCallbackActivity.kt": "5a662b4a869cf7019c0f52736a7d9b9e3954f1c9e2a4141805ae7dbba428192e",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/AutofillFormPurpose.kt": "9d8fa4a8cceb2df25d676ca7f8e4d409dbb64f846d8ed4cc7bed4e2f6391b7e5",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/AutofillInteractionContext.kt": "f8a91b82711cf43dd2fc21d0826bba27e266538799f8b7adb72d3b4795b1f79f",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/AutofillPasswordRolePolicy.kt": "352f55d8f5b400d7c7b0eadbf01cbee94a151e81eb6eafedef747df3e05bd138",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/AutofillPickerActivityV2.kt": "97fe93c2bef44c80592f24f5ed6796d88df89717ec16dd970515b89b67b5fc7c",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/AutofillSaveContextPolicy.kt": "92c4b5867f24508db82f61403c96b80350611c7c6683f41b60dbe5714e16a696",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/AutofillSaveInfoPolicy.kt": "c9b3e78ff64748497b7649617f0832e255520039629eaa9fa7207327802b4f9b",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/AutofillSaveMatchPolicy.kt": "47ca6aadf0321ee28e402a3094f6ca0455659cbb7ae6dff388385b46580afefa",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/AutofillSaveReview.kt": "830d8fea5fbb30c6e952691d2832a3b074f1b1a3b3be22d919ec09e35964443c",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/AutofillSaveTransparentActivity.kt": "48f80dbdc76a2b04b6f1222c6189242ca96c584e3195b97d4210ce34008aff73",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/AutofillSaveValuePolicy.kt": "734c058ddd84c9272f5b822021851fae50de3c4656f355f14b51d2dce95d852d",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/AutofillStructureMemory.kt": "84d56d92e6a47737903b04af4930d1f66d4a998f5917134f71445cb008c23ce3",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/EnhancedAutofillStructureParserV2.kt": "394a750324341a84a7975cb1b50dcddf9a116627ee00334c0682fc51d509b8f2",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/MonicaAutofillServiceNg.kt": "fad4843d9b150aa636b44c032d3f4b63e39666dc197077862c7cd17c8030f9bf",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/PasswordSuggestionActivity.kt": "a19c777d3e81321a1ec46b1be789e59b86528ca8ded9de1e8c1765ee3854806b",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/builder/FillResponseBuilderNg.kt": "d6c535bc5fd1cb5f9ab2af0549f5cd7ad38b003b0e855f600ab3fce346c09931",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/builder/FilledDataBuilderNg.kt": "7eff47705c092d17392eef63f6e02e9fb573dd73976f5e09b10cd9b312e19f24",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/model/AutofillPartitionNg.kt": "beefe04fa93090c3bb1444abc333d7e20f1832632cb3e1ea0ef1030c2c428fe8",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/model/AutofillRequestNg.kt": "9695dae4d788cd9c8f4fd911587e800e273fbc48bcd63370d1a00bb8b0571b56",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/parser/AutofillParserNg.kt": "8bbfd499ade295671cd407118edc5bbeb47434d993e285a96a4c03d3f45cb7ac",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/autofill_ng/processor/AutofillProcessorNg.kt": "98778abe8a99d248f679a86dc6bcf6b01e3d9bc3a3e5853e05dbbafaf5090b72",
+    "Monica for Android/app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt": "dec172218692d295a6739962d283535b01ef66f9ad7075a66d4448e4e71c68ee",
+    "Monica for Android/app/src/main/res/values-b+zh+Hant/autofill_save.xml": "f24e924cf446b08f7c0098c00bfe740fdbbbde444a059688bb5221bd8468cb9a",
+    "Monica for Android/app/src/main/res/values-zh-rCN/autofill_save.xml": "6e9c10427e676adbe45eefe94514eef4233d5cae125eabce248cd04897381692",
+    "Monica for Android/app/src/main/res/values-zh/autofill_save.xml": "6e9c10427e676adbe45eefe94514eef4233d5cae125eabce248cd04897381692",
+    "Monica for Android/app/src/main/res/values/autofill_save.xml": "2bf9ddd1fb97fbd35985de223584d121f1cfbea7d97ebf2dc462d1c7245ff2ba"
+  },
+  "performanceMs": {
+    "Main": {
+      "candidateCounts": [
+        2,
+        1002
+      ],
+      "short": [
+        1638,
+        1383,
+        1367,
+        1472,
+        1517
+      ],
+      "long": [
+        1586,
+        2017,
+        1904,
+        1475,
+        1535
+      ]
+    },
+    "Fdroid": {
+      "candidateCounts": [
+        3,
+        1003
+      ],
+      "short": [
+        1797,
+        1512,
+        1583,
+        1276,
+        1332
+      ],
+      "long": [
+        2597,
+        1370,
+        3600,
+        1652,
+        1633
+      ]
+    }
+  }
+}

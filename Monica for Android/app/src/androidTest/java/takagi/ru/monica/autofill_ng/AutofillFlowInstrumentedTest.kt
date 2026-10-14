@@ -70,6 +70,12 @@ class AutofillFlowInstrumentedTest {
     private var accessibilityEnabledByTest = false
     private val insertedIds = mutableListOf<Long>()
     private val insertedValidatorIds = mutableListOf<Long>()
+    private val insertedAttachments = mutableListOf<takagi.ru.monica.attachments.model.Attachment>()
+    private val attachmentExecutor by lazy {
+        takagi.ru.monica.attachments.executor.LocalAttachmentExecutor(context,
+            takagi.ru.monica.attachments.storage.AttachmentStorage(context),
+            takagi.ru.monica.attachments.storage.AttachmentKeyVault(security))
+    }
     private var oldPreferences: List<Boolean>? = null
     private var oldOtpPreferences: Triple<Boolean, Boolean, Int>? = null
     private var expectedUsername: String? = null
@@ -90,7 +96,8 @@ class AutofillFlowInstrumentedTest {
         oldIme = Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
         oldSettings = settings.settingsFlow.first()
         oldPreferences = listOf(preferences.isAutofillEnabled.first(),
-            preferences.isPasswordSuggestionEnabled.first(), preferences.isV2RespectAutofillOffEnabled.first())
+            preferences.isPasswordSuggestionEnabled.first(), preferences.isV2RespectAutofillOffEnabled.first(),
+            preferences.isRequestSaveDataEnabled.first())
         oldOtpPreferences = Triple(preferences.isOtpNotificationEnabled.first(), preferences.isAutoCopyOtpEnabled.first(),
             preferences.otpNotificationDuration.first())
         security = SecurityManager(context)
@@ -106,6 +113,7 @@ class AutofillFlowInstrumentedTest {
         preferences.setAutofillEnabled(true)
         preferences.setPasswordSuggestionEnabled(false)
         preferences.setV2RespectAutofillOffEnabled(true)
+        preferences.setRequestSaveDataEnabled(false)
         preferences.setOtpNotificationEnabled(false)
         preferences.setAutoCopyOtpEnabled(false)
         SessionManager.attachAppContext(context)
@@ -123,6 +131,10 @@ class AutofillFlowInstrumentedTest {
     }
 
     @After fun tearDown(): Unit = runBlocking {
+        // Dismiss this test's Android SaveUI before another fixture opens.
+        if (::ui.isInitialized) {
+            repeat(2) { ui.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK) }
+        }
         val notificationCleanupFailure = runCatching { if (notificationTestStarted) {
             context.stopService(Intent(context, AutofillOtpNotificationService::class.java))
             notifications.cancel(OTP_NOTIFICATION_ID)
@@ -133,6 +145,7 @@ class AutofillFlowInstrumentedTest {
             if (!notificationChannelExisted) notifications.deleteNotificationChannel(OTP_CHANNEL_ID)
         } }.exceptionOrNull()
         insertedValidatorIds.chunked(500).forEach { PasswordDatabase.getDatabase(context).secureItemDao().deleteItemsByIds(it) }
+        insertedAttachments.forEach { attachmentExecutor.delete(it) }
         insertedIds.forEach { dao.deletePasswordEntryById(it) }
         oldSettings?.let {
             settings.updateAutofillKeepUnlocked(it.autofillKeepUnlocked)
@@ -147,6 +160,7 @@ class AutofillFlowInstrumentedTest {
             preferences.setAutofillEnabled(it[0])
             preferences.setPasswordSuggestionEnabled(it[1])
             preferences.setV2RespectAutofillOffEnabled(it[2])
+            preferences.setRequestSaveDataEnabled(it[3])
         }
         oldOtpPreferences?.let {
             preferences.setOtpNotificationEnabled(it.first)
@@ -272,6 +286,222 @@ class AutofillFlowInstrumentedTest {
         open("standard")
         fillFromSystem(NATIVE_TITLE)
         expectStatus("user=OK password=OK")
+    }
+
+    @Test fun registrationSuggestsAccountWithoutOverwritingNewPasswords() {
+        open("signup")
+        fillFromSystem(NATIVE_TITLE)
+        expectStatus("user=OK password=ABSENT")
+        expectStatus("new=EMPTY confirmation=EMPTY")
+    }
+
+    @Test fun changePasswordFillsOldPasswordAndGeneratesOnlyTheNewPair() = runBlocking {
+        preferences.setPasswordSuggestionEnabled(true)
+        open("change")
+        fillFromSystem(NATIVE_TITLE)
+        expectStatus("user=OK password=OK")
+        expectStatus("new=EMPTY confirmation=EMPTY")
+        tap(waitNode { it.contentDescription?.toString() == "fixture-field-2" })
+        tap(waitNode { it.text?.toString() == context.getString(R.string.password_suggestion_title) })
+        tap(waitNode { it.text?.toString() == context.getString(R.string.password_suggestion_accept) })
+        expectStatus("new=MATCH confirmation=SET")
+        expectStatus("user=OK password=OK")
+    }
+
+    @Test fun lockedChangePasswordKeepsNewFieldsEmptyAfterVerificationReturn() = runBlocking {
+        settings.updateAutofillAuthRequired(true)
+        SessionManager.markLocked()
+        open("change")
+        focusFirstField()
+        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
+        verifyAndSelectCredential()
+        expectStatus("user=OK password=OK")
+        expectStatus("new=EMPTY confirmation=EMPTY")
+    }
+
+    @Test fun frameworkSavesTheNewPasswordAfterChangeFormCommit() = runBlocking {
+        preferences.setRequestSaveDataEnabled(true)
+        open("change")
+        fillFromSystem(NATIVE_TITLE)
+        setFixtureText(2,"Updated-synthetic-42!")
+        setFixtureText(3,"Updated-synthetic-42!")
+        submitAndReviewSavedPassword()
+    }
+
+    @Test fun frameworkCarriesUsernameAcrossStepsWhenSavingNewPassword() = runBlocking {
+        preferences.setRequestSaveDataEnabled(true)
+        open("step")
+        fillFromSystem(NATIVE_TITLE)
+        tap(waitNode { it.text?.toString().equals("Next step", ignoreCase = true) })
+        focusFirstField()
+        waitNode { it.text?.toString() == NATIVE_TITLE }
+        setFixtureText(0,"Updated-synthetic-42!")
+        submitAndReviewSavedPassword()
+    }
+
+    private fun setFixtureText(index: Int, value: String) {
+        assertTrue(waitNode { it.contentDescription?.toString() == "fixture-field-$index" }
+            .performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,value)
+            }))
+    }
+
+    private suspend fun submitAndReviewSavedPassword() {
+        ui.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        tap(waitNode { it.text?.toString().equals("Submit fixture",ignoreCase=true) })
+        tap(waitNode { it.viewIdResourceName == "android:id/autofill_save_yes" ||
+            (it.packageName?.toString() == "android" && it.text?.toString().equals("Save",ignoreCase=true)) })
+        waitNode { it.text?.toString() == context.getString(R.string.autofill_save_review_title) }
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
+        val save=waitNode { (it.text?.toString() == context.getString(R.string.save) ||
+            it.contentDescription?.toString() == context.getString(R.string.save)) && it.isEnabled }
+        Thread.sleep(600)
+        tap(save)
+        val end=SystemClock.elapsedRealtime()+15_000
+        while (SystemClock.elapsedRealtime()<end && dao.getPasswordEntryById(insertedIds.first())?.let {
+            security.decryptData(it.password) } != "Updated-synthetic-42!") delay(100)
+        assertEquals("Updated-synthetic-42!",security.decryptData(requireNotNull(dao.getPasswordEntryById(insertedIds.first())).password))
+    }
+
+    @Test fun saveReviewUpdatesChosenEntryAndPreservesNotesAndSibling() = runBlocking {
+        val original=requireNotNull(dao.getPasswordEntryById(insertedIds.first()))
+            .copy(username=AutofillFormFixtureActivity.USERNAME,notes="Preserve synthetic notes",passwordGroupId=java.util.UUID.randomUUID().toString())
+        dao.updatePasswordEntry(original)
+        val siblingId=dao.insertPasswordEntry(original.copy(id=0,password=security.encryptData("sibling-password")))
+        insertedIds += siblingId
+        val attachmentBytes = ByteArray(1024) { (it % 251).toByte() }
+        val attachment = attachmentExecutor.writeFromBytes(
+            takagi.ru.monica.attachments.model.AttachmentOwner.password(original.id),
+            "synthetic-autofill.bin", "application/octet-stream", attachmentBytes)
+        insertedAttachments += attachment
+        val attachmentDao = PasswordDatabase.getDatabase(context).attachmentDao()
+        val attachmentId = attachmentDao.insert(attachment)
+        context.startActivity(Intent(context,AutofillSaveTransparentActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(AutofillSaveTransparentActivity.EXTRA_USERNAME,AutofillFormFixtureActivity.USERNAME)
+            putExtra(AutofillSaveTransparentActivity.EXTRA_PASSWORD,"Updated-synthetic-42!")
+            putExtra(AutofillSaveTransparentActivity.EXTRA_PACKAGE_NAME,fixturePackage)
+        })
+        waitNode { it.text?.toString() == context.getString(R.string.autofill_save_review_title) }
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
+        val save=waitNode { (it.contentDescription?.toString() == context.getString(R.string.save) ||
+            it.text?.toString() == context.getString(R.string.save)) && it.isEnabled }
+        // The title loads before all grouped fields; wait until the new draft is exposed to the editor.
+        Thread.sleep(600)
+        tap(save)
+        val deadline=SystemClock.elapsedRealtime()+15_000
+        var updated=dao.getPasswordEntryById(original.id)
+        while (updated?.let { security.decryptData(it.password) } != "Updated-synthetic-42!" && SystemClock.elapsedRealtime()<deadline) {
+            delay(100);updated=dao.getPasswordEntryById(original.id)
+        }
+        assertEquals("Updated-synthetic-42!",security.decryptData(requireNotNull(updated).password))
+        assertEquals(original.notes,updated.notes)
+        assertEquals(original.appPackageName,updated.appPackageName)
+        assertEquals("sibling-password",security.decryptData(requireNotNull(dao.getPasswordEntryById(siblingId)).password))
+        val savedAttachment = attachmentDao.getActiveByParent(original.id).single { it.id == attachmentId }
+        assertEquals(attachment.copy(id = attachmentId), savedAttachment)
+        assertArrayEquals(attachmentBytes, attachmentExecutor.openDecrypted(savedAttachment).use { it.readBytes() })
+    }
+
+    @Test fun saveReviewUpdatesAnExtraProjectAccountAndPreservesMetadata() = runBlocking {
+        val database = PasswordDatabase.getDatabase(context)
+        val fields = database.customFieldDao()
+        val categoryDao = database.categoryDao()
+        val category = takagi.ru.monica.data.Category(name = "Autofill synthetic folder")
+        val folderId = categoryDao.insert(category)
+        try {
+            val project = java.util.UUID.randomUUID().toString()
+            val original = requireNotNull(dao.getPasswordEntryById(insertedIds.first())).copy(
+                username = AutofillFormFixtureActivity.USERNAME, notes = "Keep project notes",
+                categoryId = folderId, passwordGroupId = project, isFavorite = true)
+            dao.updatePasswordEntry(original)
+            val second = original.copy(id = 0, username = "second-account", password = security.encryptData("second-old"))
+            val secondId = dao.insertPasswordEntry(second)
+            insertedIds += secondId
+            val groups = listOf(
+                takagi.ru.monica.data.model.ProjectCredentialGroup.Group(username = original.username,
+                    passwords = listOf(takagi.ru.monica.data.model.ProjectCredentialGroup.Password(value = AutofillFormFixtureActivity.PASSWORD))),
+                takagi.ru.monica.data.model.ProjectCredentialGroup.Group(username = second.username,
+                    passwords = listOf(takagi.ru.monica.data.model.ProjectCredentialGroup.Password(value = "second-old"))))
+            val rows = takagi.ru.monica.data.model.ProjectCredentialGroup.rows(groups)
+            listOf(original.id, secondId).forEachIndexed { index, id ->
+                fields.insert(takagi.ru.monica.data.CustomField(entryId = id,
+                    title = takagi.ru.monica.data.model.ProjectCredentialGroup.FIELD,
+                    value = rows[index].metadata.forProject(project).raw.toString()))
+                fields.insert(takagi.ru.monica.data.CustomField(entryId = id, title = "Synthetic custom field", value = "Keep custom value"))
+            }
+            context.startActivity(Intent(context,AutofillSaveTransparentActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra(AutofillSaveTransparentActivity.EXTRA_USERNAME, second.username)
+                putExtra(AutofillSaveTransparentActivity.EXTRA_PASSWORD, "Updated-synthetic-42!")
+                putExtra(AutofillSaveTransparentActivity.EXTRA_PACKAGE_NAME, fixturePackage)
+            })
+            waitNode { it.text?.toString() == context.getString(R.string.autofill_save_review_title) }
+            tap(waitNode { it.text?.toString() == NATIVE_TITLE })
+            tap(waitNode { it.contentDescription?.toString() == context.getString(R.string.save) && it.isEnabled })
+            val deadline = SystemClock.elapsedRealtime() + 15000
+            while (SystemClock.elapsedRealtime() < deadline && dao.getPasswordEntryById(secondId)?.let {
+                security.decryptData(it.password) } != "Updated-synthetic-42!") delay(100)
+            val saved = requireNotNull(dao.getPasswordEntryById(secondId))
+            assertEquals("Updated-synthetic-42!", security.decryptData(saved.password))
+            assertEquals(AutofillFormFixtureActivity.PASSWORD, security.decryptData(requireNotNull(dao.getPasswordEntryById(original.id)).password))
+            assertEquals(second.username, saved.username)
+            assertEquals(original.notes, saved.notes)
+            assertEquals(folderId, saved.categoryId)
+            assertTrue(saved.isFavorite)
+            listOf(original.id, secondId).forEachIndexed { index, id ->
+                val stored = fields.getFieldsByEntryIdSync(id)
+                assertEquals("Keep custom value", stored.single { it.title == "Synthetic custom field" }.value)
+                val meta = requireNotNull(takagi.ru.monica.data.model.ProjectCredentialGroup.parse(
+                    stored.single { it.title == takagi.ru.monica.data.model.ProjectCredentialGroup.FIELD }.value))
+                assertEquals(rows[index].metadata.groupId, meta.groupId)
+                assertEquals(rows[index].metadata.passwordId, meta.passwordId)
+            }
+            assertTrue(database.passwordHistoryDao().getHistoryByEntryIdSync(secondId).any {
+                security.decryptData(it.password) == "second-old" })
+        } finally {
+            insertedIds.forEach { dao.deletePasswordEntryById(it) }
+            categoryDao.delete(category.copy(id = folderId))
+        }
+    }
+
+    @Test fun lockedSaveRequiresVerificationAndCancellationDoesNotWrite() = runBlocking {
+        settings.updateAutofillAuthRequired(true)
+        SessionManager.markLocked()
+        val original = requireNotNull(dao.getPasswordEntryById(insertedIds.first()))
+        context.startActivity(Intent(context,AutofillSaveTransparentActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(AutofillSaveTransparentActivity.EXTRA_USERNAME, AutofillFormFixtureActivity.USERNAME)
+            putExtra(AutofillSaveTransparentActivity.EXTRA_PASSWORD, "Do-not-save")
+            putExtra(AutofillSaveTransparentActivity.EXTRA_PACKAGE_NAME, fixturePackage)
+        })
+        waitNode { it.isEditable && it.packageName?.toString() == context.packageName }
+        tap(waitNode { it.text?.toString() == context.getString(R.string.cancel) })
+        delay(500)
+        assertEquals(original, dao.getPasswordEntryById(original.id))
+        assertFalse(SessionManager.isUnlocked.value)
+    }
+
+    @Test fun smallAndLargeVaultLongFormLatency() = runBlocking {
+        suspend fun measure(label: String, scenario: String) {
+            val samples = mutableListOf<Long>()
+            repeat(5) {
+                open(scenario)
+                val start = SystemClock.elapsedRealtime()
+                fillFromSystem(NATIVE_TITLE)
+                expectStatus("user=OK password=OK")
+                samples += SystemClock.elapsedRealtime() - start
+            }
+            android.util.Log.i("AutofillFlowPerf", "$label samplesMs=${samples.joinToString(",")}")
+        }
+        measure("seededRows=2 nodes=short", "standard")
+        val encrypted = security.encryptData("Synthetic unrelated password")
+        PasswordDatabase.getDatabase(context).withTransaction {
+            repeat(1000) { index -> insertedIds += dao.insertPasswordEntry(PasswordEntry(
+                title = "Synthetic unrelated $index", website = "https://unrelated-$index.example.test",
+                username = "synthetic-account", password = encrypted)) }
+        }
+        measure("seededRows=1002 extraNodes=300", "long")
     }
 
     @Test fun dropdownAllowsComposingAndTypingWithoutRefocusing() {
@@ -1081,6 +1311,21 @@ class AutofillFlowInstrumentedTest {
             }
             Thread.sleep(50)
         } while (SystemClock.elapsedRealtime() < end)
+        runCatching {
+            val nodes = ArrayDeque<AccessibilityNodeInfo>()
+            ui.windows.mapNotNull { it.root }.forEach(nodes::add)
+            val output = StringBuilder("expected save label=${context.getString(R.string.save)}\n")
+            var count=0
+            while(nodes.isNotEmpty() && count++<1000) {
+                val node=nodes.removeFirst()
+                output.appendLine("${node.packageName}|${node.className}|${node.text}|${node.contentDescription}|enabled=${node.isEnabled}")
+                for(index in 0 until node.childCount) node.getChild(index)?.let(nodes::add)
+            }
+            java.io.File(context.filesDir,"autofill-failure.txt").writeText(output.toString())
+            java.io.File(context.filesDir, "autofill-failure.png").outputStream().use {
+                ui.takeScreenshot()?.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+        }
         throw AssertionError("Expected autofill UI/status did not appear within 10 seconds; " +
             "activeRoot=${ui.rootInActiveWindow?.className}, windows=${ui.windows.size}, " +
             "flags=${ui.serviceInfo.flags}, fixtureStatus=$fixtureStatus")

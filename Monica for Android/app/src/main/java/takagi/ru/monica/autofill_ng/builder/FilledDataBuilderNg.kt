@@ -50,8 +50,10 @@ class FilledDataBuilderNg(
         request: AutofillRequest.Fillable,
         passwords: List<PasswordEntry>,
         requireAuthentication: Boolean = true,
+        checkCancelled: () -> Unit = {},
+        autoLockTimeoutMinutes: Int? = null,
     ): FilledData {
-        val autoLockMinutes = resolveAutoLockTimeoutForAutofill()
+        val autoLockMinutes = autoLockTimeoutMinutes ?: resolveAutoLockTimeoutForAutofill()
         // “永不过期”允许会话跨进程生命周期恢复，但显式锁定仍必须立即生效。
         // 因此始终同时检查会话状态和可用密钥材料，不能仅凭 Keystore 材料可读
         // 就绕过 SessionManager。
@@ -76,16 +78,20 @@ class FilledDataBuilderNg(
             is AutofillPartition.Generic -> partition.views.filterIsInstance<AutofillView.Login>()
         }
 
-        val filledPartitions = if (loginViews.isEmpty()) {
+        val storedViews = loginViews.filter { it.data.hint != takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD }
+        val needsPassword = storedViews.any { it is AutofillView.Login.Password }
+        val filledPartitions = if (storedViews.isEmpty()) {
             emptyList()
         } else {
             // Presentation only: keep each real row ID and never combine credentials.
             val resolved = passwords.mapNotNull { entry ->
+                checkCancelled()
                 buildCipherForResponse(
                     entry = entry,
                     fallbackWebsite = request.uri.orEmpty(),
                     requireAuthentication = requireAuthentication,
-                    isVaultLocked = isVaultLocked
+                    isVaultLocked = isVaultLocked,
+                    needsPassword = needsPassword,
                 )?.let { entry to it }
             }
             // Legacy usernames may be encrypted with different nonces. Group the resolved
@@ -102,6 +108,7 @@ class FilledDataBuilderNg(
 
             ciphers
                 .map { autofillCipher ->
+                    checkCancelled()
                     fillLoginPartition(
                         autofillCipher = autofillCipher,
                         autofillViews = loginViews,
@@ -133,15 +140,18 @@ class FilledDataBuilderNg(
         inlinePresentationSpec: InlinePresentationSpec?,
         requiresAuthentication: Boolean,
     ): FilledPartition {
+        val storedCredentialViews = autofillViews.filter {
+            it.data.hint != takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
+        }
         val filledItems = if (requiresAuthentication) {
-            autofillViews.map { autofillView ->
+            storedCredentialViews.map { autofillView ->
                 FilledItem(
                     autofillId = autofillView.data.autofillId,
                     value = null
                 )
             }
         } else {
-            autofillViews.mapNotNull { autofillView ->
+            storedCredentialViews.mapNotNull { autofillView ->
                 val value = when (autofillView) {
                     is AutofillView.Login.Username -> autofillCipher.username
                     is AutofillView.Login.Password -> autofillCipher.password
@@ -171,6 +181,7 @@ class FilledDataBuilderNg(
         fallbackWebsite: String,
         requireAuthentication: Boolean,
         isVaultLocked: Boolean,
+        needsPassword: Boolean = true,
     ): AutofillCipher.Login? {
         if (requireAuthentication && isVaultLocked) {
             val subtitleValue = AccountFillPolicy
@@ -197,7 +208,7 @@ class FilledDataBuilderNg(
         }
 
         val usernameValue = decryptForAutofill(entry.username)
-        val passwordValue = decryptForAutofill(entry.password)
+        val passwordValue = if (needsPassword) decryptForAutofill(entry.password) else ""
         if (usernameValue.isNullOrBlank() && passwordValue.isNullOrBlank()) {
             return null
         }

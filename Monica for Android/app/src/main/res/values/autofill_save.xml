@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="autofill_save_review_title">Update an existing password?</string>
+    <string name="autofill_save_review_description">Select an entry to review it before saving. Existing folders, notes and other accounts are preserved.</string>
+    <string name="autofill_save_as_new">Save as a new entry</string>
+    <string name="autofill_save_local_source">Local</string>
+</resources>

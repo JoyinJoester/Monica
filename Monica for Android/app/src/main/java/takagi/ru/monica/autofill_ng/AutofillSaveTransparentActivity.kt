@@ -13,6 +13,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -28,6 +31,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -38,6 +45,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.ThemeMode
@@ -48,6 +58,8 @@ import takagi.ru.monica.repository.MdbxRepositoryFactory
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.security.SessionManager
+import takagi.ru.monica.ui.components.MonicaPasswordDialogAuthScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordInitialDraft
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.ui.theme.MonicaTheme
@@ -55,7 +67,7 @@ import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 
-class AutofillSaveTransparentActivity : ComponentActivity() {
+class AutofillSaveTransparentActivity : androidx.fragment.app.FragmentActivity() {
 
     companion object {
         const val EXTRA_USERNAME = "username"
@@ -68,6 +80,12 @@ class AutofillSaveTransparentActivity : ComponentActivity() {
     private lateinit var autofillPreferences: AutofillPreferences
     @Volatile
     private var didSave = false
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        recreate()
+    }
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LocaleHelper.setLocale(newBase, StartupLanguageCache.read(newBase)))
@@ -112,6 +130,55 @@ class AutofillSaveTransparentActivity : ComponentActivity() {
         val application = applicationContext as Application
 
         setContent {
+            val unlocked by SessionManager.isUnlocked.collectAsState()
+            var authorized by remember { mutableStateOf(unlocked || !securityManager.isMasterPasswordSet()) }
+            var wasUnlocked by remember { mutableStateOf(unlocked) }
+            LaunchedEffect(Unit) {
+                val current = settingsManager.settingsFlow.first()
+                val grantContext = takagi.ru.monica.autofill_ng.auth.AutofillGrantContext(packageName, website.takeIf { it.isNotBlank() }, null, null)
+                if (!authorized && current.autofillKeepUnlocked && takagi.ru.monica.autofill_ng.auth.AutofillSessionGrants.isGranted(grantContext)) {
+                    authorized = true
+                }
+                if (!authorized && current.biometricEnabled) {
+                    val biometrics = takagi.ru.monica.utils.BiometricAuthHelper(this@AutofillSaveTransparentActivity)
+                    if (biometrics.isBiometricAvailable()) runCatching {
+                        biometrics.authenticate(activity = this@AutofillSaveTransparentActivity,
+                            title = getString(R.string.autofill_auth_title), subtitle = getString(R.string.autofill_auth_subtitle),
+                            description = getString(R.string.autofill_auth_description), negativeButtonText = getString(R.string.use_password),
+                            onSuccess = { if (securityManager.unlockVaultWithBiometric()) authorized = true },
+                            onError = { _, _ -> }, onCancel = { finish() })
+                    }
+                }
+            }
+            LaunchedEffect(unlocked) {
+                if (wasUnlocked && !unlocked) finish()
+                if (unlocked) wasUnlocked = true
+            }
+            // Never enumerate saved accounts or open their editor while the vault is locked.
+            DisposableEffect(Unit) {
+                val receiver = object : android.content.BroadcastReceiver() {
+                    override fun onReceive(context: Context?, intent: android.content.Intent?) {
+                        if (intent?.action == android.content.Intent.ACTION_SCREEN_OFF) finish()
+                    }
+                }
+                androidx.core.content.ContextCompat.registerReceiver(this@AutofillSaveTransparentActivity, receiver,
+                    android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+                onDispose { unregisterReceiver(receiver) }
+            }
+            if (!authorized) {
+                MonicaPasswordDialogAuthScreen(
+                    settingsFlow = settingsManager.settingsFlow,
+                    appName = getString(R.string.app_name), title = getString(R.string.verify_identity),
+                    subtitle = getString(R.string.autofill_auth_subtitle), passwordLabel = getString(R.string.master_password),
+                    description = getString(R.string.enter_master_password), confirmText = getString(R.string.confirm),
+                    cancelText = getString(R.string.cancel), emptyError = getString(R.string.current_password_required),
+                    unsupportedCharacterError = getString(R.string.error_password_contains_unsupported_characters),
+                    minLengthError = getString(R.string.error_password_too_short), incorrectError = getString(R.string.password_incorrect),
+                    verifyPassword = { securityManager.unlockVaultWithPassword(it) },
+                    onSuccess = { authorized = true }, onCancel = { finish() },
+                )
+                return@setContent
+            }
             val settings by settingsManager.settingsFlow.collectAsState(
                 initial = takagi.ru.monica.data.AppSettings()
             )
@@ -202,6 +269,34 @@ class AutofillSaveTransparentActivity : ComponentActivity() {
                 }
             )
 
+            val candidates by produceState<List<AutofillSaveCandidate>?>(initialValue = null) {
+                value = try {
+                    withContext(Dispatchers.IO) {
+                        val keepassNames = database.localKeePassDatabaseDao().getAllDatabases().first().associate { it.id to it.name }
+                        val mdbxNames = database.localMdbxDatabaseDao().getAllDatabasesSnapshot().associate { it.id to it.name }
+                        val matches = repository.getAllPasswordEntries().first().sortedBy { it.id }.mapNotNull { entry ->
+                            if (!AutofillSaveMatchPolicy.matchesTarget(entry, packageName, website)) return@mapNotNull null
+                            val account = AutofillSecretResolver.decryptPasswordOrNull(securityManager, entry.username)
+                            if (!AutofillSaveMatchPolicy.matches(entry, account, username, packageName, website)) return@mapNotNull null
+                            AutofillSaveCandidate(entry.id, entry.title, account.orEmpty(), when {
+                                entry.bitwardenVaultId != null -> "Bitwarden"
+                                entry.keepassDatabaseId != null -> (keepassNames[entry.keepassDatabaseId] ?: "KeePass") + entry.keepassGroupPath?.let { " · $it" }.orEmpty()
+                                entry.mdbxDatabaseId != null -> mdbxNames[entry.mdbxDatabaseId] ?: "MDBX"
+                                else -> getString(R.string.autofill_save_local_source)
+                            })
+                        }
+                        val duplicates = matches.groupBy { Triple(it.title, it.account, it.source) }.values.filter { it.size > 1 }
+                            .flatMap { group -> group.mapIndexed { index, item -> item.id to index + 1 } }.toMap()
+                        matches.map { item -> duplicates[item.id]?.let { number ->
+                            item.copy(source = "${item.source} · ${getString(R.string.project_credential_password_number, number)}")
+                        } ?: item }
+                    }
+                } catch (cancelled: CancellationException) { throw cancelled
+                } catch (_: Exception) { emptyList() }
+            }
+            var reviewed by remember { mutableStateOf(false) }
+            var updateId by remember { mutableStateOf<Long?>(null) }
+
             takagi.ru.monica.utils.ScreenshotProtection(enabled = settings.screenshotProtectionEnabled)
 
             MonicaTheme(
@@ -213,14 +308,28 @@ class AutofillSaveTransparentActivity : ComponentActivity() {
                 customNeutralColor = settings.customNeutralColor,
                 customNeutralVariantColor = settings.customNeutralVariantColor,
             ) {
-                Box {
+                val matches = candidates
+                if (matches == null) {
+                    Box(Modifier.then(Modifier.padding(24.dp)), contentAlignment = Alignment.Center) {
+                        Text(stringResource(R.string.loading))
+                    }
+                    return@MonicaTheme
+                }
+                if (matches.isNotEmpty() && !reviewed) {
+                    AutofillSaveReview(matches, listOf(website.ifBlank { appName }, username).filter { it.isNotBlank() }.joinToString(" · "),
+                        onSelect = { updateId = it; reviewed = true }, onCancel = { finish() })
+                    return@MonicaTheme
+                }
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f)) {
                     val resolvedInitialTarget = initialTarget
                     if (resolvedInitialTarget != null) {
                         AddEditPasswordScreen(
                             viewModel = passwordViewModel,
                             localKeePassViewModel = localKeePassViewModel,
                             mdbxDatabasesFallback = resolvedInitialTarget.mdbxDatabasesFallback,
-                            passwordId = null,
+                            passwordId = updateId,
+                            autofillPasswordUpdate = password.takeIf { updateId != null },
                             initialDraft = AddEditPasswordInitialDraft(
                                 title = initialTitle,
                                 website = effectiveWebsite,
@@ -248,12 +357,13 @@ class AutofillSaveTransparentActivity : ComponentActivity() {
                         )
                     }
 
+                    }
                     TextButton(
                         onClick = {
                             blockCurrentTarget(packageName, website)
                         },
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
                             .navigationBarsPadding()
                             .padding(bottom = 10.dp),
                         colors = ButtonDefaults.textButtonColors(

@@ -20,6 +20,7 @@ class AutofillParserNg {
         fieldSignatureKey: String? = null,
         isCompatMode: Boolean = false,
         preferDirectAutoFill: Boolean = false,
+        saveEnabled: Boolean = true,
     ): AutofillRequest {
         val normalizedUri = uri?.trim().takeUnless { it.isNullOrBlank() } ?: "androidapp://$packageName"
         val views = buildViews(
@@ -56,6 +57,7 @@ class AutofillParserNg {
             interactionIdentifier = interactionContext.primaryIdentifier,
             interactionIdentifierAliases = interactionContext.aliasIdentifiers,
             preferDirectAutoFill = preferDirectAutoFill,
+            saveEnabled = saveEnabled,
         )
     }
 
@@ -129,7 +131,9 @@ class AutofillParserNg {
             autofillId = id,
             autofillType = View.AUTOFILL_TYPE_TEXT,
             isFocused = isFocused,
-            textValue = value,
+            // Only account text is needed to seed the manual generator. Never retain
+            // entered passwords in pending authentication request metadata.
+            textValue = value.takeIf { hint == FieldHint.USERNAME || hint == FieldHint.EMAIL_ADDRESS || hint == FieldHint.PHONE_NUMBER },
             website = website,
             hint = hint,
         )

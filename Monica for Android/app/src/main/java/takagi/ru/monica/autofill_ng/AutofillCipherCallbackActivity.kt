@@ -512,12 +512,7 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
         autofillHints: List<String>,
     ): LinkedHashMap<AutofillId, String> {
         val normalizedHints = autofillHints.map { it.trim().lowercase() }
-        val hasPasswordTarget = normalizedHints.any {
-            it == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name.lowercase() ||
-                it == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name.lowercase() ||
-                it.contains("password") ||
-                it.contains("pass")
-        }
+        val hasPasswordTarget = normalizedHints.any(AutofillPasswordRolePolicy::isStoredPasswordHint)
         if (hasPasswordTarget && decryptedPassword.isNullOrBlank()) {
             Log.w(TAG, "Authentication callback canceled: password decryption unavailable")
             return linkedMapOf()
@@ -546,6 +541,7 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
         autofillIds.forEachIndexed { index, autofillId ->
             val normalizedHint = autofillHints.getOrNull(index)?.trim()?.lowercase().orEmpty()
             val value = when {
+                AutofillPasswordRolePolicy.isNewPasswordHint(normalizedHint) -> null
                 normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name.lowercase() ||
                     normalizedHint.contains("username") -> accountValue
                 normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name.lowercase() ||
@@ -573,6 +569,7 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
         autofillIds.forEachIndexed { index, autofillId ->
             val normalizedHint = autofillHints.getOrNull(index)?.lowercase().orEmpty()
             val fallbackValue = when {
+                AutofillPasswordRolePolicy.isNewPasswordHint(normalizedHint) -> null
                 normalizedHint.contains("pass") -> decryptedPassword
                 normalizedHint.contains("user") ||
                     normalizedHint.contains("email") ||
@@ -615,9 +612,7 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
         if (normalizedIdentifiers.isEmpty()) return
 
         val preferences = AutofillPreferences(applicationContext)
-        normalizedIdentifiers.forEach { identifier ->
-            preferences.completeAutofillInteraction(identifier, passwordId)
-        }
+        preferences.completeAutofillInteraction(normalizedIdentifiers.first(), passwordId)
     }
 
     private suspend fun rememberLearnedFieldSignature(fieldSignatureKey: String?) {

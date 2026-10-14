@@ -65,7 +65,7 @@ class AutofillDropdownClickRegressionGuardTest {
         assertTrue(
             "Concrete cipher suggestions should resolve real fill values through the autofill secret resolver.",
             cipherBody.contains("val usernameValue = decryptForAutofill(entry.username)") &&
-                cipherBody.contains("val passwordValue = decryptForAutofill(entry.password)")
+                cipherBody.contains("val passwordValue = if (needsPassword) decryptForAutofill(entry.password)")
         )
         assertTrue(
             "Locked authenticated suggestions should remain visible without carrying real values or placeholders.",

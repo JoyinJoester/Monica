@@ -92,7 +92,7 @@ class PasswordSuggestionActivity : ComponentActivity() {
             passwordFieldIds = intent.getParcelableArrayListExtra(EXTRA_PASSWORD_FIELD_IDS)
         }
         
-        AutofillLogger.i("SUGGESTION", "PasswordSuggestionActivity started for user: $username")
+        AutofillLogger.i("SUGGESTION", "Password suggestion opened")
         AutofillLogger.i("SUGGESTION", "Package: $packageName, Domain: $webDomain")
         AutofillLogger.i("SUGGESTION", "Generated password length: ${generatedPassword.length}")
         

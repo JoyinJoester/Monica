@@ -19,6 +19,7 @@ sealed class AutofillRequest {
         val interactionIdentifier: String? = null,
         val interactionIdentifierAliases: List<String> = emptyList(),
         val preferDirectAutoFill: Boolean = false,
+        val saveEnabled: Boolean = true,
     ) : AutofillRequest()
 
     data object Unfillable : AutofillRequest()

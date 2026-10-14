@@ -17,6 +17,7 @@ class AutofillInteractionContextResolverTest {
 
         assertEquals("web:accounts.example.com", context.primaryIdentifier)
         assertEquals(listOf("app:com.example.app"), context.aliasIdentifiers)
+        assertEquals(listOf("web:accounts.example.com"), context.continuationIdentifiers)
     }
 
     @Test

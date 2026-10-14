@@ -16,6 +16,7 @@ class EnhancedAutofillStructureParserV2(
     // Independent implementation switches for compatibility comparison/rollback.
     private val browserHintTokensEnabled: Boolean = true,
     private val htmlFormScopesEnabled: Boolean = true,
+    private val formPurposeEnabled: Boolean = true,
 ) {
     private companion object {
         private val PACKAGE_NAME_REGEX =
@@ -31,6 +32,7 @@ class EnhancedAutofillStructureParserV2(
         // Includes unclassified nodes, but only from the selected window/origin.
         // Compatibility fallbacks must not re-add nodes from another form scope.
         val scopeAutofillIds: Set<AutofillId> = emptySet(),
+        val formPurpose: AutofillFormPurpose = AutofillFormPurpose.UNKNOWN,
     )
 
     data class ParsedItem(
@@ -150,6 +152,8 @@ class EnhancedAutofillStructureParserV2(
         val traversalIndex: Int,
     )
 
+    private data class FormCue(val webScope: Int?, val formId: Int?, val text: String)
+
     private data class ParseContext(
         var traversalIndex: Int = 0,
         var nodesWithAutofillId: Int = 0,
@@ -158,7 +162,10 @@ class EnhancedAutofillStructureParserV2(
         val webScopes: MutableMap<Int, WebScope> = mutableMapOf(),
         val nodeScopes: MutableMap<AutofillId, Int?> = mutableMapOf(),
         val htmlForms: AutofillHtmlFormScopes<AutofillId> = AutofillHtmlFormScopes(),
+        val formCues: MutableList<FormCue> = mutableListOf(),
+        val explicitCurrentIds: MutableSet<AutofillId> = mutableSetOf(),
         val allowFocusedUnknown: Boolean = false,
+        val checkCancelled: () -> Unit = {},
     )
 
     private data class WebScope(var domain: String?, var scheme: String?)
@@ -550,10 +557,11 @@ class EnhancedAutofillStructureParserV2(
         respectAutofillOff: Boolean = true,
         allowWeakTargets: Boolean = false,
         requireExplicitWeakLoginSignal: Boolean = false,
+        checkCancelled: () -> Unit = {},
     ): ParsedStructure {
         var applicationId: String? = structure.activityComponent?.packageName
         var rawStructure: RawParsedStructure? = null
-        val parseContext = ParseContext(allowFocusedUnknown = allowWeakTargets && !requireExplicitWeakLoginSignal)
+        val parseContext = ParseContext(allowFocusedUnknown = allowWeakTargets && !requireExplicitWeakLoginSignal, checkCancelled = checkCancelled)
 
         // The last window is the topmost one. Prefer its focused field over
         // a login form left behind a dialog; do not combine different windows.
@@ -741,7 +749,7 @@ class EnhancedAutofillStructureParserV2(
                 }
 
                 // Explicit new-password semantics must not lose to type=password or label heuristics.
-                if (structureItems.any { it.hint == InternalHint.NEW_PASSWORD && it.reason == "html-field-token" }) {
+                if (structureItems.any { it.hint == InternalHint.NEW_PASSWORD && it.accuracy.score >= Accuracy.HIGH.score }) {
                     structureItems = structureItems.filter { it.hint != InternalHint.PASSWORD }
                 }
 
@@ -876,13 +884,21 @@ class EnhancedAutofillStructureParserV2(
                 "itemHints=[${items.joinToString { "${it.hint}:${it.accuracy.name}" }}]"
         )
 
+        val form = AutofillFormPurposePolicy.analyze(
+            items = items.sortedBy { it.traversalIndex },
+            staticCues = if (formPurposeEnabled) parseContext.formCues.filter {
+                it.webScope == selectedScopeId && (!htmlFormScopesEnabled || it.formId == selectedForm)
+            }.map { it.text } else emptyList(),
+            explicitCurrentIds = parseContext.explicitCurrentIds.intersect(scopeAutofillIds),
+        )
         return ParsedStructure(
             applicationId = applicationId,
             webDomain = effectiveWebDomain,
             webScheme = rawStructure?.webScheme.takeUnless { isInSelfHostedServer },
             webView = if (isInSelfHostedServer) false else rawStructure?.webView == true,
-            items = items.sortedBy { it.traversalIndex },
+            items = form.items,
             scopeAutofillIds = scopeAutofillIds,
+            formPurpose = form.purpose,
         )
     }
 
@@ -1001,6 +1017,38 @@ class EnhancedAutofillStructureParserV2(
             }
         }
 
+        if (formPurposeEnabled) {
+            val attributes = html?.attributes.orEmpty()
+            fun cue(value: String?) {
+                if (!value.isNullOrBlank() && context.formCues.size < 64) {
+                    context.formCues += FormCue(webViewNodeId, htmlFormId, value.take(256))
+                }
+            }
+            if (html?.tag.equals("form", ignoreCase = true)) {
+                attributes.filter { it.first.lowercase(Locale.ROOT) in setOf("id", "name", "action") }
+                    .forEach { cue(it.second?.substringBefore('?')) }
+            }
+            val isButton = node.className?.toString()?.endsWith("Button") == true ||
+                html?.tag.equals("button", ignoreCase = true) || attributes.any {
+                    it.first.equals("type", true) && it.second.equals("submit", true)
+                }
+            if (isButton) {
+                cue(node.text?.toString())
+                cue(node.contentDescription?.toString())
+                attributes.filter { it.first.lowercase(Locale.ROOT) in setOf("value", "aria-label") }
+                    .forEach { cue(it.second) }
+            }
+            val labels = listOfNotNull(node.hint, node.contentDescription).map { it.toString() } +
+                attributes.filter { it.first.lowercase(Locale.ROOT) in setOf("label", "placeholder", "aria-label") }.map { it.second.orEmpty() }
+            val hints = node.autofillHints.orEmpty().toList() + attributes.filter {
+                it.first.lowercase(Locale.ROOT) in setOf("autocomplete", "ua-autofill-hints", "computed-autofill-hints")
+            }.map { it.second.orEmpty() }
+            if (labels.any(AutofillFormPurposePolicy::isCurrentPasswordLabel) || hints.any {
+                    it.take(1024).lowercase(Locale.ROOT).split(Regex("\\s+")).contains("current-password")
+                }) node.autofillId?.let(context.explicitCurrentIds::add)
+        }
+
+        if (context.totalNodesVisited % 32 == 0) context.checkCancelled()
         context.totalNodesVisited++
         if (node.autofillId != null) {
             context.nodesWithAutofillId++
@@ -1020,6 +1068,9 @@ class EnhancedAutofillStructureParserV2(
             val inputOut = parseNodeByAndroidInput(node)
             val labelOut = parseNodeByLabel(node)
             outBuilders += inputOut + labelOut
+            if (formPurposeEnabled && AutofillFormPurposePolicy.isNewPasswordLabel(node.contentDescription?.toString().orEmpty())) {
+                outBuilders += ParsedItemBuilder(Accuracy.HIGH, InternalHint.NEW_PASSWORD, reason = "new-password-label")
+            }
 
             // An explicit system "Autofill" request can open the picker for
             // an unlabelled account field. Automatic reparsing stays conservative.
@@ -1380,6 +1431,9 @@ class EnhancedAutofillStructureParserV2(
     ): List<ParsedItemBuilder> = kotlin.run {
         val id = value.lowercase(Locale.ENGLISH)
         when {
+            formPurposeEnabled && AutofillFormPurposePolicy.isNewPasswordLabel(value) ->
+                ParsedItemBuilder(Accuracy.HIGH, InternalHint.NEW_PASSWORD, reason = "new-password-id")
+
             "email" in id -> ParsedItemBuilder(
                 accuracy = Accuracy.MEDIUM,
                 hint = InternalHint.EMAIL_ADDRESS,
@@ -1521,6 +1575,9 @@ class EnhancedAutofillStructureParserV2(
                     hint = InternalHint.OTP_CODE,
                     reason = "label:$hint",
                 )
+
+            formPurposeEnabled && AutofillFormPurposePolicy.isNewPasswordLabel(hint) ->
+                ParsedItemBuilder(Accuracy.HIGH, InternalHint.NEW_PASSWORD, reason = "new-password-label")
 
             // Compound labels such as "account password" describe a password,
             // even when a nonstandard form exposes it as plain text.

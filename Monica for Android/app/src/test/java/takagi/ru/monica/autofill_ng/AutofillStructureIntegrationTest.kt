@@ -70,6 +70,15 @@ class AutofillStructureIntegrationTest {
 
     private fun parse(vararg roots: AssistStructure.ViewNode) = parser.parse(structure(*roots))
 
+    @Test fun longFormTraversalCooperatesWithCancellation() {
+        val root=node(children=Array(200) { node(hint="Username") })
+        var checks=0
+        assertThrows(java.util.concurrent.CancellationException::class.java) {
+            parser.parse(structure(root),checkCancelled={ if (++checks == 2) throw java.util.concurrent.CancellationException() })
+        }
+        assertEquals(2,checks)
+    }
+
     @Test fun standardLoginRemainsRecognized() {
         val user = node(hints=arrayOf(View.AUTOFILL_HINT_USERNAME),focused=true)
         val pass = node(inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
@@ -360,6 +369,49 @@ class AutofillStructureIntegrationTest {
             EnhancedAutofillStructureParserV2(htmlFormScopesEnabled=false).parse(input).items.map { it.id }.toSet())
         assertEquals(listOf(password.autofillId),
             EnhancedAutofillStructureParserV2(false, false).parse(input).items.map { it.id })
+    }
+
+    @Test fun nativeChangePasswordLabelsKeepCurrentAndNewRolesSeparate() {
+        val old = node(hint="当前密码", inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
+        val new = node(hint="新密码", inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, focused=true)
+        val confirmation = node(hint="Confirm password", inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
+        val parsed = parse(node(children=arrayOf(old,new,confirmation)))
+        assertEquals(listOf(FieldHint.PASSWORD,FieldHint.NEW_PASSWORD,FieldHint.NEW_PASSWORD),parsed.items.map { it.hint })
+        assertEquals(AutofillFormPurpose.CHANGE_PASSWORD,parsed.formPurpose)
+    }
+
+    @Test fun explicitRegistrationFormPromotesGenericPasswordFields() {
+        val user = node(hints=arrayOf(View.AUTOFILL_HINT_USERNAME))
+        val password = node(inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, focused=true)
+        val parsed = parse(node(domain="example.test",children=arrayOf(form("register",user,password))))
+        assertEquals(FieldHint.NEW_PASSWORD,parsed.items.first { it.id == password.autofillId }.hint)
+        assertEquals(AutofillFormPurpose.SIGN_UP,parsed.formPurpose)
+    }
+
+    @Test fun adjacentRegistrationFormCannotReclassifyTheLogin() {
+        val password = node(inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, focused=true)
+        val parsed = parse(node(domain="example.test",children=arrayOf(form("login",password),form("register",node(hint="Password")))))
+        assertEquals(listOf(FieldHint.PASSWORD),parsed.items.map { it.hint })
+        assertEquals(AutofillFormPurpose.PASSWORD_STEP,parsed.formPurpose)
+    }
+
+    @Test fun explicitCurrentPasswordPreventsRegistrationCueFromChangingItsRole() {
+        val password = node(html=mapOf("autocomplete" to "current-password"),focused=true)
+        val parsed = parse(node(domain="example.test",children=arrayOf(form("register",password))))
+        assertEquals(listOf(FieldHint.PASSWORD),parsed.items.map { it.hint })
+    }
+
+    @Test fun ambiguousLoginAndRegistrationCuesKeepLegacyRoles() {
+        val password = node(inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD, focused=true)
+        val parsed = parse(node(domain="example.test",children=arrayOf(form("login-register",password))))
+        assertEquals(listOf(FieldHint.PASSWORD),parsed.items.map { it.hint })
+    }
+
+    @Test fun formPurposeUsesFieldSemanticsForStepAndOtpPages() {
+        assertEquals(AutofillFormPurpose.USERNAME_STEP,parse(node(hint="Username",focused=true)).formPurpose)
+        assertEquals(AutofillFormPurpose.OTP,parse(node(html=mapOf("autocomplete" to "one-time-code"),focused=true)).formPurpose)
+        assertEquals(AutofillFormPurpose.UNKNOWN,parse(node(html=mapOf("type" to "search"),focused=true)).formPurpose)
+        assertEquals(AutofillFormPurpose.RESET_PASSWORD,parse(node(hint="New password",focused=true)).formPurpose)
     }
 
 }
