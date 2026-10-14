@@ -31,7 +31,7 @@ class AutofillStructureIntegrationTest {
     private fun node(hint: String? = null, inputType: Int = InputType.TYPE_CLASS_TEXT,
                      focused: Boolean = false, hints: Array<String>? = null,
                      html: Map<String, String>? = null, children: Array<AssistStructure.ViewNode>? = null,
-                     domain: String? = null): AssistStructure.ViewNode {
+                     domain: String? = null, htmlTag: String = "input"): AssistStructure.ViewNode {
         val node = ReflectionHelpers.newInstance(AssistStructure.ViewNode::class.java)
         fun set(name: String, value: Any?) = ReflectionHelpers.setField(node, name, value)
         set("mAutofillId", EditText(RuntimeEnvironment.getApplication()).autofillId)
@@ -49,7 +49,7 @@ class AutofillStructureIntegrationTest {
         if (children != null) set("mChildren",children)
         if (domain != null) { set("mWebDomain",domain); set("mWebScheme","https") }
         if (html != null) set("mHtmlInfo",object: ViewStructure.HtmlInfo() {
-            override fun getTag() = "input"
+            override fun getTag() = htmlTag
             override fun getAttributes(): MutableList<Pair<String,String>> = html.map { Pair(it.key,it.value) }.toMutableList()
         })
         return node
@@ -216,4 +216,150 @@ class AutofillStructureIntegrationTest {
         assertEquals(listOf(FieldHint.USERNAME),manual.items.map { it.hint })
         assertTrue(parser.parse(structure,allowWeakTargets=true,requireExplicitWeakLoginSignal=true).items.isEmpty())
     }
+    @Test fun browserComputedHintsRecognizeLoginAndOtpRoles() {
+        mapOf("username" to FieldHint.USERNAME, "current-password" to FieldHint.PASSWORD,
+            "newPassword" to FieldHint.NEW_PASSWORD, "one-time-code" to FieldHint.OTP_CODE,
+            "2faAppOTPCode" to FieldHint.OTP_CODE, "smsOTPCode" to FieldHint.OTP_CODE,
+            "emailOTPCode" to FieldHint.OTP_CODE).forEach { (hint, expected) ->
+            val input = node(html=mapOf("computed-autofill-hints" to hint), focused=true)
+            assertEquals(hint, listOf(expected), parse(node(domain="login.example.com", children=arrayOf(input))).items.map { it.hint })
+        }
+    }
+
+    @Test fun htmlSectionNamesDoNotBecomeFieldRoles() {
+        val input = node(html=mapOf("autocomplete" to "section-email current-password"), focused=true)
+        assertEquals(listOf(FieldHint.PASSWORD), parse(input).items.map { it.hint })
+    }
+
+    @Test fun browserNativeHintArraysAlsoIgnoreSectionNames() {
+        val input = node(inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            hints=arrayOf("section-email", "current-password"),
+            html=mapOf("ua-autofill-hints" to "section-email current-password"), focused=true)
+        assertEquals(listOf(FieldHint.PASSWORD),
+            parse(node(domain="example.test", children=arrayOf(input))).items.map { it.hint })
+        val newPassword = node(hints=arrayOf("section-email", "new-password"), focused=true,
+            inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
+        assertEquals(listOf(FieldHint.NEW_PASSWORD),
+            parse(node(domain="example.test", children=arrayOf(newPassword))).items.map { it.hint })
+    }
+
+    @Test fun browserNewPasswordIsNotDowngradedByPasswordInputType() {
+        val input = node(inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            html=mapOf("autocomplete" to "section-signup new-password"), focused=true)
+        assertEquals(listOf(FieldHint.NEW_PASSWORD), parse(input).items.map { it.hint })
+    }
+
+    @Test fun computedOtpOnAMaskedFieldIsNeverAnAccountOrSavedPassword() {
+        val input = node(inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            html=mapOf("computed-autofill-hints" to "smsOTPCode"), focused=true)
+        for (weak in listOf(false,true)) assertEquals(listOf(FieldHint.OTP_CODE),
+            parser.parse(structure(input), allowWeakTargets=weak).items.map { it.hint })
+    }
+
+    @Test fun computedHintsStillRespectOffAndSearchExclusion() {
+        val off = node(html=mapOf("autocomplete" to "off", "computed-autofill-hints" to "password"), focused=true)
+        assertTrue(parser.parse(structure(off), respectAutofillOff=true).items.isEmpty())
+        assertEquals(listOf(FieldHint.PASSWORD), parser.parse(structure(off), respectAutofillOff=false).items.map { it.hint })
+        val search = node(html=mapOf("type" to "search", "computed-autofill-hints" to "username"), focused=true)
+        assertTrue(parse(search).items.isEmpty())
+    }
+
+    private fun form(id: String, vararg fields: AssistStructure.ViewNode) =
+        node(html=mapOf("id" to id), htmlTag="form", children=arrayOf(*fields))
+
+    @Test fun onlyTheFocusedHtmlFormContributesFillAndFallbackTargets() {
+        val newsletter = node(hints=arrayOf(View.AUTOFILL_HINT_EMAIL_ADDRESS))
+        val user = node(hints=arrayOf(View.AUTOFILL_HINT_USERNAME), focused=true)
+        val password = node(hints=arrayOf(View.AUTOFILL_HINT_PASSWORD))
+        val unrelated = node()
+        val parsed = parse(node(domain="login.example.com", children=arrayOf(
+            form("newsletter", newsletter), form("login", user, password), unrelated)))
+        assertEquals(setOf(user.autofillId,password.autofillId), parsed.items.map { it.id }.toSet())
+        assertFalse(newsletter.autofillId in parsed.scopeAutofillIds)
+        assertFalse(unrelated.autofillId in parsed.scopeAutofillIds)
+    }
+
+    @Test fun focusingTheOtherFormDropsTheLoginTargets() {
+        val user = node(hints=arrayOf(View.AUTOFILL_HINT_USERNAME))
+        val password = node(hints=arrayOf(View.AUTOFILL_HINT_PASSWORD))
+        val newsletter = node(hints=arrayOf(View.AUTOFILL_HINT_EMAIL_ADDRESS), focused=true)
+        val parsed = parse(node(domain="login.example.com", children=arrayOf(
+            form("login", user,password), form("newsletter",newsletter))))
+        assertEquals(listOf(newsletter.autofillId),parsed.items.map { it.id })
+        assertFalse(password.autofillId in parsed.scopeAutofillIds)
+    }
+
+    @Test fun htmlFormAttributeCanAssociateAnOutsideFieldWithItsForm() {
+        val user = node(hints=arrayOf(View.AUTOFILL_HINT_USERNAME), focused=true, html=mapOf("form" to "login"))
+        val password = node(hints=arrayOf(View.AUTOFILL_HINT_PASSWORD))
+        val newsletter = node(hints=arrayOf(View.AUTOFILL_HINT_EMAIL_ADDRESS))
+        val parsed = parse(node(domain="login.example.com",children=arrayOf(user,
+            form("newsletter",newsletter), form("login",password))))
+        assertEquals(setOf(user.autofillId,password.autofillId),parsed.items.map { it.id }.toSet())
+    }
+
+    @Test fun repeatedHtmlFormNamesDoNotCombineIndependentForms() {
+        val first = node(hints=arrayOf(View.AUTOFILL_HINT_PASSWORD))
+        val second = node(hints=arrayOf(View.AUTOFILL_HINT_USERNAME), focused=true)
+        val parsed = parse(node(domain="login.example.com",children=arrayOf(form("login",first),form("login",second))))
+        assertEquals(listOf(second.autofillId),parsed.items.map { it.id })
+    }
+
+    @Test fun absentFormMarkupPreservesTheExistingWebViewScope() {
+        val user = node(hints=arrayOf(View.AUTOFILL_HINT_USERNAME), focused=true)
+        val password = node(hints=arrayOf(View.AUTOFILL_HINT_PASSWORD))
+        val parsed = parse(node(domain="login.example.com",children=arrayOf(user,password)))
+        assertEquals(setOf(user.autofillId,password.autofillId),parsed.items.map { it.id }.toSet())
+    }
+
+    @Test fun exactHtmlRolesPreserveExistingContactAndWalletSupport() {
+        mapOf("email" to FieldHint.EMAIL_ADDRESS, "organization" to FieldHint.COMPANY_NAME,
+            "country" to FieldHint.ADDRESS_COUNTRY, "tel" to FieldHint.PHONE_NUMBER,
+            "cc-number" to FieldHint.CREDIT_CARD_NUMBER, "given-name" to FieldHint.PERSON_FIRST_NAME,
+            "street-address" to FieldHint.POSTAL_ADDRESS).forEach { (token, role) ->
+            val field = node(html=mapOf("autocomplete" to "section-profile billing $token"), focused=true)
+            assertEquals(token, listOf(role), parse(field).items.map { it.hint })
+        }
+    }
+
+    @Test fun unknownAndAmbiguousHtmlHintsDoNotMatchBySubstring() {
+        listOf("not-a-password", "email password", "section-password", "username nonsense").forEach { hint ->
+            assertTrue(hint, parse(node(html=mapOf("computed-autofill-hints" to hint), focused=true)).items.isEmpty())
+        }
+    }
+
+    @Test fun missingAndAmbiguousExplicitFormIdsCannotJoinOtherFields() {
+        for (duplicate in listOf(false, true)) {
+            val external = node(hints=arrayOf(View.AUTOFILL_HINT_USERNAME), focused=true, html=mapOf("form" to "login"))
+            val otherExternal = node(hints=arrayOf(View.AUTOFILL_HINT_PASSWORD), html=mapOf("form" to "login"))
+            val password = node(hints=arrayOf(View.AUTOFILL_HINT_PASSWORD))
+            val forms = if (duplicate) arrayOf(form("login", password), form("login")) else arrayOf(form("other", password))
+            val parsed = parse(node(domain="example.test", children=arrayOf(external, otherExternal, *forms)))
+            assertEquals(listOf(external.autofillId), parsed.items.map { it.id })
+            assertFalse(password.autofillId in parsed.scopeAutofillIds)
+            assertFalse(otherExternal.autofillId in parsed.scopeAutofillIds)
+        }
+    }
+
+    @Test fun explicitFormReferencesCannotCrossWebOrigins() {
+        val external = node(hints=arrayOf(View.AUTOFILL_HINT_USERNAME), focused=true, html=mapOf("form" to "login"))
+        val password = node(hints=arrayOf(View.AUTOFILL_HINT_PASSWORD))
+        val parsed = parse(node(domain="a.example.test", children=arrayOf(external,
+            node(domain="b.example.test", children=arrayOf(form("login", password))))))
+        assertEquals(listOf(external.autofillId), parsed.items.map { it.id })
+        assertFalse(password.autofillId in parsed.scopeAutofillIds)
+    }
+
+    @Test fun compatibilitySwitchesCanBeRolledBackIndependently() {
+        val user = node(html=mapOf("computed-autofill-hints" to "username"), focused=true)
+        val password = node(hints=arrayOf(View.AUTOFILL_HINT_PASSWORD))
+        val input = structure(node(domain="example.test", children=arrayOf(form("login", user), form("other", password))))
+        assertEquals(listOf(user.autofillId), parser.parse(input).items.map { it.id })
+        assertTrue(EnhancedAutofillStructureParserV2(browserHintTokensEnabled=false).parse(input).items.isEmpty())
+        assertEquals(setOf(user.autofillId, password.autofillId),
+            EnhancedAutofillStructureParserV2(htmlFormScopesEnabled=false).parse(input).items.map { it.id }.toSet())
+        assertEquals(listOf(password.autofillId),
+            EnhancedAutofillStructureParserV2(false, false).parse(input).items.map { it.id })
+    }
+
 }

@@ -7,6 +7,7 @@ import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.View;
+import android.view.ViewStructure;
 import android.view.WindowManager;
 import android.view.autofill.AutofillManager;
 import android.webkit.JavascriptInterface;
@@ -44,7 +45,14 @@ public class AutofillFormFixtureActivity extends Activity {
 
     private void render(String scenario) {
         fields.clear();
-        layout = new LinearLayout(this);
+        layout = new LinearLayout(this) {
+            @Override public void onProvideAutofillStructure(ViewStructure structure, int flags) {
+                super.onProvideAutofillStructure(structure, flags);
+                if (scenario.equals("computed")) structure.setWebDomain(ORIGIN);
+            }
+        };
+        // Preserve this domain-bearing parent in the structure Android sends to the service.
+        if (scenario.equals("computed")) layout.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(24,36,24,24);
         layout.setFocusableInTouchMode(true);
@@ -58,6 +66,10 @@ public class AutofillFormFixtureActivity extends Activity {
         layout.addView(status);
         setContentView(layout);
         switch (scenario) {
+            case "computed":
+                field("user", "", InputType.TYPE_CLASS_TEXT, null, "username");
+                field("password", "", InputType.TYPE_CLASS_TEXT, null, "current-password");
+                break;
             case "wallet_address":
                 field("street","Street Address",InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS,View.AUTOFILL_HINT_POSTAL_ADDRESS);
                 field("city","City",InputType.TYPE_CLASS_TEXT,"addressLocality");
@@ -73,7 +85,7 @@ public class AutofillFormFixtureActivity extends Activity {
                 field("document","Passport number",InputType.TYPE_CLASS_TEXT,"identityNumber");
                 field("person","Full Name",InputType.TYPE_CLASS_TEXT,View.AUTOFILL_HINT_NAME);
                 break;
-            case "web": case "web_dynamic": addWebForm(scenario.equals("web_dynamic")); break;
+            case "web": case "web_dynamic": case "web_forms": addWebForm(scenario); break;
             case "unlabelled":
                 field("user","",InputType.TYPE_CLASS_TEXT,null);
                 button("Request autofill", () -> {
@@ -129,7 +141,17 @@ public class AutofillFormFixtureActivity extends Activity {
     }
 
     private void field(String key, String label, int type, String autofillHint) {
-        EditText field = new EditText(this);
+        field(key, label, type, autofillHint, null);
+    }
+
+    private void field(String key, String label, int type, String autofillHint, String computedHint) {
+        EditText field = new EditText(this) {
+            @Override public void onProvideAutofillStructure(ViewStructure structure, int flags) {
+                super.onProvideAutofillStructure(structure, flags);
+                if (computedHint != null) structure.setHtmlInfo(structure.newHtmlInfoBuilder("input")
+                        .addAttribute("computed-autofill-hints", computedHint).build());
+            }
+        };
         field.setId(View.generateViewId());
         // Neutral marker: it cannot help the production role classifier.
         field.setContentDescription("fixture-field-" + fields.size());
@@ -181,19 +203,24 @@ public class AutofillFormFixtureActivity extends Activity {
         @JavascriptInterface public void report(String user,String password) {
             runOnUiThread(() -> status.setText("user=" + state(user,USERNAME) + " password=" + state(password,PASSWORD) + " web=READY"));
         }
+        @JavascriptInterface public void reportForms(String user,String password,String newsletter) {
+            runOnUiThread(() -> status.setText("user=" + state(user,USERNAME) + " password=" + state(password,PASSWORD)
+                    + " newsletter=" + state(newsletter,"unused") + " web=READY"));
+        }
     }
 
     @SuppressWarnings("SetJavaScriptEnabled")
-    private void addWebForm(boolean dynamic) {
+    private void addWebForm(String scenario) {
         webView = new WebView(this);
         webView.getSettings().setJavaScriptEnabled(true);
         if (getIntent().getBooleanExtra("accessibilityOnly",false)) webView.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
         webView.addJavascriptInterface(new WebReporter(),"Fixture");
-        try (InputStream input = getAssets().open("autofill-fixture.html"); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+        String asset = scenario.equals("web_forms") ? "autofill-forms-fixture.html" : "autofill-fixture.html";
+        try (InputStream input = getAssets().open(asset); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[4096];
             int count;
             while ((count = input.read(buffer)) != -1) output.write(buffer,0,count);
-            String html = new String(output.toByteArray(),StandardCharsets.UTF_8).replace("__DYNAMIC__",Boolean.toString(dynamic));
+            String html = new String(output.toByteArray(),StandardCharsets.UTF_8).replace("__DYNAMIC__",Boolean.toString(scenario.equals("web_dynamic")));
             webView.loadDataWithBaseURL(ORIGIN,html,"text/html","UTF-8",null);
         } catch (Exception error) { throw new IllegalStateException("Cannot load test form",error); }
         layout.addView(webView,new LinearLayout.LayoutParams(-1,750));

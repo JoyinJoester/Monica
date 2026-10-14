@@ -12,7 +12,11 @@ import android.util.Log
 import java.net.URL
 import java.util.Locale
 
-class EnhancedAutofillStructureParserV2 {
+class EnhancedAutofillStructureParserV2(
+    // Independent implementation switches for compatibility comparison/rollback.
+    private val browserHintTokensEnabled: Boolean = true,
+    private val htmlFormScopesEnabled: Boolean = true,
+) {
     private companion object {
         private val PACKAGE_NAME_REGEX =
             Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$")
@@ -110,6 +114,7 @@ class EnhancedAutofillStructureParserV2 {
         val items: List<RawParsedItem>,
         val hasFocus: Boolean = false,
         val focusedWebViewNodeId: Int? = null,
+        val focusedAutofillId: AutofillId? = null,
         val nodeIds: Set<AutofillId> = emptySet(),
     )
 
@@ -152,6 +157,7 @@ class EnhancedAutofillStructureParserV2 {
         var totalNodesVisited: Int = 0,
         val webScopes: MutableMap<Int, WebScope> = mutableMapOf(),
         val nodeScopes: MutableMap<AutofillId, Int?> = mutableMapOf(),
+        val htmlForms: AutofillHtmlFormScopes<AutofillId> = AutofillHtmlFormScopes(),
         val allowFocusedUnknown: Boolean = false,
     )
 
@@ -586,10 +592,13 @@ class EnhancedAutofillStructureParserV2 {
             rawStructure?.items?.firstOrNull { it.hint != InternalHint.OFF }?.parentWebViewNodeId
         }
         val selectedWebScope = selectedScopeId?.let(parseContext.webScopes::get)
+        val scopeItems = rawStructure?.items.orEmpty().filter { it.parentWebViewNodeId == selectedScopeId }
+        val selectedForm = parseContext.htmlForms.owner(rawStructure?.focusedAutofillId
+            ?: scopeItems.firstOrNull { it.hint != InternalHint.OFF }?.id)
+        fun inSelectedForm(id: AutofillId) = !htmlFormScopesEnabled || parseContext.htmlForms.owner(id) == selectedForm
         val scopeAutofillIds = rawStructure?.nodeIds.orEmpty()
-            .filterTo(mutableSetOf()) { parseContext.nodeScopes[it] == selectedScopeId }
-        val candidateItems = rawStructure?.items.orEmpty()
-            .filter { it.parentWebViewNodeId == selectedScopeId }
+            .filterTo(mutableSetOf()) { parseContext.nodeScopes[it] == selectedScopeId && inSelectedForm(it) }
+        val candidateItems = scopeItems.filter { inSelectedForm(it.id) }
         rawStructure = rawStructure?.copy(
             webView = selectedScopeId != null,
             webDomain = selectedWebScope?.domain,
@@ -728,6 +737,11 @@ class EnhancedAutofillStructureParserV2 {
                     it.hint == InternalHint.CREDIT_CARD_SECURITY_CODE || it.hint == InternalHint.OTP_CODE
                 }
                 if (derivesOfPassword) {
+                    structureItems = structureItems.filter { it.hint != InternalHint.PASSWORD }
+                }
+
+                // Explicit new-password semantics must not lose to type=password or label heuristics.
+                if (structureItems.any { it.hint == InternalHint.NEW_PASSWORD && it.reason == "html-field-token" }) {
                     structureItems = structureItems.filter { it.hint != InternalHint.PASSWORD }
                 }
 
@@ -932,6 +946,7 @@ class EnhancedAutofillStructureParserV2 {
     private fun parseViewNode(
         node: AssistStructure.ViewNode,
         parentWebViewNodeId: Int? = null,
+        parentHtmlFormId: Int? = null,
         context: ParseContext,
     ): RawParsedStructure {
         var webView = false
@@ -966,10 +981,24 @@ class EnhancedAutofillStructureParserV2 {
         }
         var hasFocus = node.isFocused
         var focusedWebViewNodeId = webViewNodeId.takeIf { hasFocus }
+        var focusedAutofillId = node.autofillId.takeIf { hasFocus }
+        var htmlFormId = parentHtmlFormId.takeIf { webViewNodeId == parentWebViewNodeId }
+        val html = node.htmlInfo
+        if (htmlFormScopesEnabled && webViewNodeId != null && html?.tag.equals("form", ignoreCase = true)) {
+            htmlFormId = context.totalNodesVisited
+            context.htmlForms.registerForm(webViewNodeId, htmlFormId,
+                html?.attributes?.firstOrNull { it.first.equals("id", ignoreCase = true) }?.second)
+        }
         val nodeIds = mutableSetOf<AutofillId>()
         node.autofillId?.let {
             nodeIds += it
             context.nodeScopes[it] = webViewNodeId
+            if (htmlFormScopesEnabled && webViewNodeId != null) {
+                val explicitForm = html?.takeIf { it.tag.equals("input", ignoreCase = true) ||
+                    it.tag.equals("select", ignoreCase = true) || it.tag.equals("textarea", ignoreCase = true) }
+                    ?.attributes?.firstOrNull { it.first.equals("form", ignoreCase = true) }?.second
+                context.htmlForms.registerField(it, webViewNodeId, htmlFormId, explicitForm, context.totalNodesVisited)
+            }
         }
 
         context.totalNodesVisited++
@@ -983,7 +1012,8 @@ class EnhancedAutofillStructureParserV2 {
             val outBuilders = mutableListOf<ParsedItemBuilder>()
             val hints = node.autofillHints
             if (!hints.isNullOrEmpty()) {
-                outBuilders += parseNodeByAutofillHint(node)
+                outBuilders += parseNodeByAutofillHint(node, browserHintTokensEnabled &&
+                    (webViewNodeId != null || html?.tag.equals("input", ignoreCase = true)))
             }
 
             outBuilders += parseNodeByHtmlAttributes(node)
@@ -1077,6 +1107,7 @@ class EnhancedAutofillStructureParserV2 {
             val childStructure = parseViewNode(
                 node = node.getChildAt(i),
                 parentWebViewNodeId = webViewNodeId,
+                parentHtmlFormId = htmlFormId,
                 context = context,
             )
             if (childStructure.webView) {
@@ -1089,6 +1120,7 @@ class EnhancedAutofillStructureParserV2 {
             if (childStructure.hasFocus) {
                 hasFocus = true
                 focusedWebViewNodeId = childStructure.focusedWebViewNodeId
+                focusedAutofillId = childStructure.focusedAutofillId
             }
         }
 
@@ -1099,25 +1131,35 @@ class EnhancedAutofillStructureParserV2 {
             items = out,
             hasFocus = hasFocus,
             focusedWebViewNodeId = focusedWebViewNodeId,
+            focusedAutofillId = focusedAutofillId,
             nodeIds = nodeIds,
         )
     }
 
     private fun parseNodeByAutofillHint(
         node: AssistStructure.ViewNode,
+        useHtmlTokens: Boolean = false,
     ): List<ParsedItemBuilder> = kotlin.run {
         val out = mutableListOf<ParsedItemBuilder>()
         node.autofillHints?.forEach { value ->
-            val matchers = autofillHintMatchers.filter { matcher -> matcher.matches(value) }
+            // Chromium also exposes the autocomplete token list through native autofillHints.
+            // Section names must not reintroduce a role that HTML token parsing excluded.
+            val matchers = if (useHtmlTokens) matchHtmlHint(value)
+                else autofillHintMatchers.filter { matcher -> matcher.matches(value) }
             matchers.forEach { matcher ->
                 out += ParsedItemBuilder(
                     accuracy = matcher.accuracy,
                     hint = matcher.hint,
-                    reason = "autofill-hint",
+                    reason = if (useHtmlTokens) "html-field-token" else "autofill-hint",
                 )
             }
         }
         out
+    }
+
+    private fun matchHtmlHint(value: String): List<AutofillHintMatcher> {
+        val token = AutofillHtmlHintTokens.fieldToken(value) ?: return emptyList()
+        return autofillHintMatchers.filter { it.target.equals(token, ignoreCase = true) }.distinctBy { it.hint }
     }
 
     private fun parseNodeByHtmlAttributes(
@@ -1160,16 +1202,18 @@ class EnhancedAutofillStructureParserV2 {
                     when (key) {
                         "autocomplete",
                         "ua-autofill-hints",
+                        "computed-autofill-hints",
                         -> {
                             val value = attribute.second?.lowercase(Locale.ENGLISH).orEmpty()
-                            val matchers = autofillHintMatchers.filter { matcher ->
-                                matcher.matches(value)
-                            }
+                            val matchers = if (browserHintTokensEnabled) matchHtmlHint(value)
+                            else if (key != "computed-autofill-hints") {
+                                autofillHintMatchers.filter { it.matches(value) }
+                            } else emptyList()
                             matchers.forEach { matcher ->
                                 out += ParsedItemBuilder(
                                     accuracy = matcher.accuracy,
                                     hint = matcher.hint,
-                                    reason = key,
+                                    reason = if (browserHintTokensEnabled) "html-field-token" else key,
                                 )
                             }
                         }

@@ -381,6 +381,19 @@ class AutofillFlowInstrumentedTest {
         expectStatus("user=OK password=OK")
     }
 
+    @Test fun systemAutofillKeepsTheOtherHtmlFormEmpty() {
+        open("web_forms")
+        waitNode { it.text?.contains("web=READY") == true }
+        fillFromSystem(WEB_TITLE, web = true)
+        expectStatus("user=OK password=OK newsletter=EMPTY")
+    }
+
+    @Test fun systemAutofillUsesComputedHtmlHintsWithoutLabels() {
+        open("computed")
+        fillFromSystem(WEB_TITLE)
+        expectStatus("user=OK password=OK")
+    }
+
     @Test fun systemAutofillInlineSelectionReturnsTheChosenCredential() {
         open("inline")
         fillFromSystem(NATIVE_TITLE)
