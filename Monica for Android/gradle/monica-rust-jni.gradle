@@ -1,5 +1,7 @@
 // Package the JNI bridge built from this checkout, including nearby-device sync.
 // Compile-only jobs (for example CodeQL) do not need Android native libraries.
+apply from: rootProject.file('gradle/rust-toolchain.gradle')
+
 def nativeSource = new File(rootDir, 'rust-jni')
 def nativeOutput = new File(buildDir, 'monicaRustJniLibs')
 def nativeAbis = project.hasProperty('includeX86TestAbi')
@@ -15,13 +17,14 @@ def buildNative = tasks.register('buildMonicaRustJniFromSource') {
         inputs.dir new File(rootDir, "${component}/src")
     }
     inputs.file new File(nativeSource, 'Cargo.lock')
+    inputs.file rootProject.file('gradle/rust-toolchain.gradle')
     inputs.property 'abis', nativeAbis
     outputs.dir nativeOutput
     doLast {
-        def command = ['cargo', 'ndk']
+        def command = ['ndk']
         nativeAbis.each { command.addAll(['-t', it]) }
         command.addAll(['-P', '26', '-o', nativeOutput.absolutePath, 'build', '--release', '--locked'])
-        def process = new ProcessBuilder(command).directory(nativeSource).redirectErrorStream(true).start()
+        def process = rustCargoProcess(command, nativeSource, android.sdkDirectory).start()
         process.inputStream.eachLine { println it }
         if (process.waitFor() != 0) throw new GradleException('Building Monica Rust JNI from source failed')
         nativeAbis.each { abi ->

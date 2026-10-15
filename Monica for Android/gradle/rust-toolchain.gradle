@@ -1,0 +1,39 @@
+// Resolve tools at task execution time: Android Studio may inherit a PATH from
+// before rustup was installed. Keep the caller's toolchain ahead of fallbacks.
+ext.rustCargoProcess = { List<String> arguments, File workingDirectory, File sdkDirectory ->
+    def builder = new ProcessBuilder().directory(workingDirectory).redirectErrorStream(true)
+    def environment = builder.environment()
+    def pathKey = environment.keySet().find { it.equalsIgnoreCase('PATH') } ?: 'PATH'
+    def inheritedPath = environment.get(pathKey) ?: ''
+    def windows = System.getProperty('os.name').toLowerCase(Locale.ROOT).startsWith('windows')
+    def cargoName = windows ? 'cargo.exe' : 'cargo'
+    def cargoHome = environment.get('CARGO_HOME')
+    def cargoBin = new File(cargoHome ?: new File(System.getProperty('user.home'), '.cargo').path, 'bin')
+    def pathDirectories = inheritedPath.split(java.util.regex.Pattern.quote(File.pathSeparator))
+            .findAll { !it.isBlank() }.collect { new File(it) }
+    def override = project.findProperty('cargoExecutable')?.toString()?.trim()
+    def candidates = override
+            ? [rootProject.file(override)]
+            : (pathDirectories + [cargoBin]).collect { new File(it, cargoName) }
+    // Keep the cargo filename: rustup shims may be symlinks whose target is
+    // rustup itself, and their behavior depends on the invoked filename.
+    def cargo = candidates.find { it.isFile() && it.canExecute() }?.absoluteFile
+    if (cargo == null) {
+        throw new GradleException(
+                override ? "Cargo executable is missing or not executable: ${override}. Check -PcargoExecutable=<path>."
+                        : 'Cargo was not found in PATH or the Rust installation directory. Install Rust with rustup, ' +
+                          'or set CARGO_HOME / -PcargoExecutable=<path to cargo>. See rust-jni/README.md.')
+    }
+
+    // cargo-ndk also launches rustc/cargo; fixing only the first executable is
+    // insufficient when the IDE has no Rust tools on PATH.
+    environment.put(pathKey, ([cargo.parent, cargoBin.absolutePath] + pathDirectories.collect { it.path })
+            .unique().join(File.pathSeparator))
+    // Android Studio normally locates the SDK through local.properties rather
+    // than shell variables. Preserve an explicitly configured SDK/NDK.
+    if (!environment.get('ANDROID_HOME') && !environment.get('ANDROID_SDK_ROOT')) {
+        environment.put('ANDROID_HOME', sdkDirectory.absolutePath)
+    }
+    builder.command([cargo.absolutePath] + arguments)
+    builder
+}

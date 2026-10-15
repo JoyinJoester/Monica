@@ -4,6 +4,8 @@
 
 ## 中文
 
+- 修复 Android Studio 未继承 Rust 工具路径时无法打包的问题，支持自动定位已安装工具和自定义 Cargo 路径。
+
 - 补全附近设备同步的文件夹、根目录附件与独立标签，保留附件身份、扩展数据和来源归属；附件校验失败或不支持文件夹删除时保留受影响的数据并说明原因。
 
 - 修复冷启动或绑定验证器查询超时时，自动填充后偶尔不显示验证码通知的问题；密码填充仍优先完成。
@@ -27,6 +29,8 @@
 - 银行卡新增默认“开户行”字段，支持填写、编辑、复制和搜索，并在备份及受支持的数据库同步中保留。
 
 ## English
+
+- Fixed packaging when Android Studio does not inherit the Rust tool path, with installed-tool discovery and a custom Cargo path option.
 
 - Nearby sync now preserves folder/root attachments, standalone labels, portable identities, extension data and source ownership. Failed attachment verification or unsupported folder deletion preserves the affected data and explains the issue.
 

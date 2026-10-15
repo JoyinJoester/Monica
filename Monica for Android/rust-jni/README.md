@@ -11,17 +11,17 @@
 ## Android 构建
 
 ```bash
-rustup target add aarch64-linux-android armv7-linux-androideabi
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 cargo install cargo-ndk --version 4.1.2 --locked
-cd rust-jni
-cargo ndk \
-  -t arm64-v8a \
-  -t armeabi-v7a \
-  -o ../app/src/main/jniLibs \
-  build --release
+# Run from the Android project root (Windows: gradlew.bat).
+./gradlew :app:assembleRelease
 ```
 
-生成的 `.so` 是构建产物，不应手工提交。正式 Release 和 Preview 工作流会在 Gradle 打包前执行同样的 native 构建。
+Gradle 打包时从当前源码构建 JNI，输出到 `app/build/monicaRustJniLibs`。生成的 `.so` 是构建产物，不应手工提交。
+
+Android Studio 未继承 Rust 的 `PATH` 时，构建会依次查找 `PATH`、`CARGO_HOME/bin`（未设置时为用户目录的 `.cargo/bin`），并补全子进程的 Rust 工具路径。自定义安装可使用 `-PcargoExecutable=/absolute/path/to/cargo`（Windows 指向 `cargo.exe`）；显式路径无效时直接报错。SDK 沿用现有环境配置，未配置环境变量时使用 Android 插件解析出的 SDK（例如 `local.properties` 中的 `sdk.dir`）。仍需预先安装 Rust、上述 Android targets、`cargo-ndk` 和 Android NDK，构建不会自动安装工具或回退到旧 `.so`。
+
+Gradle resolves Cargo from `PATH`, then `CARGO_HOME/bin` (or the user's `.cargo/bin`), and supplies that directory to child tools. Use `-PcargoExecutable=<path>` for a custom installation. Existing SDK/NDK environment settings are preserved; otherwise the SDK comes from Android Gradle Plugin configuration. Rust, Android targets, cargo-ndk and the NDK must already be installed.
 
 ## 卡包首屏排序
 

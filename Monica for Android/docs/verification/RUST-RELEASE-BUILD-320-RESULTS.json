@@ -1,0 +1,109 @@
+{
+  "date": "2026-10-15",
+  "scope": "Rust executable discovery for Gradle Release builds",
+  "originalFailureReproduced": true,
+  "checks": {
+    "main-release": "PASS",
+    "main-native-final": "PASS",
+    "fdroid-release": "PASS",
+    "fdroid-native-final": "PASS",
+    "probe-fallback": "PASS",
+    "probe-path-env": "PASS",
+    "probe-custom-home": "PASS",
+    "candidate-config": "PASS"
+  },
+  "main": {
+    "edition": "main",
+    "apkArchiveAndNativeLibraries": "PASS",
+    "artifacts": [
+      {
+        "file": "Monica-Android-armeabi-v7a-1.0.320-26101512-35.APK",
+        "version": "1.0.320-26101512-35",
+        "versionCode": 12,
+        "sha256": "12c7bb878b03706f2834e4c7fa3234a0689e56e22b23c8cd3cc2e53e48ce1251",
+        "nativeLibraries": [
+          {
+            "entry": "lib/armeabi-v7a/libmonica_rust_jni.so",
+            "sha256": "3f5f5d1335243d997c8505d818ff389af288731b99ad1c877768450da405004b"
+          },
+          {
+            "entry": "lib/armeabi-v7a/libmdbx_ffi.so",
+            "sha256": "3ca25b5ce0b35806bf20b66ad37912ed08286a26e1fbd0c2d84fbefac8b0cfbc"
+          }
+        ]
+      },
+      {
+        "file": "Monica-Android-arm64-v8a-1.0.320-26101512-35.APK",
+        "version": "1.0.320-26101512-35",
+        "versionCode": 12,
+        "sha256": "72f4b5419da3a26528b6611a2dba1077c1748939c72f53ccd123a485a356ca5c",
+        "nativeLibraries": [
+          {
+            "entry": "lib/arm64-v8a/libmonica_rust_jni.so",
+            "sha256": "d217ce8a264ab9ebca94c99afea01afc2842849c65c3368fadd3d8607296ec1e"
+          },
+          {
+            "entry": "lib/arm64-v8a/libmdbx_ffi.so",
+            "sha256": "f01631271414004264add1b071a7e7d1572ef6cd34152ac9547088c7589dd54f"
+          }
+        ]
+      }
+    ]
+  },
+  "fdroid": {
+    "edition": "fdroid",
+    "apkArchiveAndNativeLibraries": "PASS",
+    "artifacts": [
+      {
+        "file": "Monica-Android-arm64-v8a+armeabi-v7a+x86_64-1.0.320.apk",
+        "version": "1.0.320",
+        "versionCode": 27,
+        "sha256": "25224574db8f1bc867950d4525f937027a76fba9f86e7d3553f2cee5d559d1ed",
+        "nativeLibraries": [
+          {
+            "entry": "lib/arm64-v8a/libmonica_rust_jni.so",
+            "sha256": "b058fbe5f2216afdb689322f8fc7ed32593fe3f64b079202cce71eaea9f56c35"
+          },
+          {
+            "entry": "lib/arm64-v8a/libmdbx_ffi.so",
+            "sha256": "ae4704ed1a5b64d825ecd6a6e88ce070e17cdc421fd189c54b8d6a08fdabb3f5"
+          },
+          {
+            "entry": "lib/armeabi-v7a/libmonica_rust_jni.so",
+            "sha256": "f5d89c3ca9185179d8cc5908974d3d6c060fbd61000786cca2c68da61032f75e"
+          },
+          {
+            "entry": "lib/armeabi-v7a/libmdbx_ffi.so",
+            "sha256": "d909b31b5602199499108f3319c8228c0621c7151548eb925ebd22cc603378d1"
+          },
+          {
+            "entry": "lib/x86_64/libmonica_rust_jni.so",
+            "sha256": "67879bee1f7316a7f3a9616b79fe8622bdf0b38c52e1f187323bac4106f39e35"
+          },
+          {
+            "entry": "lib/x86_64/libmdbx_ffi.so",
+            "sha256": "f78e0502b418e3266dfdd9a38f1426d1b2349126a6d9d26c358f399327b16d1c"
+          }
+        ]
+      }
+    ]
+  },
+  "sourceFiles": {
+    "main": {
+      "gradle/rust-toolchain.gradle": "ff0d0c22c4ad9dbef9f63281b52dea865866a653b34f6f49bc95358216a1e864",
+      "gradle/monica-rust-jni.gradle": "5e5804294f8c021b810e91f708a1fa4ec655a441617af9c8aa47b12607d78e0b"
+    },
+    "fdroid": {
+      "gradle/rust-toolchain.gradle": "ff0d0c22c4ad9dbef9f63281b52dea865866a653b34f6f49bc95358216a1e864",
+      "app/build.gradle": "5e97d75b5b1f20b4307c5d42e530cc5e5d6ea9301afbafe6f9fb2d3ca31bbd23",
+      "mdbx-engine/build.gradle": "dc85ea0691edaa0246a6a5862fe2672631b43121256be9cb7f1085b562bed213"
+    }
+  },
+  "limitations": [
+    "Windows host verification; Linux/macOS and on-device runtime behavior were not tested in this build-only change.",
+    "Ordinary assembleRelease output is unsigned under existing project configuration.",
+    "F-Droid local APK signature was verified; this is not an official F-Droid build or release.",
+    "Existing Kotlin metadata R8 warnings are nonfatal and unchanged.",
+    "The F-Droid integration candidate received scoped launcher changes and configuration validation, not a full Release build."
+  ]
+}
