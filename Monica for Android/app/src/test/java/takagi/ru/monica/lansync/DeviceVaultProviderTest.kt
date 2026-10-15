@@ -67,6 +67,42 @@ class DeviceVaultProviderTest {
             File(context.filesDir,"fixture-${UUID.randomUUID()}.replica"))
     }
 
+    @Test fun metadata_attachment_bytes_survive_room_adoption_and_forwarding() = runBlocking { withTimeout(60000) {
+        SessionManager.markUnlocked()
+        val (sourceDb, source) = vault(); val (targetDb, target) = vault(); val (_, third) = vault()
+        val context = RuntimeEnvironment.getApplication()
+        val security = SecurityManager(context)
+        val payloads = listOf(ByteArray(280_017) { (it % 251).toByte() }, ByteArray(180_003) { (it % 239).toByte() })
+        val descriptors = payloads.mapIndexed { index, bytes -> JSONObject()
+            .put("id", java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) })
+            .put("attachment_id", "portable-metadata-$index").put("file_name", "same-name.bin")
+            .put("media_type", "application/octet-stream").put("size", bytes.size) }
+        try {
+            val metadata = DeviceRoomVaultMetadata(sourceDb, security) { JSONObject() }
+            metadata.applyRootMetadata(UUID.randomUUID().toString(), null, null, false, JSONObject()
+                .put("entry_type", "vault-metadata").put("title", "Root").put("folder", "")
+                .put("payload", JSONObject().put("tags", org.json.JSONArray()))
+                .put("assets", org.json.JSONArray().put(descriptors[0])))
+            val category = sourceDb.categoryDao().insert(Category(name = "Folder assets"))
+            metadata.save("folder:$category", JSONObject().put("assets", org.json.JSONArray().put(descriptors[1])))
+            val outgoing = source.prepare(File(context.filesDir, "metadata-source-${UUID.randomUUID()}"))
+            // Emulate a browser sender whose authenticated archive includes the actual files.
+            val transfer = DeviceAssetTransfer(outgoing.directory, outgoing.contentKey)
+            descriptors.forEachIndexed { index, descriptor -> transfer.append(descriptor.getString("id"), payloads[index]) }
+            target.apply(outgoing.directory, JSONObject().put("pairing", JSONObject().put("content_key", outgoing.contentKey)))
+            assertEquals(1, targetDb.categoryDao().getDeviceSyncCategories().size)
+            val forwarded = target.prepare(File(context.filesDir, "metadata-forward-${UUID.randomUUID()}"))
+            val forwardedAssets = DeviceAssetTransfer(forwarded.directory, forwarded.contentKey)
+            descriptors.forEachIndexed { index, descriptor ->
+                assertTrue("Missing metadata attachment bytes $index", forwardedAssets.contains(descriptor.getString("id")))
+                assertArrayEquals(payloads[index], forwardedAssets.read(descriptor))
+            }
+            third.apply(forwarded.directory, JSONObject().put("pairing", JSONObject().put("content_key", forwarded.contentKey)))
+            val last = third.prepare(File(context.filesDir, "metadata-third-${UUID.randomUUID()}"))
+            descriptors.forEachIndexed { index, descriptor -> assertArrayEquals(payloads[index], DeviceAssetTransfer(last.directory,last.contentKey).read(descriptor)) }
+        } finally { source.pause(); target.pause(); third.pause() }
+    } }
+
     @Test fun opaque_extension_paths_do_not_become_replica_references() = runBlocking { withTimeout(60000) {
         SessionManager.markUnlocked()
         val (database, provider) = vault(); val (received, receiver) = vault()

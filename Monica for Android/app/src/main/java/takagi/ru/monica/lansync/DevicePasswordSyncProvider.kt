@@ -42,6 +42,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     private val attachments = database.attachmentDao()
     private val attachmentStorage = takagi.ru.monica.attachments.storage.AttachmentStorage(app)
     private val attachmentKeys = takagi.ru.monica.attachments.storage.AttachmentKeyVault(security)
+    private val metadataAssets = DeviceMetadataAssets(app, database, security)
     private val images = takagi.ru.monica.util.ImageManager(app)
     private var assets: List<DeviceVaultAsset> = emptyList()
     private var passkeyIssues: List<DevicePasskeySyncIssue> = emptyList()
@@ -159,9 +160,9 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
             }
             categories.getDeviceSyncCategories().filter { it.isMonicaLocalCategory() }.forEach { category ->
                 val data = preparingDeviceSync("room_folder_${category.id}") { metadata.folder(category) }
-                local += DevicePasswordSnapshot("folder:${category.id}", metadata.global("folder:${category.id}").orEmpty(), "folders", DevicePasskeyShape.guard(data), false, data)
+                local += metadataAssets.snapshot(DevicePasswordSnapshot("folder:${category.id}", metadata.global("folder:${category.id}").orEmpty(), "folders", DevicePasskeyShape.guard(data), false, data))
             }
-            local += preparingDeviceSync("room_metadata") { metadata.rootMetadata() }
+            local += preparingDeviceSync("room_metadata") { metadata.rootMetadata().map(metadataAssets::snapshot) }
             local += preparingDeviceSync("steam_accounts") { steam.snapshots() }
         }
         nativeDatabases.forEach {
@@ -270,7 +271,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
                 val data = resolveIncomingReferences(original,nativeScope)
                 val deleted = record.getBoolean("deleted")
                 val applied = if(localId?.startsWith("metadata:") == true || (localId==null && primaryNativeId==null && data.optString("entry_type")=="vault-metadata")) {
-                    metadata.applyRootMetadata(id,localId,expected,deleted,data)
+                    applyLocalRootMetadata(id,localId,expected,deleted,data)
                 } else if (localId?.startsWith("folder:") == true || ((!deleted || data.optBoolean("trashed")) && data.optString("entry_type") == "folder" && primaryNativeId == null)) {
                     applyLocalFolder(id, localId, expected, deleted, data)
                 } else if (localId?.startsWith("steam:") == true ||
@@ -373,17 +374,30 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
             while(cursor.moveToNext()) put(cursor.getString(0), cursor.getString(1))
         } }
     }
-    private suspend fun applyLocalFolder(globalId: String, address: String?, expected: String?, deleted: Boolean, data: JSONObject): DevicePasswordSnapshot? = database.withTransaction {
+    private suspend fun applyLocalRootMetadata(globalId: String, address: String?, expected: String?, deleted: Boolean, data: JSONObject): DevicePasswordSnapshot? = metadataAssets.transaction {
+        val owner = address ?: "metadata:$globalId"
+        val previous = metadata.rootMetadata().firstOrNull { it.localId == owner }
+        if(previous?.guard != expected && !(previous == null && expected.isNullOrEmpty())) return@transaction null
+        val incoming = JSONObject(data.toString())
+        if(!incoming.has("labels")) previous?.data?.optJSONArray("labels")?.let { incoming.put("labels",it) }
+        val actual = adopt(owner, incoming, deleted && !data.optBoolean("trashed"), ::readIncomingAsset)
+        metadata.applyRootMetadata(globalId, address, expected, deleted, actual)?.let(metadataAssets::snapshot)
+    }
+
+    private suspend fun applyLocalFolder(globalId: String, address: String?, expected: String?, deleted: Boolean, data: JSONObject): DevicePasswordSnapshot? = metadataAssets.transaction {
         val mapped = address ?: vaultIdentities().entries.firstOrNull { it.value == globalId }?.key
         val previous = mapped?.removePrefix("folder:")?.toLongOrNull()?.let { categories.getCategoryById(it) }
-        if(previous != null && DevicePasskeyShape.guard(metadata.folder(previous)) != expected) return@withTransaction null
+        if(previous != null && DevicePasskeyShape.guard(metadata.folder(previous)) != expected) return@transaction null
+        if(previous == null && !expected.isNullOrEmpty()) return@transaction null
         if(deleted) {
+            if(data.optBoolean("trashed")) throw LanSyncException("folder_trash_unavailable")
+            mapped?.let { adopt(it, JSONObject(), true, ::readIncomingAsset); metadata.forget(it) }
             previous?.let {
                 database.openHelper.writableDatabase.execSQL("UPDATE password_entries SET categoryId=NULL WHERE categoryId=?", arrayOf(it.id))
                 database.openHelper.writableDatabase.execSQL("UPDATE secure_items SET categoryId=NULL WHERE categoryId=?", arrayOf(it.id))
                 categories.delete(it)
             }
-            return@withTransaction DevicePasswordSnapshot(mapped.orEmpty(), globalId, "folders", "", true, JSONObject())
+            return@transaction DevicePasswordSnapshot(mapped.orEmpty(), globalId, "folders", "", true, JSONObject())
         }
         val path = data.getJSONObject("payload").getJSONArray("path")
         require(path.length() in 1..128) { "invalid_folder" }
@@ -399,13 +413,15 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
             if(index == path.length()-1 || existing == null) {
                 val partial = if(index == path.length()-1) JSONObject(data.toString()).put("title",title)
                     else JSONObject().put("title",title).put("folder","").put("entry_type","folder").put("payload",JSONObject())
+                if(index == path.length()-1 && !partial.has("labels") && previous != null)
+                    metadata.folder(previous).optJSONArray("labels")?.let { partial.put("labels",it) }
                 partial.getJSONObject("payload").put("path",JSONArray().apply { for(i in 0..index) put(path.getJSONObject(i)) })
-                metadata.save("folder:$savedId", partial)
+                metadata.save("folder:$savedId", if(index == path.length()-1) adopt("folder:$savedId", partial, false, ::readIncomingAsset) else partial)
             }
         }
         val saved = categories.getCategoryById(savedId) ?: error("device_sync_write_failed")
         val actual = metadata.folder(saved)
-        DevicePasswordSnapshot("folder:$savedId", globalId, "folders", DevicePasskeyShape.guard(actual), false, actual)
+        metadataAssets.snapshot(DevicePasswordSnapshot("folder:$savedId", globalId, "folders", DevicePasskeyShape.guard(actual), false, actual))
     }
     private suspend fun applyLocalVault(globalId: String, address: String?, expected: String?, deleted: Boolean, data: JSONObject): DevicePasswordSnapshot? = database.withTransaction {
         check(SessionManager.isUnlocked.value) { "device_sync_locked" }
@@ -630,6 +646,7 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
     }
     private suspend fun readAsset(asset: DeviceVaultAsset): ByteArray {
         val bytes = when {
+            asset.metadata != null -> metadataAssets.read(asset.metadata)
             asset.icon != null -> DeviceVaultShape.readIcon(app,asset.icon)
             asset.image != null -> images.readImageBytes(asset.image) ?: throw LanSyncException("asset_unavailable")
             asset.local != null -> {

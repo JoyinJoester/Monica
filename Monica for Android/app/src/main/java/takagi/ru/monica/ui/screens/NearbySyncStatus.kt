@@ -56,6 +56,8 @@ internal fun nearbyNextStep(context: Context, state: DeviceSyncState): String = 
     state.enabled && !state.nearbyDiscoveryAvailable -> R.string.nearby_hint_presence_unavailable
     state.phase == "waiting_for_app" -> R.string.nearby_hint_waiting_apps
     state.error == "sync_database_unavailable" -> R.string.nearby_hint_database
+    state.error in setOf("folder_trash_unavailable", "folder_attachment_trash_unavailable") -> R.string.device_sync_folder_trash_unsupported
+    state.error in setOf("invalid_asset", "asset_unavailable", "invalid_asset_identity") -> R.string.device_sync_asset_failed
     state.error in setOf("sync_direction_conflict", "sync_direction_unsupported") -> R.string.device_sync_direction_hint
     state.error in setOf("unsupported_protocol", "native_unavailable", "device_sync_unavailable") -> R.string.nearby_hint_update
     state.error in setOf("pairing_rejected", "authentication_failed", "different_device", "pairing_expired") -> R.string.nearby_hint_pair

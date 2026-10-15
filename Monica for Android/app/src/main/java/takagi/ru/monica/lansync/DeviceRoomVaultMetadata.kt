@@ -58,6 +58,10 @@ internal class DeviceRoomVaultMetadata(private val database: PasswordDatabase, p
         tables()
         database.openHelper.writableDatabase.execSQL("INSERT OR REPLACE INTO device_sync_content_extensions(local_id,payload) VALUES(?,?)", arrayOf(address, security.encryptDataLegacyCompat(data.toString())))
     }
+    fun forget(address: String) {
+        tables()
+        database.openHelper.writableDatabase.execSQL("DELETE FROM device_sync_content_extensions WHERE local_id=?", arrayOf(address))
+    }
     fun supplement(address: String, current: JSONObject): JSONObject {
         tables()
         val saved = database.openHelper.readableDatabase.query("SELECT payload FROM device_sync_content_extensions WHERE local_id=?", arrayOf(address)).use {

@@ -300,6 +300,8 @@ private fun copyNearbyText(context: Context, value: String, sensitive: Boolean) 
         "too_many_devices" -> R.string.device_sync_limit
         "native_unavailable", "device_sync_unavailable" -> R.string.lan_unavailable
         "invalid_password_payload", "invalid_record", "invalid_vault_payload" -> R.string.device_sync_invalid_data
+        "invalid_asset", "asset_unavailable", "invalid_asset_identity" -> R.string.device_sync_asset_failed
+        "folder_trash_unavailable", "folder_attachment_trash_unavailable" -> R.string.device_sync_folder_trash_unsupported
         "invalid_passkey_material", "passkey_key_unavailable" -> R.string.device_sync_passkey_failed
         "sync_database_unavailable" -> R.string.nearby_database_unavailable
         "sync_direction_conflict" -> R.string.device_sync_direction_conflict

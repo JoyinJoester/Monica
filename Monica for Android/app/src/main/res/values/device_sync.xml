@@ -49,6 +49,8 @@
     <string name="device_sync_same_device">Scan a QR code from your other device.</string>
     <string name="device_sync_limit">Up to 8 paired devices are supported.</string>
     <string name="device_sync_invalid_data">This update could not be read safely. Update both devices and try again.</string>
+    <string name="device_sync_asset_failed">An attachment is missing or failed verification. The affected item was not updated. Check its files on the sending device and retry.</string>
+    <string name="device_sync_folder_trash_unsupported">This database cannot apply this folder deletion through nearby sync. The folder was preserved. Restore it on the sending device before retrying.</string>
     <string name="device_sync_failed">Sync did not finish. Check that both devices are unlocked and on the same network; paired devices retry automatically.</string>
     <string name="device_sync_scope">Syncs Monica passwords, standalone 2FA, Steam accounts and tokens, passkeys, notes, wallet items, folders, history, trash and attachments. Non-exportable passkeys retain their credential information and need setup on the receiving device. Bitwarden and KeePass accounts use their own sync.</string>
     <string name="device_sync_preparing">Preparing vault items</string>

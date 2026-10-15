@@ -1,0 +1,486 @@
+{
+  "date": "2026-10-15",
+  "version": "1.0.320",
+  "platform": "Windows/JBR21 host; public Android API32 x86_64 AVD isolated user10",
+  "host": {
+    "main": {
+      "counts": {
+        "tests": 79,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 1
+      },
+      "suites": [
+        {
+          "name": "takagi.ru.monica.attachments.crypto.AttachmentCryptoStreamsTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.attachments.storage.AttachmentKeyAccessTest",
+          "tests": 5,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceManualSyncTest",
+          "tests": 7,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceMetadataAssetsTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DevicePairingSnapshotTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DevicePasskeyShapeTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DevicePasskeySyncConsentTest",
+          "tests": 5,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DevicePasswordShapeTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSelectedDatabaseTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 1,
+          "skippedCases": [
+            "local_default_ignores_other_vaults_and_selected_target_is_isolated"
+          ]
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSteamSyncTest",
+          "tests": 7,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSyncCadenceTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSyncModeTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSyncPreparationTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSyncServiceTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSyncUnlockTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceVaultProviderTest",
+          "tests": 14,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.LanPairingFormTest",
+          "tests": 8,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        }
+      ]
+    },
+    "fdroid": {
+      "counts": {
+        "tests": 79,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 1
+      },
+      "suites": [
+        {
+          "name": "takagi.ru.monica.attachments.crypto.AttachmentCryptoStreamsTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.attachments.storage.AttachmentKeyAccessTest",
+          "tests": 5,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceManualSyncTest",
+          "tests": 7,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceMetadataAssetsTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DevicePairingSnapshotTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DevicePasskeyShapeTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DevicePasskeySyncConsentTest",
+          "tests": 5,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DevicePasswordShapeTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSelectedDatabaseTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 1,
+          "skippedCases": [
+            "local_default_ignores_other_vaults_and_selected_target_is_isolated"
+          ]
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSteamSyncTest",
+          "tests": 7,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSyncCadenceTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSyncModeTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSyncPreparationTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSyncServiceTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceSyncUnlockTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.DeviceVaultProviderTest",
+          "tests": 14,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        },
+        {
+          "name": "takagi.ru.monica.lansync.LanPairingFormTest",
+          "tests": 8,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "skippedCases": []
+        }
+      ]
+    }
+  },
+  "device": [
+    {
+      "name": "main-final",
+      "cases": [
+        {
+          "class": "takagi.ru.monica.lansync.NearbyMetadataAssetsInstrumentedTest",
+          "test": "root_files_labels_ownership_replacement_trash_purge_and_reopen",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbyMetadataAssetsInstrumentedTest",
+          "test": "folder_metadata_round_trip_preserves_unknown_fields_and_rejects_unsupported_trash_before_write",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbyMetadataAssetsInstrumentedTest",
+          "test": "native_to_room_to_another_native_vault_forwards_real_metadata_files",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbySyncNativeInstrumentedTest",
+          "test": "receiveOnlyDoesNotSendVaultArtifactsOrContentKey",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbyAutomaticSyncTest",
+          "stack": "java.lang.AssertionError",
+          "test": "toggling_during_export_and_import_preserves_data_and_stops_later_automatic_rounds",
+          "status": "failed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbyAutomaticSyncTest",
+          "stack": "org.junit.ComparisonFailure: expected:<[waiting_for_app]> but was:<[locked]>",
+          "test": "real_presence_gates_transfers_and_unchanged_reopening_does_not_resend",
+          "status": "failed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbySteamTransportTest",
+          "test": "sendOnlyToReceiveOnlySteamTransfer",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbySteamTransportTest",
+          "test": "encryptedSteamRoundTrip",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbySteamTransportTest",
+          "test": "bulkTrashAndPasskeyCounterUseRealAndroidStorageAndTransport",
+          "status": "passed"
+        }
+      ],
+      "counts": {
+        "passed": 7,
+        "failed": 2,
+        "error": 0,
+        "skipped": 0
+      },
+      "userRestored": true,
+      "keyguardDismissed": null,
+      "apks": {
+        "app-debug-androidTest.apk": "0EFDCCDF33976EBC5CF565132FFE18A8DD6304C5EF3454C123E21D860A66D78B",
+        "Monica-Android-x86_64-1.0.320-26101512-34.APK": "0540CC19D63D59B99A60E4066B09B1CAD24158618A5715C99A62DD90B2140DAE"
+      }
+    },
+    {
+      "name": "main-auto-unlocked",
+      "cases": [
+        {
+          "class": "takagi.ru.monica.lansync.NearbyAutomaticSyncTest",
+          "test": "toggling_during_export_and_import_preserves_data_and_stops_later_automatic_rounds",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbyAutomaticSyncTest",
+          "test": "real_presence_gates_transfers_and_unchanged_reopening_does_not_resend",
+          "status": "passed"
+        }
+      ],
+      "counts": {
+        "passed": 2,
+        "failed": 0,
+        "error": 0,
+        "skipped": 0
+      },
+      "userRestored": true,
+      "keyguardDismissed": true,
+      "apks": {
+        "app-debug-androidTest.apk": "0EFDCCDF33976EBC5CF565132FFE18A8DD6304C5EF3454C123E21D860A66D78B",
+        "Monica-Android-x86_64-1.0.320-26101512-34.APK": "0540CC19D63D59B99A60E4066B09B1CAD24158618A5715C99A62DD90B2140DAE"
+      }
+    },
+    {
+      "name": "fdroid-final",
+      "cases": [
+        {
+          "class": "takagi.ru.monica.lansync.NearbyMetadataAssetsInstrumentedTest",
+          "test": "root_files_labels_ownership_replacement_trash_purge_and_reopen",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbyMetadataAssetsInstrumentedTest",
+          "test": "folder_metadata_round_trip_preserves_unknown_fields_and_rejects_unsupported_trash_before_write",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbyMetadataAssetsInstrumentedTest",
+          "test": "native_to_room_to_another_native_vault_forwards_real_metadata_files",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbySyncNativeInstrumentedTest",
+          "test": "receiveOnlyDoesNotSendVaultArtifactsOrContentKey",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbyAutomaticSyncTest",
+          "test": "toggling_during_export_and_import_preserves_data_and_stops_later_automatic_rounds",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbyAutomaticSyncTest",
+          "test": "real_presence_gates_transfers_and_unchanged_reopening_does_not_resend",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbySteamTransportTest",
+          "test": "sendOnlyToReceiveOnlySteamTransfer",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbySteamTransportTest",
+          "test": "encryptedSteamRoundTrip",
+          "status": "passed"
+        },
+        {
+          "class": "takagi.ru.monica.lansync.NearbySteamTransportTest",
+          "test": "bulkTrashAndPasskeyCounterUseRealAndroidStorageAndTransport",
+          "status": "passed"
+        }
+      ],
+      "counts": {
+        "passed": 9,
+        "failed": 0,
+        "error": 0,
+        "skipped": 0
+      },
+      "userRestored": true,
+      "keyguardDismissed": true,
+      "apks": {
+        "app-debug-androidTest.apk": "28F63EE8960FEC3AB33D87761D10061AAA86D59A05D77BAF99CC5693B7AD1CAA",
+        "Monica-Android-x86_64-1.0.320.apk": "27B486F315D41C30925AD16BCAFCA8B6294909442D6EB693506F06A120DB73EF"
+      }
+    }
+  ],
+  "sourceHashes": {
+    "app/src/main/java/takagi/ru/monica/attachments/storage/AttachmentStorage.kt": "d0420ae14ad444c4c74f7eadcf18969c025467eaa715270be0f537b184b8c692",
+    "app/src/main/java/takagi/ru/monica/lansync/DeviceNativeRootMetadata.kt": "094570bd9c2c17e78852e60e86f0b157d98d72cef9fee2738eb4de0dc549a820",
+    "app/src/main/java/takagi/ru/monica/lansync/DevicePasswordShape.kt": "532b85d76eecd5c54a0b8e805a2e47cdbc49a78479a7e8ade55305c9cd568496",
+    "app/src/main/java/takagi/ru/monica/lansync/DevicePasswordSyncProvider.kt": "1d9195487286f13e1ebe8af88d4010697904ef9ede44abfcca2cb199c56a240f",
+    "app/src/main/java/takagi/ru/monica/lansync/DeviceRoomVaultMetadata.kt": "194ffbe25fb7ed95eb58d439b677e2e4a56f7f542ad4db16d308389e349499c0",
+    "app/src/main/java/takagi/ru/monica/repository/Mdbx2Repository.kt": "b92be47cc247bd2969dbba0e955d4e3d4ed6b87a24da79ca14fffd04ec98187e",
+    "app/src/main/java/takagi/ru/monica/ui/screens/NearbySyncScreen.kt": "28568cdc10556620ce18342c18f78e02b9f9e8fd9281d2bed45864c9af796378",
+    "app/src/main/java/takagi/ru/monica/ui/screens/NearbySyncStatus.kt": "aa08efbd7770679d56140bae036381821268b50039efb3d0d357f86b9e916f04",
+    "app/src/main/res/values-zh-rCN/device_sync.xml": "ffb9e9e901391687ffccb78c6554dd2e9766ba37d84c3b61b5bf7cbf0007518b",
+    "app/src/main/res/values/device_sync.xml": "5431bd6438022d6b95bcf6a77a1f6b0d92993f146d57aed578eff057a52267ad",
+    "app/src/test/java/takagi/ru/monica/lansync/DeviceVaultProviderTest.kt": "8bac3ce268410e217f46545e0fae1c22ad014141ce38b50e0f9f1259844cdf35",
+    "app/src/main/java/takagi/ru/monica/lansync/DeviceMetadataAssets.kt": "e333f2660599a52eec9279b2900e98a2df1f83d15427b3c097c577000d9d832f",
+    "app/src/main/java/takagi/ru/monica/lansync/DeviceNativeFolderMetadata.kt": "5a5ec8f76a577332e44137aac629febda41081bb2f6f431c5b0f37bf6d4f7814",
+    "app/src/main/java/takagi/ru/monica/lansync/DeviceNativeMetadataContent.kt": "8d3f3b4336d6c120cd2dd965ba07bdcea0ac2768350fee2bb4fc83b1db77ef51",
+    "app/src/test/java/takagi/ru/monica/lansync/DeviceMetadataAssetsTest.kt": "bb38b931e8a080c4dca906827cebcfe0582faa2e52997c50012c65d37c857590",
+    "app/src/androidTest/java/takagi/ru/monica/lansync/NearbyMetadataAssetsInstrumentedTest.kt": "9403494b8914215b596ebfa061618bd0e818a7e3452225b2091f1630bfda571f"
+  },
+  "redRegression": "room-red.xml: metadata_attachment_bytes_survive_room_adoption_and_forwarding failed with Missing metadata attachment bytes 0 before the repair",
+  "hostSkip": "DeviceSelectedDatabaseTest requires a matching optional host MDBX engine. The packaged native/Room/native bridge is covered on Android.",
+  "initialDeviceFailures": "The initial main run kept the emulator keyguard visible; two coordinator tests correctly entered locked state. The identical APK passed both after the runner dismissed keyguard.",
+  "limits": [
+    "Room folder retained-trash is rejected before mutation; it is not silently converted to purge.",
+    "Native folder trash/purge with active folder files is rejected before writes by the bundled-engine capability guard. No engine ABI/opcode changes.",
+    "Device tests use actual JNI, Android storage and encrypted loopback TCP on one AVD, not two physical Wi-Fi devices.",
+    "Legacy experimental candidates lack the complete nearby-sync baseline and were not overwritten."
+  ],
+  "sourceParity": true
+}

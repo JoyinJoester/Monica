@@ -9,7 +9,8 @@ import java.security.MessageDigest
 import java.util.Date
 
 internal data class DeviceVaultAsset(val id: String, val nativeId: String, val databaseId: Long, val size: Long,
-    val local: takagi.ru.monica.attachments.model.Attachment? = null, val image: String? = null, val icon: String? = null)
+    val local: takagi.ru.monica.attachments.model.Attachment? = null, val image: String? = null, val icon: String? = null,
+    val metadata: DeviceMetadataAssets.Blob? = null)
 internal data class DevicePasswordSnapshot(val localId: String, val globalId: String, val scope: String,
     val guard: String, val deleted: Boolean, val data: JSONObject, val assets: List<DeviceVaultAsset> = emptyList()) {
     fun json() = JSONObject().put("local_id", localId).put("global_id", globalId).put("scope", scope)

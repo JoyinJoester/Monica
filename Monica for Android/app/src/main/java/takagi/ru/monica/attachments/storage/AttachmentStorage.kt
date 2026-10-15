@@ -24,7 +24,11 @@ import java.util.UUID
  *
  * 所有 IO 都走 [Dispatchers.IO]。
  */
-class AttachmentStorage(private val context: Context) {
+class AttachmentStorage(private val context: Context, private val scope: Scope = Scope.ENTRIES) {
+
+    enum class Scope(val directory: String) {
+        ENTRIES("secure_attachments"), DEVICE_METADATA("device_sync_metadata_attachments")
+    }
 
     data class EncryptedBlobResult(
         /** 相对 `filesDir/secure_attachments/` 的文件名，形如 `<uuid>.enc`。 */
@@ -39,7 +43,7 @@ class AttachmentStorage(private val context: Context) {
     }
 
     private val storageDir: File by lazy {
-        File(context.applicationContext.filesDir, DIR_NAME).also { dir ->
+        File(context.applicationContext.filesDir, scope.directory).also { dir ->
             if (!dir.exists() && !dir.mkdirs()) {
                 Log.w(TAG, "Failed to create attachments dir")
             }
@@ -152,6 +156,5 @@ class AttachmentStorage(private val context: Context) {
         private val processStartedAt = System.currentTimeMillis()
         private val writtenThisProcess = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         private const val TAG = "AttachmentStorage"
-        private const val DIR_NAME = "secure_attachments"
     }
 }
