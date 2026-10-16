@@ -4709,10 +4709,9 @@
     <string name="import_type_csv_bitwarden_auth_desc">Import standalone authenticators from Bitwarden Authenticator</string>
     <string name="import_type_csv_bitwarden_auth_file_hint">Select a Bitwarden Authenticator .csv file</string>
 
-    <string name="autofill_device_auth_description">Use your fingerprint or device screen lock to autofill.</string>
-    <string name="autofill_device_auth_unavailable">Set up a device screen lock or fingerprint to use the autofill picker.</string>
+    <string name="autofill_device_auth_description">Use strong biometrics or your Monica master password to autofill.</string>
+    <string name="autofill_device_auth_unavailable">Open Monica and set up a master password before using autofill verification.</string>
     <string name="autofill_device_auth_unlock_app">Open Monica and unlock your vault once to restore access, then try autofill again.</string>
-    <string name="autofill_use_screen_lock">Use screen lock</string>
     <string name="wallet_name_parts">Name parts (optional)</string>
     <string name="wallet_cardholder_name_parts">Cardholder name parts (optional)</string>
     <string name="wallet_name_parts_help">Enter these separately. They do not change the full name, and are only used for matching name-part fields.</string>
@@ -4721,4 +4720,5 @@
     <string name="wallet_district">District / county</string>
     <string name="wallet_address_line3">Address line 3</string>
     <string name="wallet_address_extra">Additional address fields</string>
+    <string name="monica_master_password_required">Set up a Monica master password first.</string>
 </resources>

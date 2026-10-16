@@ -16,7 +16,7 @@ import takagi.ru.monica.R
  * This helper only removes application-side work from the tap-to-prompt path:
  * - a single BiometricManager instance replaces legacy FingerprintManager probes;
  * - the main executor, BiometricPrompt and PromptInfo are reused while the Activity lives;
- * - Android 11+ may fall back to the device PIN/pattern/password from the same native prompt.
+ * - only strong biometrics are accepted; the negative button returns to Monica's password UI.
  */
 class BiometricAuthHelper(
     context: Context
@@ -70,15 +70,6 @@ class BiometricAuthHelper(
     }
 
     fun isBiometricEnrolled(): Boolean = isBiometricAvailable()
-
-    /**
-     * Whether the native authentication sheet can be displayed using Monica's policy.
-     * Android 11+ permits either a strong biometric or device credential.
-     */
-    fun isSystemAuthenticationAvailable(): Boolean {
-        return biometricManager.canAuthenticate(allowedAuthenticators()) ==
-            BiometricManager.BIOMETRIC_SUCCESS
-    }
 
     fun getBiometricStatusMessage(): String {
         val result = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
@@ -166,12 +157,19 @@ class BiometricAuthHelper(
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
-                    callbacks?.onSuccess?.invoke()
+                    val current = callbacks ?: return
+                    callbacks = null
+                    if (BiometricAuthenticationPolicy.acceptsResult(result.authenticationType, Build.VERSION.SDK_INT)) {
+                        current.onSuccess()
+                    } else {
+                        current.onError(BiometricPrompt.ERROR_UNABLE_TO_PROCESS, strings.get(R.string.biometric_not_available))
+                    }
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     super.onAuthenticationError(errorCode, errString)
                     val current = callbacks ?: return
+                    callbacks = null
                     when (errorCode) {
                         BiometricPrompt.ERROR_NEGATIVE_BUTTON -> (current.onNegativeButton ?: current.onCancel)()
                         BiometricPrompt.ERROR_USER_CANCELED -> current.onCancel()
@@ -203,7 +201,7 @@ class BiometricAuthHelper(
 
         val builder = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
-            .setAllowedAuthenticators(allowedAuthenticators())
+            .setAllowedAuthenticators(BiometricAuthenticationPolicy.authenticators)
             .setConfirmationRequired(false)
             .apply {
                 if (subtitle != null) setSubtitle(subtitle)
@@ -212,11 +210,7 @@ class BiometricAuthHelper(
 
         AppLauncherIconManager.applyBiometricPromptBranding(appContext, builder)
 
-        // DEVICE_CREDENTIAL replaces the negative button in the system prompt.
-        // Android 10 and below keep the existing app-password fallback button.
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            builder.setNegativeButtonText(negativeButtonText)
-        }
+        builder.setNegativeButtonText(negativeButtonText)
 
         return builder.build().also {
             promptInfoKey = key
@@ -224,12 +218,4 @@ class BiometricAuthHelper(
         }
     }
 
-    private fun allowedAuthenticators(): Int {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        } else {
-            BiometricManager.Authenticators.BIOMETRIC_STRONG
-        }
-    }
 }

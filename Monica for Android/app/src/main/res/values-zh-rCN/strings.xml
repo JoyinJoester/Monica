@@ -5,10 +5,9 @@
     <string name="import_type_csv_bitwarden_auth_desc">导入 Bitwarden Authenticator 的独立验证器</string>
     <string name="import_type_csv_bitwarden_auth_file_hint">选择 Bitwarden Authenticator 导出的 .csv 文件</string>
 
-    <string name="autofill_device_auth_description">使用指纹或设备锁屏凭据验证后填充。</string>
-    <string name="autofill_device_auth_unavailable">请先设置设备锁屏密码或指纹，再使用自动填充选择器。</string>
+    <string name="autofill_device_auth_description">使用强生物识别或 Monica 主密码验证后填充。</string>
+    <string name="autofill_device_auth_unavailable">请先打开 Monica 设置主密码，再使用自动填充验证。</string>
     <string name="autofill_device_auth_unlock_app">请先打开 Monica 解锁一次保险库以恢复密钥访问，然后重试自动填充。</string>
-    <string name="autofill_use_screen_lock">使用锁屏密码</string>
     <string name="wallet_name_parts">分段姓名（可选）</string>
     <string name="wallet_cardholder_name_parts">持卡人分段姓名（可选）</string>
     <string name="wallet_name_parts_help">请单独填写，不会更改原有全名。仅用于填写对应的姓名分段字段。</string>
@@ -17,4 +16,5 @@
     <string name="wallet_district">区／县</string>
     <string name="wallet_address_line3">地址第三行</string>
     <string name="wallet_address_extra">补充地址字段</string>
+    <string name="monica_master_password_required">请先设置 Monica 主密码。</string>
 </resources>

@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-16",
+  "device": "Monica_Issue136_API_32",
+  "api": 32,
+  "cases": [
+    {
+      "scenario": "device PIN rejected as Monica password; no biometric hardware/enrollment required for fallback",
+      "passed": true
+    },
+    {
+      "scenario": "original Monica password fills selected credential",
+      "passed": true
+    },
+    {
+      "scenario": "cancelled verification returns no credential values",
+      "passed": true
+    },
+    {
+      "scenario": "full picker requires Monica password even with quick verification off",
+      "passed": true
+    },
+    {
+      "scenario": "main app rejects device PIN",
+      "passed": true
+    },
+    {
+      "scenario": "main app accepts original Monica password after upgrade",
+      "passed": true
+    },
+    {
+      "scenario": "autofill native prompt offers biometrics and Monica password, no device-credential option",
+      "passed": true
+    },
+    {
+      "scenario": "unregistered fingerprint does not authorize autofill",
+      "passed": true
+    },
+    {
+      "scenario": "registered fingerprint fills selected credential in one verification",
+      "passed": true
+    },
+    {
+      "scenario": "native password button opens Monica password component",
+      "passed": true
+    },
+    {
+      "scenario": "Monica password fallback works with fingerprints enrolled",
+      "passed": true
+    },
+    {
+      "scenario": "cancelling native biometric prompt does not fill",
+      "passed": true
+    },
+    {
+      "scenario": "biometric lockout falls back to Monica password, not device PIN",
+      "passed": true
+    },
+    {
+      "scenario": "Monica password remains usable during biometric lockout",
+      "passed": true
+    },
+    {
+      "scenario": "unlocking Android with device PIN still requires fresh Monica biometric/password verification",
+      "passed": true
+    },
+    {
+      "scenario": "main app rejects unregistered fingerprint",
+      "passed": true
+    },
+    {
+      "scenario": "main biometric negative button retains original Monica password unlock",
+      "passed": true
+    },
+    {
+      "scenario": "main app still unlocks with enrolled fingerprint after upgrade",
+      "passed": true
+    }
+  ]
+}

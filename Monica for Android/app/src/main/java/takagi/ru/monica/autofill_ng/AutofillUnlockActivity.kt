@@ -109,6 +109,7 @@ class AutofillUnlockActivity : AppCompatActivity() {
                     showPasswordAuthentication()
                 },
                 onCancel = { cancelAndFinish("authentication_cancelled") },
+                onNegativeButton = { showPasswordAuthentication() },
             )
         }.onFailure { error ->
             biometricPromptShown = false

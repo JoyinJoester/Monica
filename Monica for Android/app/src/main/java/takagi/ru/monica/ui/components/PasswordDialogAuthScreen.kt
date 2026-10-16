@@ -117,7 +117,7 @@ private fun MonicaPasswordDialogAuthCard(
     onSuccess: () -> Unit,
     onCancel: () -> Unit
 ) {
-    var password by rememberSaveable { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
     val focusRequester = remember { FocusRequester() }
@@ -203,7 +203,7 @@ private fun MonicaPasswordDialogAuthCard(
                 onClick = {
                     when {
                         MasterPasswordPolicy.isEmpty(password) -> errorMessage = emptyError
-                        !MasterPasswordPolicy.meetsMinLength(password) -> errorMessage = minLengthError
+                        // Verify existing passwords as stored; creation policy must not lock out older users.
                         !verifyPassword(password) -> errorMessage = incorrectError
                         else -> {
                             keyboardController?.hide()

@@ -151,7 +151,7 @@ class AutofillSaveTransparentActivity : androidx.fragment.app.FragmentActivity()
                             title = getString(R.string.autofill_auth_title), subtitle = getString(R.string.autofill_auth_subtitle),
                             description = getString(R.string.autofill_auth_description), negativeButtonText = getString(R.string.use_password),
                             onSuccess = { if (securityManager.unlockVaultWithBiometric()) authorized = true },
-                            onError = { _, _ -> }, onCancel = { finish() })
+                            onError = { _, _ -> }, onCancel = { finish() }, onNegativeButton = { })
                     }
                 }
             }

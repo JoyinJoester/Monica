@@ -1,6 +1,5 @@
 package takagi.ru.monica.credentialexchange
 
-import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -11,7 +10,6 @@ import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -48,6 +46,7 @@ import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.LocaleHelper
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.StartupLanguageCache
+import takagi.ru.monica.utils.BiometricAuthenticationPolicy
 
 /** System entry point. Request validation, fresh authentication, review, then one URI write. */
 class CredentialExportActivity : FragmentActivity() {
@@ -62,12 +61,6 @@ class CredentialExportActivity : FragmentActivity() {
     private var passwordError by mutableStateOf(false)
     private var errorText by mutableStateOf<String?>(null)
     private var work: Job? = null
-    private var deviceAuthenticationPending = false
-
-    private val deviceAuthentication = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (deviceAuthenticationPending && it.resultCode == RESULT_OK) authenticated()
-        deviceAuthenticationPending = false
-    }
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LocaleHelper.setLocale(newBase, StartupLanguageCache.read(newBase)))
@@ -180,18 +173,14 @@ class CredentialExportActivity : FragmentActivity() {
             showAuthentication = true
             return
         }
-        val keyguard = getSystemService(KeyguardManager::class.java)
-        @Suppress("DEPRECATION")
-        val prompt = if (keyguard.isDeviceSecure) keyguard.createConfirmDeviceCredentialIntent(
-            getString(R.string.verify_identity), getString(R.string.exchange_export_help)) else null
-        if (prompt == null) errorText = getString(R.string.exchange_auth_unavailable)
-        else { deviceAuthenticationPending = true; deviceAuthentication.launch(prompt) }
+        errorText = getString(R.string.monica_master_password_required)
     }
 
     private fun beginBiometric() {
         val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this), object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && security.unlockVaultWithBiometric()) authenticated()
+                if (BiometricAuthenticationPolicy.acceptsResult(result.authenticationType, Build.VERSION.SDK_INT) &&
+                    lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && security.unlockVaultWithBiometric()) authenticated()
                 else errorText = getString(R.string.exchange_failed)
             }
         })

@@ -111,6 +111,13 @@ class MozillaAutofillAuditSessionTest {
                                     AutofillPreferences(context).setPasswordSuggestionEnabled(input.optBoolean("generator", false))
                                     AutofillPreferences(context).setRequestSaveDataEnabled(input.optBoolean("save", false))
                                     takagi.ru.monica.utils.SettingsManager(context).updateAutofillAuthRequired(input.optBoolean("required", false))
+                                    if (input.has("biometric")) settings.updateBiometricEnabled(input.getBoolean("biometric"))
+                                    if (input.has("keepUnlocked")) settings.updateAutofillKeepUnlocked(input.getBoolean("keepUnlocked"))
+                                    if (input.optBoolean("lock")) {
+                                        SessionManager.markLocked()
+                                        takagi.ru.monica.autofill_ng.auth.AutofillSessionGrants.clear()
+                                        SecurityManager.clearRuntimeUnlockCache()
+                                    }
                                     JSONObject().put("ok", true)
                                 }
                                 "done" -> { done = true; JSONObject().put("ok", true) }
@@ -141,6 +148,7 @@ class MozillaAutofillAuditSessionTest {
         val nodes = JSONArray()
         fun visit(node: AccessibilityNodeInfo?, window: Int, depth: Int) {
             if (node == null || depth > 50 || nodes.length() > 2000) return
+            if (!node.refresh()) return
             val rect = Rect().also(node::getBoundsInScreen)
             nodes.put(JSONObject().put("window", window).put("text", node.text?.toString().orEmpty())
                 .put("description", node.contentDescription?.toString().orEmpty()).put("class", node.className?.toString().orEmpty())
@@ -149,6 +157,7 @@ class MozillaAutofillAuditSessionTest {
                 .put("focused", node.isFocused).put("bounds", JSONArray(listOf(rect.left, rect.top, rect.right, rect.bottom))))
             repeat(node.childCount) { visit(node.getChild(it), window, depth + 1) }
         }
+        visit(ui.rootInActiveWindow, android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION, 0)
         ui.windows.forEach { visit(it.root, it.type, 0) }
         return JSONObject().put("nodes", nodes)
     }

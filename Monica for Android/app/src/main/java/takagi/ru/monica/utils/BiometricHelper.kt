@@ -10,7 +10,7 @@ import androidx.fragment.app.FragmentActivity
  *
  * All authentication work is delegated to [BiometricAuthHelper] so login,
  * Autofill and secondary unlock surfaces share the same low-latency system
- * prompt implementation and device-credential fallback policy.
+ * prompt implementation and strong-biometric-only policy.
  */
 class BiometricHelper(context: Context) {
 

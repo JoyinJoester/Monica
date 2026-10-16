@@ -158,6 +158,11 @@ class AutofillAuthenticationActivity : AppCompatActivity() {
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
+                    if (!takagi.ru.monica.utils.BiometricAuthenticationPolicy.acceptsResult(
+                            result.authenticationType, android.os.Build.VERSION.SDK_INT)) {
+                        showPasswordAuthentication()
+                        return
+                    }
                     Log.d(TAG, "Biometric authentication succeeded")
                     onAuthenticationSuccess()
                 }

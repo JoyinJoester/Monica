@@ -17,7 +17,7 @@ class BiometricHelper(private val context: Context) {
      */
     fun isBiometricAvailable(): Boolean {
         val biometricManager = BiometricManager.from(context)
-        return when (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)) {
+        return when (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)) {
             BiometricManager.BIOMETRIC_SUCCESS -> true
             else -> false
         }
@@ -42,7 +42,9 @@ class BiometricHelper(private val context: Context) {
                 
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
-                    onSuccess()
+                    if (takagi.ru.monica.utils.BiometricAuthenticationPolicy.acceptsResult(
+                            result.authenticationType, android.os.Build.VERSION.SDK_INT)) onSuccess()
+                    else onError(context.getString(R.string.biometric_not_available))
                 }
                 
                 override fun onAuthenticationFailed() {
@@ -62,6 +64,7 @@ class BiometricHelper(private val context: Context) {
             .setTitle(context.getString(R.string.biometric_title))
             .setSubtitle(context.getString(R.string.biometric_subtitle))
             .setNegativeButtonText(context.getString(R.string.use_master_password))
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .build()
     }
 }
