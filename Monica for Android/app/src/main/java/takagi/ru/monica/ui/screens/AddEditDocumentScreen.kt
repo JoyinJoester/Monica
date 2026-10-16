@@ -727,10 +727,10 @@ fun AddEditDocumentScreen(
     }
     val contentItems = listOf(
         WalletEditorSection("identity", R.string.document_identity_extended_title, Icons.Default.Badge, editorSections.visible("identity", listOf(titlePrefix, firstName, middleName, lastName, company, username, email, phone).any { it.isNotBlank() })) {
+            WalletNamePartsHelp()
             InfoCard(title = stringResource(R.string.document_identity_extended_title)) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     OutlinedTextField(value = titlePrefix, onValueChange = { titlePrefix = it }, label = { Text(stringResource(R.string.document_title_prefix_label)) }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
-                    Text(stringResource(R.string.wallet_name_parts_help), style = MaterialTheme.typography.bodySmall)
                     SuggestedOutlinedTextField(suggestionField = CommonSuggestionField.FIRST_NAME, value = firstName, onValueChange = { firstName = it }, label = { Text(stringResource(R.string.document_first_name_label)) }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
                 }
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -775,32 +775,30 @@ fun AddEditDocumentScreen(
             WalletCustomFields(customFields) { customFields = it }
         },
         WalletEditorSection("photos", R.string.section_photos, Icons.Default.PhotoCamera, editorSections.visible("photos", frontImageFileName != null || backImageFileName != null)) {
-            InfoCard(title = stringResource(R.string.section_photos)) {
-                DualPhotoPicker(
-                    frontImageFileName = frontImageFileName,
-                    backImageFileName = backImageFileName,
-                    onFrontImageSelected = { fileName -> frontImageFileName = fileName },
-                    onFrontImageRemoved = { frontImageFileName = null },
-                    onBackImageSelected = { fileName -> backImageFileName = fileName },
-                    onBackImageRemoved = { backImageFileName = null },
-                    frontLabel = stringResource(R.string.document_photo_front, when (documentType) {
-                        DocumentType.ID_CARD -> stringResource(R.string.id_card)
-                        DocumentType.PASSPORT -> stringResource(R.string.passport)
-                        DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
-                        DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
-                        DocumentType.OTHER -> stringResource(R.string.other_document)
-                    }),
-                    backLabel = stringResource(R.string.document_photo_back, when (documentType) {
-                        DocumentType.ID_CARD -> stringResource(R.string.id_card)
-                        DocumentType.PASSPORT -> stringResource(R.string.passport)
-                        DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
-                        DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
-                        DocumentType.OTHER -> stringResource(R.string.other_document)
-                    }),
-                    imageLoader = embeddedImageLoader,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            DualPhotoPicker(
+                frontImageFileName = frontImageFileName,
+                backImageFileName = backImageFileName,
+                onFrontImageSelected = { fileName -> frontImageFileName = fileName },
+                onFrontImageRemoved = { frontImageFileName = null },
+                onBackImageSelected = { fileName -> backImageFileName = fileName },
+                onBackImageRemoved = { backImageFileName = null },
+                frontLabel = stringResource(R.string.document_photo_front, when (documentType) {
+                    DocumentType.ID_CARD -> stringResource(R.string.id_card)
+                    DocumentType.PASSPORT -> stringResource(R.string.passport)
+                    DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
+                    DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
+                    DocumentType.OTHER -> stringResource(R.string.other_document)
+                }),
+                backLabel = stringResource(R.string.document_photo_back, when (documentType) {
+                    DocumentType.ID_CARD -> stringResource(R.string.id_card)
+                    DocumentType.PASSPORT -> stringResource(R.string.passport)
+                    DocumentType.DRIVER_LICENSE -> stringResource(R.string.drivers_license)
+                    DocumentType.SOCIAL_SECURITY -> stringResource(R.string.social_security_card)
+                    DocumentType.OTHER -> stringResource(R.string.other_document)
+                }),
+                imageLoader = embeddedImageLoader,
+                modifier = Modifier.fillMaxWidth()
+            )
         },
         WalletEditorSection("attachments", R.string.attachments, Icons.Default.AttachFile, editorSections.visible("attachments", existingDocumentItem != null || pendingAttachmentDrafts.isNotEmpty() || embeddedAttachmentsContent != null)) {
             val draftAttachmentTarget = selectedStorageTargets.firstOrNull()

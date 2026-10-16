@@ -8,11 +8,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
@@ -21,17 +21,27 @@ import takagi.ru.monica.R
 fun WalletSplitNameFields(first: String, middle: String, last: String,
     onFirst: (String) -> Unit, onMiddle: (String) -> Unit, onLast: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(R.string.wallet_name_parts_help), style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        WalletProfileField(first, onFirst, R.string.document_first_name_label)
-        WalletProfileField(middle, onMiddle, R.string.document_middle_name_label)
-        WalletProfileField(last, onLast, R.string.document_last_name_label)
+        WalletNamePartsHelp()
+        TemplateFormSection("") {
+            WalletProfileField(first, onFirst, R.string.document_first_name_label)
+            WalletProfileField(middle, onMiddle, R.string.document_middle_name_label)
+            WalletProfileField(last, onLast, R.string.document_last_name_label)
+        }
     }
+}
+
+/** Supporting copy is outside the clipped field group so all lines keep their padding. */
+@Composable
+internal fun WalletNamePartsHelp() {
+    Text(stringResource(R.string.wallet_name_parts_help), style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+            .testTag("wallet_name_parts_help"),
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
 fun WalletContactGroup(email: String, phone: String, onEmail: (String) -> Unit, onPhone: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(if (LocalTemplateFieldShape.current) 2.dp else 12.dp)) {
         WalletProfileField(email, onEmail, R.string.email, KeyboardType.Email)
         WalletProfileField(phone, onPhone, R.string.phone, KeyboardType.Phone)
     }
@@ -40,7 +50,8 @@ fun WalletContactGroup(email: String, phone: String, onEmail: (String) -> Unit, 
 @Composable
 fun WalletProfileField(value: String, onValue: (String) -> Unit, label: Int, keyboard: KeyboardType = KeyboardType.Text) {
     OutlinedTextField(value = value, onValueChange = onValue, label = { Text(stringResource(label)) },
-        modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true, shape = RoundedCornerShape(12.dp),
         keyboardOptions = KeyboardOptions(keyboardType = keyboard))
 }
 

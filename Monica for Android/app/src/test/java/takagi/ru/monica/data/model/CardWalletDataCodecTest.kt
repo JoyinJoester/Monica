@@ -10,6 +10,19 @@ import org.junit.Test
 class CardWalletDataCodecTest {
 
     @Test
+    fun billingEditorOrderPreservesIndependentFieldsAndAcceptsOlderRecords() {
+        val old = requireNotNull(CardWalletDataCodec.parseBillingAddressData("""{"fullName":"Unsplit name","phone":"00123"}"""))
+        assertTrue(old.editorSectionOrder.isEmpty())
+        val updated = old.copy(firstName = "Separate", lastName = "Value", homePhone = "00456",
+            editorSectionOrder = listOf("address_extra", "name_parts", "contact"))
+        assertEquals(updated, CardWalletDataCodec.parseBillingAddressData(CardWalletDataCodec.encodeBillingAddressData(updated)))
+        assertEquals("Unsplit name", updated.fullName)
+        assertEquals("00123", updated.phone)
+        assertFalse(old.isEmpty())
+        assertTrue(BillingAddressData(editorSectionOrder = listOf("name_parts")).isEmpty())
+    }
+
+    @Test
     fun bankCardFaceConfigRoundTrips() {
         val data = BankCardData(
             cardNumber = "4242424242424242",

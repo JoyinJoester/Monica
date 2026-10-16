@@ -819,29 +819,25 @@ fun AddEditBankCardScreen(
             }
         },
         WalletEditorSection("name_parts", R.string.wallet_cardholder_name_parts, Icons.Default.Person, editorSections.visible("name_parts", listOf(cardholderFirstName, cardholderMiddleName, cardholderLastName).any { it.isNotBlank() })) {
-            InfoCard(title = stringResource(R.string.wallet_cardholder_name_parts)) {
-                WalletSplitNameFields(cardholderFirstName, cardholderMiddleName, cardholderLastName,
-                    { cardholderFirstName = it }, { cardholderMiddleName = it }, { cardholderLastName = it })
-            }
+            WalletSplitNameFields(cardholderFirstName, cardholderMiddleName, cardholderLastName,
+                { cardholderFirstName = it }, { cardholderMiddleName = it }, { cardholderLastName = it })
         },
         WalletEditorSection("custom", R.string.custom_field_title, Icons.Default.TextFields, editorSections.visible("custom", customFields.isNotEmpty())) {
             WalletCustomFields(customFields) { customFields = it }
         },
         WalletEditorSection("photos", R.string.section_photos, Icons.Default.PhotoCamera, editorSections.visible("photos", frontImageFileName != null || backImageFileName != null)) {
-            InfoCard(title = stringResource(R.string.section_photos)) {
-                DualPhotoPicker(
-                    frontImageFileName = frontImageFileName,
-                    backImageFileName = backImageFileName,
-                    onFrontImageSelected = { fileName -> frontImageFileName = fileName },
-                    onFrontImageRemoved = { frontImageFileName = null },
-                    onBackImageSelected = { fileName -> backImageFileName = fileName },
-                    onBackImageRemoved = { backImageFileName = null },
-                    frontLabel = stringResource(R.string.bank_card_photo_front_label),
-                    backLabel = stringResource(R.string.bank_card_photo_back_label),
-                    imageLoader = embeddedImageLoader,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            DualPhotoPicker(
+                frontImageFileName = frontImageFileName,
+                backImageFileName = backImageFileName,
+                onFrontImageSelected = { fileName -> frontImageFileName = fileName },
+                onFrontImageRemoved = { frontImageFileName = null },
+                onBackImageSelected = { fileName -> backImageFileName = fileName },
+                onBackImageRemoved = { backImageFileName = null },
+                frontLabel = stringResource(R.string.bank_card_photo_front_label),
+                backLabel = stringResource(R.string.bank_card_photo_back_label),
+                imageLoader = embeddedImageLoader,
+                modifier = Modifier.fillMaxWidth()
+            )
         },
         WalletEditorSection("attachments", R.string.attachments, Icons.Default.AttachFile, editorSections.visible("attachments", existingCardItem != null || pendingAttachmentDrafts.isNotEmpty() || embeddedAttachmentsContent != null)) {
             val draftAttachmentTarget = selectedStorageTargets.firstOrNull()

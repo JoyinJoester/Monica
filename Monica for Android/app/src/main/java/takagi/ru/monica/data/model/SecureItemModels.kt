@@ -203,7 +203,9 @@ data class BillingAddressData(
     val homeEmail: String = "",
     val homePhone: String = "",
     val workEmail: String = "",
-    val workPhone: String = ""
+    val workPhone: String = "",
+    /** Presentation order only; never changes the address values. */
+    val editorSectionOrder: List<String> = emptyList()
 )
 
 fun BillingAddressData.isEmpty(): Boolean {

@@ -20,6 +20,9 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -154,29 +157,36 @@ internal fun WalletEditorContent(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun WalletContentDialog(title: String, key: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    // A dialog gets a new Android view owner; keep the editor's font scale and locale.
+    val editorDensity = LocalDensity.current
+    val editorConfiguration = LocalConfiguration.current
+    val editorResources = LocalResources.current
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        val view = LocalView.current
-        val lightSurface = MaterialTheme.colorScheme.surface.luminance() > 0.5f
-        SideEffect {
-            (view.parent as? DialogWindowProvider)?.window?.let { window ->
-                WindowCompat.getInsetsController(window, view).apply {
-                    isAppearanceLightStatusBars = lightSurface
-                    isAppearanceLightNavigationBars = lightSurface
+        CompositionLocalProvider(LocalDensity provides editorDensity,
+            LocalConfiguration provides editorConfiguration, LocalResources provides editorResources) {
+            val view = LocalView.current
+            val lightSurface = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+            SideEffect {
+                (view.parent as? DialogWindowProvider)?.window?.let { window ->
+                    WindowCompat.getInsetsController(window, view).apply {
+                        isAppearanceLightStatusBars = lightSurface
+                        isAppearanceLightNavigationBars = lightSurface
+                    }
                 }
             }
-        }
-        Scaffold(Modifier.fillMaxSize().testTag("wallet_detail_$key"), topBar = {
-            TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = { IconButton(onClick = onDismiss, modifier = Modifier.testTag("wallet_detail_back")) {
-                    Icon(Icons.Default.ArrowBack, stringResource(R.string.back))
-                } }, actions = { IconButton(onClick = onDismiss, modifier = Modifier.testTag("wallet_detail_done")) {
-                    Icon(Icons.Default.Check, stringResource(R.string.confirm))
-                } })
-        }) { padding ->
-            CompositionLocalProvider(LocalWalletContentEditor provides true, LocalFilledEntryForm provides true,
-                LocalEntryContentStyle provides true, LocalTemplateFieldShape provides false, LocalStandaloneTemplateFields provides false) {
-                Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
-                    .verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+            Scaffold(Modifier.fillMaxSize().testTag("wallet_detail_$key"), topBar = {
+                TopAppBar(title = { Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                    navigationIcon = { IconButton(onClick = onDismiss, modifier = Modifier.testTag("wallet_detail_back")) {
+                        Icon(Icons.Default.ArrowBack, stringResource(R.string.back))
+                    } }, actions = { IconButton(onClick = onDismiss, modifier = Modifier.testTag("wallet_detail_done")) {
+                        Icon(Icons.Default.Check, stringResource(R.string.confirm))
+                    } })
+            }) { padding ->
+                CompositionLocalProvider(LocalWalletContentEditor provides true, LocalFilledEntryForm provides true,
+                    LocalEntryContentStyle provides true, LocalTemplateFieldShape provides false, LocalStandaloneTemplateFields provides false) {
+                    Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
+                        .verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+                }
             }
         }
     }

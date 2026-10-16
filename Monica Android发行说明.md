@@ -4,6 +4,8 @@
 
 ## 中文
 
+- 卡包的分段姓名、补充地址和联系方式统一使用内容卡片与填充式表单；账单地址支持点开编辑、返回收起及保存排序。修复说明文字和照片卡片的圆角裁切，改善大字体下的显示与照片操作布局。
+
 - 地址与证件支持区县、第 3 行地址及家庭／工作联系方式；地址与银行卡新增独立的可选分段姓名，完整姓名与名／中间名／姓互不推导或覆盖。改进网页自动填充的地址分行、电话分段、国家／有效期下拉框、收货／账单分区和动态银行卡表单。
 
 - 自动填充先显示匹配账号，选中后验证一次；主应用和自动填充仅接受强生物识别或 Monica 主密码，不再接受手机锁屏密码、PIN 或图案。指纹不可用时可使用原主密码，保留现有加密数据和密钥；关闭快捷填充验证时，进入完整选择页仍需验证。
@@ -33,6 +35,8 @@
 - 银行卡新增默认“开户行”字段，支持填写、编辑、复制和搜索，并在备份及受支持的数据库同步中保留。
 
 ## English
+
+- Unified wallet name parts, extra address fields and contacts with content cards and filled forms. Billing-address sections open separately, collapse on return and retain their saved order. Fixed clipped helper text and photo-card corners, with improved large-text layouts and photo actions.
 
 - Added district/county, address line 3 and home/work contacts to profiles, plus optional independent name parts for addresses and cards. Full names and name parts never infer or overwrite one another. Improved web autofill for address lines, phone parts, country/expiry selects, shipping/billing sections and dynamic card forms.
 

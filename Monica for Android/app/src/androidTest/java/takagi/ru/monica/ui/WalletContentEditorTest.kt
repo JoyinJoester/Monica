@@ -28,9 +28,11 @@ import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.suggestions.CommonInfoTestActivity
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
+import takagi.ru.monica.ui.screens.AddEditBillingAddressScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.utils.AppLocaleStringResolver
 import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.BillingAddressViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 
 class WalletContentEditorTest {
@@ -40,6 +42,7 @@ class WalletContentEditorTest {
     private lateinit var db: PasswordDatabase
     private lateinit var bank: BankCardViewModel
     private lateinit var document: DocumentViewModel
+    private lateinit var billing: BillingAddressViewModel
     private var wasUnlocked = false
 
     @Before fun prepare() {
@@ -49,10 +52,11 @@ class WalletContentEditorTest {
         val repo = SecureItemRepository(db.secureItemDao(), decryptSensitiveValue = security::decryptDataIfMonicaCiphertext)
         bank = BankCardViewModel(repo, strings = AppLocaleStringResolver(context))
         document = DocumentViewModel(repo, strings = AppLocaleStringResolver(context))
+        billing = BillingAddressViewModel(repo)
     }
     @After fun cleanup() {
         show { }
-        bank.viewModelScope.cancel(); document.viewModelScope.cancel(); db.close()
+        bank.viewModelScope.cancel(); document.viewModelScope.cancel(); billing.viewModelScope.cancel(); db.close()
         if (!wasUnlocked) SessionManager.markLocked()
     }
     private fun show(content: @Composable () -> Unit) {
@@ -89,6 +93,8 @@ class WalletContentEditorTest {
     }
     private fun capture(name: String) {
         compose.waitForIdle()
+        // Compose idleness does not wait for the Android dialog window's enter animation.
+        android.os.SystemClock.sleep(400)
         val file = File(context.filesDir, "wallet-content-screens/$name.png").apply { parentFile?.mkdirs() }
         file.outputStream().use { InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
@@ -167,6 +173,108 @@ class WalletContentEditorTest {
         assertEquals(original, data.copy(editorSectionOrder = emptyList()))
         assertEquals("address", data.editorSectionOrder.first())
         assertEquals("Existing note", item.notes)
+    }
+
+    @Test fun billingExtrasCollapseAndReopenWithoutMixingNameOrContactValues(): Unit = runBlocking {
+        var saved by mutableStateOf(false)
+        show { AddEditBillingAddressScreen(billing, onNavigateBack = { saved = true }) }
+        fun input(label: Int, value: String) {
+            compose.onNode(hasText(context.getString(label)) and hasSetTextAction())
+                .performScrollTo().performTextReplacement(value)
+        }
+        input(R.string.full_name, "Original full name")
+        add("billing_item_editor", "name_parts")
+        input(R.string.document_first_name_label, "Independent first")
+        input(R.string.document_middle_name_label, "Independent middle")
+        input(R.string.document_last_name_label, "Independent last")
+        closeEditor()
+        add("billing_item_editor", "address_extra")
+        input(R.string.wallet_district, "Synthetic district")
+        input(R.string.wallet_address_line3, "Synthetic line three")
+        closeEditor()
+        for ((key, email) in listOf("contact" to "default@example.invalid", "home_contact" to "home@example.invalid", "work_contact" to "work@example.invalid")) {
+            add("billing_item_editor", key)
+            input(R.string.email, email)
+            input(R.string.phone, if (key == "home_contact") "0123456789" else "0012345678")
+            closeEditor()
+        }
+        add("billing_item_editor", "custom_hidden")
+        compose.onNodeWithTag("wallet_custom_name_0").performTextInput("Private address note")
+        compose.onNodeWithTag("wallet_custom_value_0").performTextInput("Synthetic value")
+        closeEditor()
+        add("billing_item_editor", "notes")
+        input(R.string.notes, "Synthetic note")
+        closeEditor()
+        scroll("billing_item_editor", "wallet_content_name_parts")
+        compose.onNode(hasText(context.getString(R.string.document_first_name_label)) and hasSetTextAction()).assertDoesNotExist()
+        compose.onNodeWithTag("wallet_actions_address_extra").performClick()
+        compose.onNodeWithText(context.getString(R.string.move_up)).performClick()
+        capture("billing-collapsed")
+        compose.onNodeWithContentDescription(context.getString(R.string.save)).performClick()
+        compose.waitUntil(15000) { saved }
+        val item = db.secureItemDao().getAllItems().first().single()
+        val data = requireNotNull(billing.parseAddressData(item.itemData))
+        assertEquals("Original full name", data.fullName)
+        assertEquals("Independent first", data.firstName)
+        assertEquals("Independent middle", data.middleName)
+        assertEquals("Independent last", data.lastName)
+        assertEquals("Synthetic district", data.district)
+        assertEquals("Synthetic line three", data.addressLine3)
+        assertEquals("default@example.invalid", data.email)
+        assertEquals("home@example.invalid", data.homeEmail)
+        assertEquals("work@example.invalid", data.workEmail)
+        assertEquals("0123456789", data.homePhone)
+        assertEquals("Synthetic value", data.customFields.single().value)
+        assertEquals("Synthetic note", item.notes)
+        assertEquals("address_extra", data.editorSectionOrder.first())
+        show { }
+        show { AddEditBillingAddressScreen(billing, addressId = item.id, onNavigateBack = {}) }
+        scroll("billing_item_editor", "wallet_content_name_parts")
+        compose.onNodeWithTag("wallet_content_name_parts").performClick()
+        compose.onNode(hasText("Independent first") and hasSetTextAction()).assertExists()
+        closeEditor()
+        compose.activityRule.scenario.recreate()
+        scroll("billing_item_editor", "wallet_content_address_extra")
+        compose.onNodeWithTag("wallet_content_address_extra").assertIsDisplayed()
+    }
+
+    @Test fun nameHelpAndPhotoCardsStayReadableWithLargeText() {
+        show {
+            val density = LocalDensity.current
+            val localized = remember {
+                context.createConfigurationContext(android.content.res.Configuration(context.resources.configuration).apply {
+                    setLocale(java.util.Locale.SIMPLIFIED_CHINESE)
+                })
+            }
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.7f),
+                androidx.compose.ui.platform.LocalContext provides localized,
+                androidx.compose.ui.platform.LocalConfiguration provides localized.resources.configuration,
+                androidx.compose.ui.platform.LocalResources provides localized.resources) {
+                MaterialTheme(colorScheme = darkColorScheme()) {
+                    Box(Modifier.width(320.dp).fillMaxHeight()) { AddEditBankCardScreen(bank, initialStorageExplicit = true, onNavigateBack = {}) }
+                }
+            }
+        }
+        add("bank_item_editor", "name_parts")
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithTag("wallet_name_parts_help").performSemanticsAction(
+            androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertTrue(layouts.isNotEmpty())
+        assertTrue(layouts.none { it.hasVisualOverflow })
+        assertTrue(layouts.all { it.layoutInput.density.fontScale == 1.7f })
+        capture("name-parts-dark-large")
+        closeEditor()
+        scroll("bank_item_editor", "wallet_content_name_parts")
+        compose.onNodeWithTag("wallet_content_name_parts").performClick()
+        compose.onNodeWithTag("wallet_name_parts_help").assertIsDisplayed()
+        closeEditor()
+        add("bank_item_editor", "photos")
+        compose.onNodeWithTag("dual_photo_front").performScrollTo().assertIsDisplayed()
+        capture("photos-front-dark-large")
+        compose.onNodeWithTag("dual_photo_back").performScrollTo().assertIsDisplayed()
+        capture("photos-back-dark-large")
+        compose.onNodeWithTag("wallet_detail_done").assertIsDisplayed()
+        closeEditor()
     }
 
     @Test fun smallDarkLargeTextEditorUsesConnectedFieldsAndKeepsEmptyAddedFields() {

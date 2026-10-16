@@ -4,6 +4,8 @@ import takagi.ru.monica.ui.components.WalletSplitNameFields
 import takagi.ru.monica.ui.components.WalletContactGroup
 import takagi.ru.monica.ui.components.WalletProfileField
 import android.widget.Toast
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material.icons.filled.ContactMail
 import androidx.compose.runtime.CompositionLocalProvider
@@ -137,6 +139,7 @@ fun AddEditBillingAddressScreen(
     var email by rememberSaveable { mutableStateOf("") }
     var notes by rememberSaveable { mutableStateOf("") }
     val editorSections = rememberItemEditorSections()
+    var editorSectionOrder by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var workingAddressId by remember(addressId) { mutableStateOf(addressId) }
@@ -201,6 +204,7 @@ fun AddEditBillingAddressScreen(
                 } ?: BillingAddressData()
                 cardFaceEditor.load(item, parsedData.cardFace)
                 isDefault = parsedData.isDefault
+                editorSectionOrder = parsedData.editorSectionOrder
                 title = item.title
                 notes = item.notes
                 isFavorite = item.isFavorite
@@ -268,7 +272,8 @@ fun AddEditBillingAddressScreen(
         email = email.trim(),
         customFields = CardWalletDataCodec.draftsToCustomFields(customFields),
         isDefault = isDefault,
-        cardFace = cardFaceEditor.config
+        cardFace = cardFaceEditor.config,
+        editorSectionOrder = editorSectionOrder
     )
     val effectiveTitle = title.trim().ifBlank {
         fullName.trim().ifBlank {
@@ -344,15 +349,58 @@ fun AddEditBillingAddressScreen(
         onToggleFavoriteActionChanged?.invoke(toggleFavorite)
     }
 
+    val contentItems = listOf(
+        WalletEditorSection("name_parts", R.string.wallet_name_parts, Icons.Default.Person,
+            editorSections.visible("name_parts", listOf(firstName, middleName, lastName).any { it.isNotBlank() })) {
+            WalletSplitNameFields(firstName, middleName, lastName, { firstName = it }, { middleName = it }, { lastName = it })
+        },
+        WalletEditorSection("address_extra", R.string.wallet_address_extra, Icons.Default.Home,
+            editorSections.visible("address_extra", district.isNotBlank() || addressLine3.isNotBlank())) {
+            InfoCard(title = stringResource(R.string.wallet_address_extra)) {
+                WalletProfileField(district, { district = it }, R.string.wallet_district)
+                WalletProfileField(addressLine3, { addressLine3 = it }, R.string.wallet_address_line3)
+            }
+        },
+        WalletEditorSection("home_contact", R.string.wallet_home_contact, Icons.Default.Home,
+            editorSections.visible("home_contact", homeEmail.isNotBlank() || homePhone.isNotBlank())) {
+            InfoCard(title = stringResource(R.string.wallet_home_contact)) {
+                WalletContactGroup(homeEmail, homePhone, { homeEmail = it }, { homePhone = it })
+            }
+        },
+        WalletEditorSection("work_contact", R.string.wallet_work_contact, Icons.Default.ContactMail,
+            editorSections.visible("work_contact", workEmail.isNotBlank() || workPhone.isNotBlank())) {
+            InfoCard(title = stringResource(R.string.wallet_work_contact)) {
+                WalletContactGroup(workEmail, workPhone, { workEmail = it }, { workPhone = it })
+            }
+        },
+        WalletEditorSection("contact", R.string.billing_address_contact_title, Icons.Default.ContactMail,
+            editorSections.visible("contact", email.isNotBlank() || phone.isNotBlank())) {
+            InfoCard(title = stringResource(R.string.billing_address_contact_title)) {
+                EntryContactFields(listOf(email), listOf(phone),
+                    onEmails = { email = it.firstOrNull().orEmpty() },
+                    onPhones = { phone = it.firstOrNull().orEmpty() }, allowMultiple = false)
+            }
+        },
+        WalletEditorSection("custom", R.string.custom_field_title, Icons.Default.Notes,
+            editorSections.visible("custom", customFields.isNotEmpty())) {
+            WalletCustomFields(customFields) { customFields = it }
+        },
+        WalletEditorSection("notes", R.string.notes, Icons.Default.Notes, editorSections.visible("notes", notes.isNotBlank())) {
+            InfoCard(title = stringResource(R.string.notes)) {
+                OutlinedTextField(value = notes, onValueChange = { notes = it },
+                    label = { Text(stringResource(R.string.notes)) },
+                    leadingIcon = { Icon(Icons.Default.Notes, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp), minLines = 3, maxLines = 5)
+            }
+        }
+    )
     val screenContent: @Composable (PaddingValues) -> Unit = { paddingValues ->
-        Column(
-            modifier = modifier
-                .fillMaxSize().testTag("billing_item_editor").imePadding()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        WalletEditorContent(
+            sections = editorSections, items = contentItems, order = editorSectionOrder,
+            onOrder = { editorSectionOrder = it }, enabled = !isSaving,
+            modifier = modifier.fillMaxSize().testTag("billing_item_editor")
+                .padding(paddingValues).consumeWindowInsets(paddingValues).imePadding(),
+            primary = {
             if (embeddedDraft == null) MultiStorageTargetSelectorCard(
                 selectedTargets = selectedStorageTargets.toList(),
                 existingTargetKeys = emptySet(),
@@ -481,99 +529,15 @@ fun AddEditBillingAddressScreen(
 
                 }
 }
-
-            ItemEditorOptionalSection(editorSections, "name_parts", listOf(firstName, middleName, lastName).any { it.isNotBlank() }) {
-                InfoCard(title = stringResource(R.string.wallet_name_parts)) {
-                    WalletSplitNameFields(firstName, middleName, lastName, { firstName = it }, { middleName = it }, { lastName = it })
-                }
+                embeddedAttachmentsContent?.invoke()
+            },
+            addContent = {
+                ItemEditorAddContent(editorSections,
+                    options = contentItems.filterNot { it.key == "custom" }.map {
+                        ItemEditorContentOption(it.key, it.title, it.icon, it.visible)
+                    }, fields = customFields, onFieldsChange = { customFields = it }, enabled = !isSaving)
             }
-
-            ItemEditorOptionalSection(editorSections, "address_extra", listOf(district, addressLine3).any { it.isNotBlank() }) {
-                InfoCard(title = stringResource(R.string.wallet_address_extra)) {
-                    WalletProfileField(district, { district = it }, R.string.wallet_district)
-                    WalletProfileField(addressLine3, { addressLine3 = it }, R.string.wallet_address_line3)
-                }
-            }
-
-            ItemEditorOptionalSection(editorSections, "home_contact", listOf(homeEmail, homePhone).any { it.isNotBlank() }) {
-                InfoCard(title = stringResource(R.string.wallet_home_contact)) {
-                    WalletContactGroup(homeEmail, homePhone, { homeEmail = it }, { homePhone = it })
-                }
-            }
-
-            ItemEditorOptionalSection(editorSections, "work_contact", listOf(workEmail, workPhone).any { it.isNotBlank() }) {
-                InfoCard(title = stringResource(R.string.wallet_work_contact)) {
-                    WalletContactGroup(workEmail, workPhone, { workEmail = it }, { workPhone = it })
-                }
-            }
-
-            ItemEditorOptionalSection(editorSections, "contact", email.isNotBlank() || phone.isNotBlank()) {
-InfoCard(title = stringResource(R.string.billing_address_contact_title)) {
-                if (takagi.ru.monica.ui.components.rememberEntryContentStyle()) {
-                    takagi.ru.monica.ui.components.EntryContactFields(listOf(email), listOf(phone),
-                        onEmails = { email = it.firstOrNull().orEmpty() },
-                        onPhones = { phone = it.firstOrNull().orEmpty() }, allowMultiple = false)
-                } else {
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = { Text(stringResource(R.string.email)) },
-                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it },
-                    label = { Text(stringResource(R.string.phone)) },
-                    leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                    }
-
-            }
-            }
-
-            ItemEditorOptionalSection(editorSections, "custom", customFields.isNotEmpty()) {
-                CustomFieldEditorSection(fields = customFields, onFieldsChange = { customFields = it },
-                    modifier = Modifier.fillMaxWidth(), contentStyle = true, showAddButton = false)
-            }
-
-            ItemEditorOptionalSection(editorSections, "notes", notes.isNotBlank()) {
-InfoCard(title = stringResource(R.string.notes)) {
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = { notes = it },
-                    label = { Text(stringResource(R.string.notes)) },
-                    leadingIcon = { Icon(Icons.Default.Notes, contentDescription = null) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(120.dp),
-                    minLines = 3,
-                    maxLines = 5,
-                    shape = RoundedCornerShape(12.dp)
-                )
-            }
-            }
-            embeddedAttachmentsContent?.invoke()
-
-            ItemEditorAddContent(editorSections, options = listOf(
-                    ItemEditorContentOption("name_parts", R.string.wallet_name_parts, Icons.Default.Person, editorSections.visible("name_parts", listOf(firstName, middleName, lastName).any { it.isNotBlank() })),
-                    ItemEditorContentOption("address_extra", R.string.wallet_address_extra, Icons.Default.Person, editorSections.visible("address_extra", listOf(district, addressLine3).any { it.isNotBlank() })),
-                    ItemEditorContentOption("home_contact", R.string.wallet_home_contact, Icons.Default.Person, editorSections.visible("home_contact", listOf(homeEmail, homePhone).any { it.isNotBlank() })),
-                    ItemEditorContentOption("work_contact", R.string.wallet_work_contact, Icons.Default.Person, editorSections.visible("work_contact", listOf(workEmail, workPhone).any { it.isNotBlank() })),
-                    ItemEditorContentOption("contact", R.string.billing_address_contact_title, Icons.Default.ContactMail, editorSections.visible("contact", email.isNotBlank() || phone.isNotBlank())),
-                    ItemEditorContentOption("notes", R.string.notes, Icons.Default.Notes, editorSections.visible("notes", notes.isNotBlank()))
-                ), fields = customFields, onFieldsChange = { customFields = it },
-                enabled = !isSaving)
-            Spacer(Modifier.height(96.dp))
-
-        }
+        )
     }
 
     if (showTopBar || showFab) {
@@ -663,6 +627,6 @@ private fun InfoCard(
     content: @Composable () -> Unit
 ) {
     CompositionLocalProvider(LocalEntryContentStyle provides true) {
-        TemplateFormSection(title) { content() }
+        TemplateFormSection(if (LocalWalletContentEditor.current) "" else title) { content() }
     }
 }
