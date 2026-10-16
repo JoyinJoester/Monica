@@ -4,6 +4,10 @@
 
 ## 中文
 
+- 地址与证件支持区县、第 3 行地址及家庭／工作联系方式；地址与银行卡新增独立的可选分段姓名，完整姓名与名／中间名／姓互不推导或覆盖。改进网页自动填充的地址分行、电话分段、国家／有效期下拉框、收货／账单分区和动态银行卡表单。
+
+- 自动填充先显示匹配账号，选中后直接复用系统指纹或锁屏验证，避免重复验证；关闭快捷填充验证时，进入完整选择页仍需验证。
+
 - 修复 Android Studio 未继承 Rust 工具路径时无法打包的问题，支持自动定位已安装工具和自定义 Cargo 路径。
 
 - 补全附近设备同步的文件夹、根目录附件与独立标签，保留附件身份、扩展数据和来源归属；附件校验失败或不支持文件夹删除时保留受影响的数据并说明原因。
@@ -29,6 +33,10 @@
 - 银行卡新增默认“开户行”字段，支持填写、编辑、复制和搜索，并在备份及受支持的数据库同步中保留。
 
 ## English
+
+- Added district/county, address line 3 and home/work contacts to profiles, plus optional independent name parts for addresses and cards. Full names and name parts never infer or overwrite one another. Improved web autofill for address lines, phone parts, country/expiry selects, shipping/billing sections and dynamic card forms.
+
+- Autofill shows matching accounts first and verifies the selected entry once using the existing system fingerprint or screen-lock prompt. Opening the full picker still requires verification when quick-fill verification is disabled.
 
 - Fixed packaging when Android Studio does not inherit the Rust tool path, with installed-tool discovery and a custom Cargo path option.
 

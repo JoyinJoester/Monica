@@ -8,21 +8,17 @@ import org.junit.Test
 class AutofillResponseUnlockRegressionGuardTest {
 
     @Test
-    fun lockedAutofillUsesResponseAuthenticationAndReturnsFullResponse() {
-        val builder = projectFile(
-            "app/src/main/java/takagi/ru/monica/autofill_ng/builder/FillResponseBuilderNg.kt"
-        ).readText()
-        val unlockActivity = projectFile(
-            "app/src/main/java/takagi/ru/monica/autofill_ng/AutofillUnlockActivity.kt"
-        ).readText()
-
-        assertTrue(builder.contains("buildLockedResponse"))
-        assertTrue(builder.contains("responseBuilder.setAuthentication"))
-        assertTrue(builder.contains("R.string.autofill_unlock_monica"))
+    fun verificationUsesTheSystemGateOnlyAfterSelection() {
+        val builder = projectFile("app/src/main/java/takagi/ru/monica/autofill_ng/builder/FillResponseBuilderNg.kt").readText()
+        assertFalse(builder.contains("buildLockedResponse"))
+        assertFalse(builder.contains("responseBuilder.setAuthentication"))
         assertTrue(builder.contains("requireAuthentication = partition.requiresAuthentication"))
-        assertTrue(unlockActivity.contains("AutofillManager.EXTRA_AUTHENTICATION_RESULT"))
-        assertTrue(unlockActivity.contains("FillResponseBuilderNg"))
-        assertTrue(unlockActivity.contains("AutofillSessionGrants.grant"))
+        for (name in listOf("AutofillCipherCallbackActivity", "AutofillPickerActivityV2")) {
+            val activity = projectFile("app/src/main/java/takagi/ru/monica/autofill_ng/$name.kt").readText()
+            assertTrue(activity.contains("AutofillDeviceVerification("))
+            assertFalse(activity.contains("PasswordVerificationContent("))
+            assertFalse(activity.contains("MonicaPasswordDialogAuthScreen("))
+        }
     }
 
     @Test

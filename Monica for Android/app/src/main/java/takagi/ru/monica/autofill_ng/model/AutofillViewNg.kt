@@ -15,6 +15,7 @@ sealed class AutofillView {
         val textValue: String?,
         val website: String?,
         val hint: FieldHint,
+        val semanticHint: String? = null,
     )
 
     abstract val data: Data

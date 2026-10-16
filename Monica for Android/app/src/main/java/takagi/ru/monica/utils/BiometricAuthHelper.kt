@@ -35,7 +35,8 @@ class BiometricAuthHelper(
     private data class AuthenticationCallbacks(
         val onSuccess: () -> Unit,
         val onError: (errorCode: Int, errorMessage: String) -> Unit,
-        val onCancel: () -> Unit
+        val onCancel: () -> Unit,
+        val onNegativeButton: (() -> Unit)?
     )
 
     private val appContext = context.applicationContext
@@ -138,9 +139,10 @@ class BiometricAuthHelper(
         negativeButtonText: String = strings.get(R.string.use_password),
         onSuccess: () -> Unit,
         onError: (errorCode: Int, errorMessage: String) -> Unit,
-        onCancel: () -> Unit
+        onCancel: () -> Unit,
+        onNegativeButton: (() -> Unit)? = null,
     ) {
-        callbacks = AuthenticationCallbacks(onSuccess, onError, onCancel)
+        callbacks = AuthenticationCallbacks(onSuccess, onError, onCancel, onNegativeButton)
         promptFor(activity).authenticate(
             promptInfoFor(title, subtitle, description, negativeButtonText)
         )
@@ -171,7 +173,7 @@ class BiometricAuthHelper(
                     super.onAuthenticationError(errorCode, errString)
                     val current = callbacks ?: return
                     when (errorCode) {
-                        BiometricPrompt.ERROR_NEGATIVE_BUTTON,
+                        BiometricPrompt.ERROR_NEGATIVE_BUTTON -> (current.onNegativeButton ?: current.onCancel)()
                         BiometricPrompt.ERROR_USER_CANCELED -> current.onCancel()
                         else -> current.onError(errorCode, errString.toString())
                     }

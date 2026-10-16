@@ -113,7 +113,7 @@ class FilledDataBuilderNg(
                         autofillCipher = autofillCipher,
                         autofillViews = loginViews,
                         inlinePresentationSpec = getCipherInlinePresentationOrNull(),
-                        requiresAuthentication = requireAuthentication && isVaultLocked
+                        requiresAuthentication = requireAuthentication
                     )
                 }
                 .filter { it.filledItems.isNotEmpty() }
@@ -153,7 +153,9 @@ class FilledDataBuilderNg(
         } else {
             storedCredentialViews.mapNotNull { autofillView ->
                 val value = when (autofillView) {
-                    is AutofillView.Login.Username -> autofillCipher.username
+                    is AutofillView.Login.Username -> takagi.ru.monica.autofill_ng.AutofillAccountValues.resolve(
+                        autofillView.data.semanticHint ?: autofillView.data.hint.name,
+                        autofillCipher.username, AccountFillPolicy.shouldFillEmailWithAccount(context) || autofillCipher.username.contains("@"))
                     is AutofillView.Login.Password -> autofillCipher.password
                 }
                 autofillView.buildFilledItemOrNull(value = value)
@@ -183,9 +185,11 @@ class FilledDataBuilderNg(
         isVaultLocked: Boolean,
         needsPassword: Boolean = true,
     ): AutofillCipher.Login? {
-        if (requireAuthentication && isVaultLocked) {
-            val subtitleValue = AccountFillPolicy
-                .resolveAccountIdentifierForDisplay(entry)
+        if (requireAuthentication) {
+            // Never decrypt the password before selection. Account labels can use
+            // an already-unlocked key; otherwise show existing non-secret metadata.
+            val subtitleValue = (if (isVaultLocked) AccountFillPolicy.resolveAccountIdentifierForDisplay(entry)
+                else AccountFillPolicy.resolveAccountIdentifier(entry, securityManager))
                 .takeIf { it.isNotBlank() }
                 ?: entry.website.takeIf { it.isNotBlank() }
                 ?: fallbackWebsite.takeIf { it.isNotBlank() }

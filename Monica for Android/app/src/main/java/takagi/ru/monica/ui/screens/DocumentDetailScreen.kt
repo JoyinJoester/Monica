@@ -293,10 +293,10 @@ fun DocumentDetailScreen(
                             context = context
                         )
                         
-                         if (data.displayFullName().isNotBlank()) {
+                         if (data.fullName.isNotBlank()) {
                             InfoFieldWithCopy(
                                 label = stringResource(R.string.full_name),
-                                value = data.displayFullName(),
+                                value = data.fullName,
                                 context = context
                             )
                         }
@@ -399,6 +399,10 @@ fun DocumentDetailScreen(
                         }
                     }
                 }
+
+                takagi.ru.monica.ui.components.WalletNamePartsDetails(data.firstName, data.middleName, data.lastName)
+                takagi.ru.monica.ui.components.WalletContactsDetails(data.homeEmail, data.homePhone, data.workEmail, data.workPhone)
+                takagi.ru.monica.ui.components.WalletProfileDetails(R.string.billing_address, listOf(R.string.wallet_district to data.district))
 
                 if (data.customFields.isNotEmpty()) {
                     DocumentCustomFieldsCard(

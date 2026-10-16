@@ -224,6 +224,8 @@ configurations.configureEach {
 }
 
 dependencies {
+    // Offline phone parsing with country-specific numbering metadata (Apache-2.0).
+    implementation "com.googlecode.libphonenumber:libphonenumber:9.0.17"
     constraints {
         implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.6.0")
         implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")

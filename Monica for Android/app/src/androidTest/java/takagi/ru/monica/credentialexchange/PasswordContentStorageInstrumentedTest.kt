@@ -115,12 +115,12 @@ class PasswordContentStorageInstrumentedTest {
             val samples = listOf(
                 ItemType.TOTP to Json.encodeToString(TotpData(secret="JBSWY3DPEHPK3PXP", issuer="Example")),
                 ItemType.NOTE to Json.encodeToString(NoteData(content=note, customFields=fields)),
-                ItemType.BANK_CARD to Json.encodeToString(BankCardData(cardNumber=cardNumber, cardholderName="Alice",
+                ItemType.BANK_CARD to Json.encodeToString(BankCardData(cardNumber=cardNumber, cardholderName="Alice", cardholderFirstName="Independent", cardholderMiddleName="Middle", cardholderLastName="Parts",
                     expiryMonth="09", expiryYear="2030", bankName="Example Bank", bankBranch="海淀支行", branchCode="0102", customFields=fields)),
                 ItemType.BILLING_ADDRESS to Json.encodeToString(BillingAddressData(streetAddress="12 Example Street",
-                    postalCode="SW1A 1AA", customFields=fields)),
+                    postalCode="SW1A 1AA", firstName="Independent", fullName="Full Original", district="County", addressLine3="Line3", homeEmail="home@example.test", workPhone="+12025550144", customFields=fields)),
                 ItemType.DOCUMENT to Json.encodeToString(DocumentData(documentType=DocumentType.PASSPORT,
-                    documentNumber="SYNTHETIC-PASSPORT", fullName="Alice", customFields=fields)),
+                    documentNumber="SYNTHETIC-PASSPORT", fullName="Alice", firstName="Independent", district="County", workEmail="work@example.test", customFields=fields)),
             )
             val service = KeePassKdbxService(context, db.localKeePassDatabaseDao(), security)
             val items = samples.mapIndexed { index, (type, data) ->
@@ -144,9 +144,24 @@ class PasswordContentStorageInstrumentedTest {
                     assertEquals("synthetic-secret",extra.getJSONObject(0).getString("value"))
                     assertEquals("HIDDEN",extra.getJSONObject(0).getString("type"))
                     assertEquals("help@example.invalid",extra.getJSONObject(1).getString("value"))
+                    if (item.itemType == ItemType.BILLING_ADDRESS) {
+                        assertEquals("Full Original", data.getString("fullName"))
+                        assertEquals("Independent", data.getString("firstName"))
+                        assertEquals("Line3", data.getString("addressLine3"))
+                        assertEquals("County", data.getString("district"))
+                        assertEquals("home@example.test", data.getString("homeEmail"))
+                    }
+                    if (item.itemType == ItemType.DOCUMENT) {
+                        assertEquals("Alice", data.getString("fullName"))
+                        assertEquals("Independent", data.getString("firstName"))
+                        assertEquals("work@example.test", data.getString("workEmail"))
+                    }
                     if (item.itemType == ItemType.NOTE) assertEquals(note,data.getString("content"))
                     if (item.itemType == ItemType.BANK_CARD) {
                         assertEquals("2030", data.getString("expiryYear"))
+                        assertEquals("Independent", data.getString("cardholderFirstName"))
+                        assertEquals("Middle", data.getString("cardholderMiddleName"))
+                        assertEquals("Parts", data.getString("cardholderLastName"))
                         assertEquals("海淀支行", data.getString("bankBranch"))
                         assertEquals("Example Bank", data.getString("bankName"))
                         assertEquals("0102", data.getString("branchCode"))

@@ -163,11 +163,3 @@ object AutofillSessionGrants {
     @Synchronized
     fun clear() = store.clear()
 }
-
-object AutofillAuthenticationPolicy {
-    fun requiresResponseUnlock(
-        authenticationRequired: Boolean,
-        vaultLocked: Boolean,
-        grantActive: Boolean,
-    ): Boolean = authenticationRequired && vaultLocked && !grantActive
-}

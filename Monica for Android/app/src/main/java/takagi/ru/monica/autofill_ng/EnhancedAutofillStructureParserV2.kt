@@ -44,6 +44,9 @@ class EnhancedAutofillStructureParserV2(
         val isVisible: Boolean = true,
         val parentWebViewNodeId: Int? = null,
         val traversalIndex: Int = 0,
+        // Browser semantics stay intact through picker authentication.
+        val semanticHint: String? = null,
+
     )
 
     enum class FieldHint {
@@ -162,6 +165,7 @@ class EnhancedAutofillStructureParserV2(
         val webScopes: MutableMap<Int, WebScope> = mutableMapOf(),
         val nodeScopes: MutableMap<AutofillId, Int?> = mutableMapOf(),
         val htmlForms: AutofillHtmlFormScopes<AutofillId> = AutofillHtmlFormScopes(),
+        val htmlTokens: MutableMap<AutofillId, AutofillHtmlHintTokens.Detail> = mutableMapOf(),
         val formCues: MutableList<FormCue> = mutableListOf(),
         val explicitCurrentIds: MutableSet<AutofillId> = mutableSetOf(),
         val allowFocusedUnknown: Boolean = false,
@@ -603,10 +607,23 @@ class EnhancedAutofillStructureParserV2(
         val scopeItems = rawStructure?.items.orEmpty().filter { it.parentWebViewNodeId == selectedScopeId }
         val selectedForm = parseContext.htmlForms.owner(rawStructure?.focusedAutofillId
             ?: scopeItems.firstOrNull { it.hint != InternalHint.OFF }?.id)
-        fun inSelectedForm(id: AutofillId) = !htmlFormScopesEnabled || parseContext.htmlForms.owner(id) == selectedForm
+        val focusedId = rawStructure?.focusedAutofillId ?: scopeItems.firstOrNull { it.hint != InternalHint.OFF }?.id
+        val focusedToken = parseContext.htmlTokens[focusedId]
+        fun inSelectedForm(id: AutofillId): Boolean {
+            if (!htmlFormScopesEnabled) return true
+            if (parseContext.htmlForms.owner(id) != selectedForm) return false
+            val token = parseContext.htmlTokens[id]
+            return if (focusedToken != null) focusedToken.sameSection(token)
+            else token == null || token.sameSection(null)
+        }
+        val repeatedBlock = if (htmlFormScopesEnabled && selectedScopeId != null && focusedId != null) {
+            AutofillRepeatedFieldScope.select(scopeItems.filter { inSelectedForm(it.id) }
+                .distinctBy { it.id }.mapNotNull { item -> parseContext.htmlTokens[item.id]?.let { item.id to it.fillHint } }, focusedId)
+        } else null
+        fun inSelectedBlock(id: AutofillId) = inSelectedForm(id) && (repeatedBlock == null || id in repeatedBlock)
         val scopeAutofillIds = rawStructure?.nodeIds.orEmpty()
-            .filterTo(mutableSetOf()) { parseContext.nodeScopes[it] == selectedScopeId && inSelectedForm(it) }
-        val candidateItems = scopeItems.filter { inSelectedForm(it.id) }
+            .filterTo(mutableSetOf()) { parseContext.nodeScopes[it] == selectedScopeId && inSelectedBlock(it) }
+        val candidateItems = scopeItems.filter { inSelectedBlock(it.id) }
         rawStructure = rawStructure?.copy(
             webView = selectedScopeId != null,
             webDomain = selectedWebScope?.domain,
@@ -831,6 +848,7 @@ class EnhancedAutofillStructureParserV2(
                 val mappedHint = mapHint(selectedItem.hint) ?: return@forEach
                 items += ParsedItem(
                     id = groupedById.key,
+                    semanticHint = parseContext.htmlTokens[groupedById.key]?.fillHint,
                     hint = mappedHint,
                     value = selectedItem.value,
                     accuracy = selectedItem.accuracy,
@@ -1072,6 +1090,23 @@ class EnhancedAutofillStructureParserV2(
             val inputOut = parseNodeByAndroidInput(node)
             val labelOut = parseNodeByLabel(node)
             outBuilders += inputOut + labelOut
+            if (browserHintTokensEnabled && webViewNodeId != null) {
+                val attributes = node.htmlInfo?.attributes.orEmpty()
+                // Chromium serializes HTML autocomplete as separate tokens in autofillHints.
+                // Reassemble the grammar before treating native hints as independent aliases.
+                val values = attributes.filter { it.first.equals("autocomplete", true) }.map { it.second } +
+                    listOf(node.autofillHints.orEmpty().joinToString(" ")) +
+                    attributes.filter { it.first.lowercase(Locale.ROOT) in setOf("ua-autofill-hints", "computed-autofill-hints") }.map { it.second } +
+                    node.autofillHints.orEmpty()
+                values.firstNotNullOfOrNull { AutofillHtmlHintTokens.detail(it) }?.let { detail ->
+                    context.htmlTokens[node.autofillId!!] = detail
+                    val coarse = AutofillHtmlHintTokens.coarseHint(detail.field)!!
+                    if (outBuilders.none { it.hint == InternalHint.OFF }) {
+                        outBuilders.clear()
+                        outBuilders += ParsedItemBuilder(Accuracy.HIGHEST, InternalHint.valueOf(coarse.name), reason = "html-semantic-token")
+                    }
+                }
+            }
             if (formPurposeEnabled && AutofillFormPurposePolicy.isNewPasswordLabel(node.contentDescription?.toString().orEmpty())) {
                 outBuilders += ParsedItemBuilder(Accuracy.HIGH, InternalHint.NEW_PASSWORD, reason = "new-password-label")
             }
@@ -1433,7 +1468,7 @@ class EnhancedAutofillStructureParserV2(
     private fun extractOfId(
         value: String,
     ): List<ParsedItemBuilder> = kotlin.run {
-        val id = value.lowercase(Locale.ENGLISH)
+        val id = value.lowercase(Locale.ENGLISH).replace('-', '_')
         when {
             formPurposeEnabled && AutofillFormPurposePolicy.isNewPasswordLabel(value) ->
                 ParsedItemBuilder(Accuracy.HIGH, InternalHint.NEW_PASSWORD, reason = "new-password-id")
@@ -1488,13 +1523,13 @@ class EnhancedAutofillStructureParserV2(
                 reason = "id",
             )
 
-            "cc_exp_month" in id || "exp_month" in id -> ParsedItemBuilder(
+            "exp_month" in id || "expiry_month" in id || "expiration_month" in id -> ParsedItemBuilder(
                 accuracy = Accuracy.HIGH,
                 hint = InternalHint.CREDIT_CARD_EXPIRATION_MONTH,
                 reason = "id",
             )
 
-            "cc_exp_year" in id || "exp_year" in id -> ParsedItemBuilder(
+            "exp_year" in id || "expiry_year" in id || "expiration_year" in id -> ParsedItemBuilder(
                 accuracy = Accuracy.HIGH,
                 hint = InternalHint.CREDIT_CARD_EXPIRATION_YEAR,
                 reason = "id",

@@ -118,7 +118,6 @@ import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.displayFullName
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.ThemeMode
-import takagi.ru.monica.ui.components.PasswordVerificationContent
 import takagi.ru.monica.ui.PasswordListInitialLoadingIndicator
 import takagi.ru.monica.ui.base.BaseMonicaActivity
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
@@ -503,10 +502,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             args.applicationId.orEmpty(), args.webDomain, args.interactionIdentifier, args.fieldSignatureKey,
         )
         val grantActive = startupSettings.autofillKeepUnlocked && AutofillSessionGrants.isGranted(grantContext)
-        val canOpenPicker = developerBypass || grantActive || securityManager.canRestoreMainAppSession(
-            applicationContext,
-            startupSettings.autoLockMinutes
-        )
+        val canOpenPicker = developerBypass || grantActive
         
         setContent {
             val generatorPreferences by produceState<GeneratorPreferences?>(initialValue = null) {
@@ -543,10 +539,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     keepassDatabases = keepassDatabases,
                     generatorPreferences = generatorPreferences,
                     canSkipVerification = canOpenPicker,
-                    requireAuthentication = settings.autofillAuthRequired &&
-                        DeveloperVerificationPolicy.requiresIdentityVerification(settings) && !grantActive,
-                    biometricEnabled = settings.biometricEnabled,
-                    autoLockMinutes = settings.autoLockMinutes,
+                    // Opening the vault picker always verifies identity, including
+                    // when quick suggestion verification is disabled in settings.
+                    requireAuthentication = DeveloperVerificationPolicy.requiresIdentityVerification(settings) && !grantActive,
                     iconCardsEnabled = settings.iconCardsEnabled,
                     isManualMode = isManualMode,
                     showTargetContextInManualMode = imeMode,
@@ -809,7 +804,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                                     ?: getString(R.string.app_name)
                             },
                             filledValues = preparation.filledValues,
-                        )
+                        ) ?: run { setResult(Activity.RESULT_CANCELED); finish(); return@launch }
                         val authResult: Parcelable = if (args.responseAuthMode) {
                             buildPickerResponse(dataset)
                         } else {
@@ -910,19 +905,11 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             val value = when {
                 AutofillPasswordRolePolicy.isNewPasswordHint(normalizedHint) -> null
                 isOtpHint(normalizedHint) -> selectedOtpCode
-                normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name.lowercase() ||
-                    normalizedHint.contains("username") -> accountValue
-                normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name.lowercase() ||
-                    normalizedHint.contains("phone") ||
-                    normalizedHint.contains("mobile") ||
-                    normalizedHint.contains("tel") -> accountValue
-                normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name.lowercase() ||
-                    normalizedHint.contains("email") -> if (allowAccountInEmailField) accountValue else null
                 normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name.lowercase() ||
                     normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name.lowercase() ||
                     normalizedHint.contains("password") ||
                     normalizedHint.contains("pass") -> decryptedPassword
-                else -> null
+                else -> AutofillAccountValues.resolve(normalizedHint, accountValue, allowAccountInEmailField)
             }
             if (value != null) {
                 filledValues[autofillId] = value
@@ -934,35 +921,11 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         }
 
         var usedFallback = false
-        if (filledCount == 0) {
+        if (filledCount == 0 && autofillIds.size == 1 && hints?.singleOrNull().isNullOrBlank() && accountValue.isNotBlank()) {
+            filledValues[autofillIds.first()] = accountValue
+            filledCount = 1
+            fallbackFilledCount = 1
             usedFallback = true
-            android.util.Log.w("AutofillPickerV2", "No strict hint matched, trying controlled fallback")
-            autofillIds.forEachIndexed { index, autofillId ->
-                val normalizedHint = hints?.getOrNull(index)?.lowercase().orEmpty()
-                val fallbackValue = when {
-                    AutofillPasswordRolePolicy.isNewPasswordHint(normalizedHint) -> null
-                    isOtpHint(normalizedHint) -> selectedOtpCode
-                    normalizedHint.contains("pass") -> decryptedPassword
-                    normalizedHint.contains("user") ||
-                        normalizedHint.contains("email") ||
-                        normalizedHint.contains("phone") ||
-                        normalizedHint.contains("mobile") ||
-                        normalizedHint.contains("tel") ||
-                        normalizedHint.contains("号码") ||
-                        normalizedHint.contains("手机号") ||
-                        normalizedHint.contains("account") ||
-                        normalizedHint.contains("login") -> accountValue
-                    autofillIds.size == 1 -> if (accountValue.isNotBlank()) accountValue else decryptedPassword
-                    index == 0 -> accountValue
-                    index == 1 -> decryptedPassword
-                    else -> null
-                }
-                if (!fallbackValue.isNullOrBlank()) {
-                    filledValues[autofillId] = fallbackValue
-                    filledCount++
-                    fallbackFilledCount++
-                }
-            }
         }
 
         if (filledCount == 0) {
@@ -1031,7 +994,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 ?: args.applicationId
                 ?: getString(R.string.app_name),
             filledValues = filledValues
-        )
+        ) ?: run { setResult(Activity.RESULT_CANCELED); finish(); return }
         val authResult: Parcelable = if (args.responseAuthMode) {
             buildPickerResponse(dataset)
         } else {
@@ -1236,21 +1199,25 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         title: String,
         subtitle: String,
         filledValues: Map<AutofillId, String>,
-    ): Dataset {
+    ): Dataset? {
         val menuPresentation = AutofillDatasetBuilder.RemoteViewsFactory.createPasswordEntry(
             context = this,
             title = title.ifBlank { getString(R.string.autofill_manual_entry_title) },
             username = subtitle.ifBlank { getString(R.string.app_name) }
         )
         val fields = linkedMapOf<AutofillId, AutofillDatasetBuilder.FieldData?>()
+        val targetNodes = AutofillTypedValues.fromIntent(intent)
+        val targetHints = args.autofillIds.orEmpty().zip(args.autofillHints.orEmpty()).toMap()
         filledValues.forEach { (autofillId, value) ->
-            if (value.isNotBlank()) {
+            val typedValue = AutofillTypedValues.resolve(targetNodes[autofillId], targetHints[autofillId], value)
+            if (typedValue != null) {
                 fields[autofillId] = AutofillDatasetBuilder.FieldData(
-                    value = AutofillValue.forText(value),
+                    value = typedValue,
                     presentation = menuPresentation
                 )
             }
         }
+        if (fields.isEmpty()) return null
         return AutofillDatasetBuilder.create(
             menuPresentation = menuPresentation,
             fields = fields
@@ -1312,7 +1279,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             title = bankCardDisplayTitle(item, data),
             subtitle = bankCardDisplaySubtitle(data),
             filledValues = filledValues,
-        )
+        ) ?: run { setResult(Activity.RESULT_CANCELED); finish(); return }
         val authResult: Parcelable = if (args.responseAuthMode) {
             buildPickerResponse(dataset)
         } else {
@@ -1393,7 +1360,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             title = documentDisplayTitle(item, data),
             subtitle = documentDisplaySubtitle(data),
             filledValues = filledValues,
-        )
+        ) ?: run { setResult(Activity.RESULT_CANCELED); finish(); return }
         val authResult: Parcelable = if (args.responseAuthMode) {
             buildPickerResponse(dataset)
         } else {
@@ -1465,7 +1432,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             title = billingAddressDisplayTitle(item, data),
             subtitle = billingAddressDisplaySubtitle(data),
             filledValues = filledValues,
-        )
+        ) ?: run { setResult(Activity.RESULT_CANCELED); finish(); return }
         val authResult: Parcelable = if (args.responseAuthMode) {
             buildPickerResponse(dataset)
         } else {
@@ -1649,8 +1616,6 @@ private fun AutofillPickerContent(
     generatorPreferences: GeneratorPreferences? = null,
     canSkipVerification: Boolean = false,
     requireAuthentication: Boolean = true,
-    biometricEnabled: Boolean = false,
-    autoLockMinutes: Int = 5,
     iconCardsEnabled: Boolean = false,
     isManualMode: Boolean = false,
     showTargetContextInManualMode: Boolean = false,
@@ -1868,27 +1833,19 @@ private fun AutofillPickerContent(
     }
 
     if (!isAuthenticated) {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            PasswordVerificationContent(
-                modifier = Modifier.fillMaxSize(),
-                isFirstTime = false,
-                disablePasswordVerification = false,
-                biometricEnabled = biometricEnabled,
-                autoLockMinutes = autoLockMinutes,
-                persistVaultUnlockToSession = false,
-                onVerifyPassword = { input -> securityManager.unlockVaultWithPassword(input) },
-                onSuccess = {
-                    coroutineScope.launch {
-                        val latest = takagi.ru.monica.utils.SettingsManager(context).settingsFlow.first()
-                        AutofillSessionGrants.grant(AutofillGrantContext(
-                            args.applicationId.orEmpty(), args.webDomain,
-                            args.interactionIdentifier, args.fieldSignatureKey,
-                        ), enabled = latest.autofillKeepUnlocked && latest.autofillAuthRequired)
-                        isAuthenticated = true
-                    }
+        takagi.ru.monica.autofill_ng.auth.AutofillDeviceVerification(
+            onSuccess = {
+                coroutineScope.launch {
+                    val latest = takagi.ru.monica.utils.SettingsManager(context).settingsFlow.first()
+                    AutofillSessionGrants.grant(AutofillGrantContext(
+                        args.applicationId.orEmpty(), args.webDomain,
+                        args.interactionIdentifier, args.fieldSignatureKey,
+                    ), enabled = latest.autofillKeepUnlocked && latest.autofillAuthRequired)
+                    isAuthenticated = true
                 }
-            )
-        }
+            },
+            onCancel = onClose,
+        )
         return
     }
 

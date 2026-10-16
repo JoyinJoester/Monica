@@ -181,15 +181,27 @@ class AutofillDirectOtpResponseTest {
         assertEquals(listOf(preparedPassword), values(original))
     }
 
-    @Test fun lockedVerifiedResponseStillContainsOnlyTheUnlockAction() {
+    @Test fun lockedVerifiedResponseOffersCandidateWithoutSecretsOrDirectBypass() {
         val result = response(partitions = listOf(partition(7, values = listOf(null, null), authentication = true)),
             optedIn = setOf(7L), locked = true, requireAuthentication = true)
-        assertNotNull(property(result, "getAuthentication"))
-        assertNull(property(result, "getDatasets"))
-        assertEquals(targets.map { it.id }.toSet(), (property(result, "getAuthenticationIds") as Array<*>).toSet())
-        val intent = deliveredIntent(property(result, "getAuthentication") as IntentSender)
-        assertEquals(AutofillUnlockActivity::class.java.name, intent.component?.className)
+        assertNull(property(result, "getAuthentication"))
+        val candidate = datasets(result).first()
+        assertEquals(targets.map { it.id }, fieldIds(candidate))
+        assertEquals(listOf(null, null), values(candidate))
+        val intent = deliveredIntent(requireNotNull(authentication(candidate)))
+        assertEquals(AutofillCipherCallbackActivity::class.java.name, intent.component?.className)
         assertFalse(intent.hasExtra(AutofillCipherCallbackActivity.EXTRA_DIRECT_DATASET))
+        val manual = datasets(result).last()
+        assertEquals(AutofillPickerActivityV2::class.java.name,
+            deliveredIntent(requireNotNull(authentication(manual))).component?.className)
+    }
+
+    @Test fun nativeAuthenticatedCallbackDoesNotTreatPackageAsWebsite() {
+        val candidate = datasets(response(partitions = listOf(partition(7, values = listOf(null, null), authentication = true)),
+            optedIn = setOf(7L), requireAuthentication = true)).first()
+        val intent = deliveredIntent(requireNotNull(authentication(candidate)))
+        val args = requireNotNull(intent.getBundleExtra("extra_args_bundle"))
+        assertNull(args.getString("web_domain"))
     }
 
     @Test fun authenticationRequiredDatasetNeverReceivesTheDirectResultBypass() {

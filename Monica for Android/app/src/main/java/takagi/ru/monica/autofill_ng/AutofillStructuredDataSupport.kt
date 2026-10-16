@@ -33,7 +33,8 @@ internal fun buildAutofillPickerRequestProfile(hints: List<String>?): AutofillPi
         (bankCardKeyHintCount > 0 || bankCardHintCount >= documentHintCount)
     val wantsDocuments = hasDocumentHints &&
         (documentKeyHintCount > 0 || documentHintCount >= bankCardHintCount)
-    val wantsBillingAddresses = hasBillingAddressHints
+    val wantsBillingAddresses = hasBillingAddressHints && (normalizedHints.any { canonicalHint(it) in addressHints } ||
+        (bankCardKeyHintCount == 0 && normalizedHints.none { canonicalHint(it) in identityHints }))
     val wantsStructuredItems = wantsBankCards || wantsDocuments || wantsBillingAddresses
     val wantsPasswords = hasLoginHints || !wantsStructuredItems
 
@@ -45,232 +46,26 @@ internal fun buildAutofillPickerRequestProfile(hints: List<String>?): AutofillPi
     )
 }
 
-internal fun isBankCardKeyAutofillHint(rawHint: String?): Boolean {
-    val hint = normalizeAutofillHint(rawHint)
-    if (hint.isBlank()) return false
-    return hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_NUMBER.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_SECURITY_CODE.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_DATE.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_MONTH.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_YEAR.name.lowercase() ||
-        hint.contains("card_number") ||
-        hint.contains("cc_number") ||
-        hint.contains("cvv") ||
-        hint.contains("cvc") ||
-        hint.contains("expiration") ||
-        hint.contains("expiry")
+private fun canonicalHint(hint: String?) = AutofillProfileValues.canonical(hint)
+private val addressHints = setOf("postal-address", "billing-address", "street-address", "address-line1", "address-line2", "address-line3", "address-level1", "address-level2", "address-level3", "postal-code", "country", "country-name")
+private val nameHints = setOf("name", "given-name", "additional-name", "family-name", "honorific-prefix", "organization")
+private val identityHints = setOf("identity-number", "document-number", "passport-number", "license-number", "ssn", "social-security-number")
+private fun isContactHint(hint: String): Boolean {
+    val base = hint.removePrefix("home-").removePrefix("work-")
+    return base == "email" || base == "tel" || base.startsWith("tel-")
 }
+internal fun isBankCardKeyAutofillHint(rawHint: String?): Boolean = canonicalHint(rawHint).startsWith("cc-")
+internal fun isDocumentKeyAutofillHint(rawHint: String?): Boolean = canonicalHint(rawHint).let { it in identityHints || it in nameHints || it in addressHints }
+internal fun isBillingAddressKeyAutofillHint(rawHint: String?): Boolean = canonicalHint(rawHint).let { it in addressHints || it in nameHints || isContactHint(it) }
+internal fun isLoginAutofillHint(rawHint: String?): Boolean = canonicalHint(rawHint) in setOf("username", "password", "new-password", "email", "tel")
+internal fun isBankCardAutofillHint(rawHint: String?): Boolean = isBankCardKeyAutofillHint(rawHint) || canonicalHint(rawHint) in addressHints
+internal fun isDocumentAutofillHint(rawHint: String?): Boolean = isDocumentKeyAutofillHint(rawHint) || isContactHint(canonicalHint(rawHint))
 
-internal fun isDocumentKeyAutofillHint(rawHint: String?): Boolean {
-    val hint = normalizeAutofillHint(rawHint)
-    if (hint.isBlank()) return false
-    return hint == EnhancedAutofillStructureParserV2.FieldHint.IDENTITY_NUMBER.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.PERSON_NAME.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_ADDRESS.name.lowercase() ||
-        hint.contains("identity") ||
-        hint.contains("document") ||
-        hint.contains("passport") ||
-        hint.contains("license") ||
-        hint.contains("street_address") ||
-        hint.contains("address_line")
-}
+internal fun mapBankCardAutofillValue(rawHint: String?, data: BankCardData): String? = AutofillProfileValues.card(rawHint, data)
 
-internal fun isBillingAddressKeyAutofillHint(rawHint: String?): Boolean {
-    val hint = normalizeAutofillHint(rawHint)
-    if (hint.isBlank()) return false
-    return hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_ADDRESS.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_CODE.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_CITY.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_REGION.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_COUNTRY.name.lowercase() ||
-        hint.contains("billing_address") ||
-        hint.contains("street_address") ||
-        hint.contains("address_line") ||
-        hint.contains("postal_address") ||
-        hint.contains("postal") ||
-        hint.contains("zip") ||
-        hint.contains("city") ||
-        hint.contains("state") ||
-        hint.contains("province") ||
-        hint.contains("region") ||
-        hint.contains("country")
-}
+internal fun mapDocumentAutofillValue(rawHint: String?, data: DocumentData): String? = AutofillProfileValues.document(rawHint, data)
 
-internal fun isLoginAutofillHint(rawHint: String?): Boolean {
-    val hint = normalizeAutofillHint(rawHint)
-    if (hint.isBlank()) return false
-    return hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name.lowercase() ||
-        hint.contains("username") ||
-        hint.contains("email") ||
-        hint.contains("phone") ||
-        hint.contains("mobile") ||
-        hint.contains("password")
-}
-
-internal fun isBankCardAutofillHint(rawHint: String?): Boolean {
-    val hint = normalizeAutofillHint(rawHint)
-    if (hint.isBlank()) return false
-    return hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_NUMBER.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_DATE.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_MONTH.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_YEAR.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_SECURITY_CODE.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_HOLDER_NAME.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_ADDRESS.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_CODE.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_CITY.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_REGION.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_COUNTRY.name.lowercase() ||
-        hint.contains("cc_") ||
-        hint.contains("credit_card") ||
-        hint.contains("creditcard") ||
-        hint.contains("card_number") ||
-        hint.contains("cardholder") ||
-        hint.contains("holder_name") ||
-        hint.contains("cvv") ||
-        hint.contains("cvc") ||
-        hint.contains("billing_address") ||
-        hint.contains("street_address") ||
-        hint.contains("address_line") ||
-        hint.contains("postal") ||
-        hint.contains("zip") ||
-        hint.contains("city") ||
-        hint.contains("state") ||
-        hint.contains("province") ||
-        hint.contains("region") ||
-        hint.contains("country")
-}
-
-internal fun isDocumentAutofillHint(rawHint: String?): Boolean {
-    val hint = normalizeAutofillHint(rawHint)
-    if (hint.isBlank()) return false
-    return hint == EnhancedAutofillStructureParserV2.FieldHint.PERSON_NAME.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.PERSON_FIRST_NAME.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.PERSON_LAST_NAME.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_ADDRESS.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_CODE.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_CITY.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_REGION.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_COUNTRY.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.COMPANY_NAME.name.lowercase() ||
-        hint == EnhancedAutofillStructureParserV2.FieldHint.IDENTITY_NUMBER.name.lowercase() ||
-        hint.contains("given_name") ||
-        hint.contains("first_name") ||
-        hint.contains("family_name") ||
-        hint.contains("last_name") ||
-        hint.contains("full_name") ||
-        hint.contains("street_address") ||
-        hint.contains("address_line") ||
-        hint.contains("address_level") ||
-        hint.contains("postal") ||
-        hint.contains("zip") ||
-        hint.contains("city") ||
-        hint.contains("state") ||
-        hint.contains("province") ||
-        hint.contains("region") ||
-        hint.contains("country") ||
-        hint.contains("organization") ||
-        hint.contains("company") ||
-        hint.contains("passport") ||
-        hint.contains("license") ||
-        hint.contains("document") ||
-        hint.contains("identity") ||
-        hint.contains("ssn")
-}
-
-internal fun mapBankCardAutofillValue(rawHint: String?, data: BankCardData): String? {
-    val hint = normalizeAutofillHint(rawHint)
-    val billingAddress = CardWalletDataCodec.parseBillingAddress(data.billingAddress)
-    return when {
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_NUMBER.name.lowercase() -> data.cardNumber
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_HOLDER_NAME.name.lowercase() -> data.cardholderName
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_SECURITY_CODE.name.lowercase() -> data.cvv
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_MONTH.name.lowercase() -> data.expiryMonth
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_YEAR.name.lowercase() -> data.expiryYear
-        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_DATE.name.lowercase() -> buildCardExpirationValue(data)
-        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_ADDRESS.name.lowercase() -> billingAddress.toAutofillAddress()
-        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_CODE.name.lowercase() -> billingAddress.postalCode
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_CITY.name.lowercase() -> billingAddress.city
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_REGION.name.lowercase() -> billingAddress.stateProvince
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_COUNTRY.name.lowercase() -> billingAddress.country
-        hint == EnhancedAutofillStructureParserV2.FieldHint.PERSON_NAME.name.lowercase() -> data.cardholderName
-        hint.contains("cc_number") || hint.contains("card_number") -> data.cardNumber
-        hint.contains("cc_name") || hint.contains("cardholder") || hint.contains("holder_name") -> data.cardholderName
-        hint.contains("cc_csc") || hint.contains("cvv") || hint.contains("cvc") -> data.cvv
-        hint.contains("cc_exp_month") -> data.expiryMonth
-        hint.contains("cc_exp_year") -> data.expiryYear
-        hint.contains("cc_exp") || hint.contains("expiration") || hint.contains("expiry") -> buildCardExpirationValue(data)
-        hint.contains("street_address") || hint.contains("address_line") || hint.contains("postal_address") -> billingAddress.toAutofillAddress()
-        hint.contains("postal") || hint.contains("zip") -> billingAddress.postalCode
-        hint.contains("city") -> billingAddress.city
-        hint.contains("state") || hint.contains("province") || hint.contains("region") -> billingAddress.stateProvince
-        hint.contains("country") -> billingAddress.country
-        else -> null
-    }?.takeIf { it.isNotBlank() }
-}
-
-internal fun mapDocumentAutofillValue(rawHint: String?, data: DocumentData): String? {
-    val hint = normalizeAutofillHint(rawHint)
-    return when {
-        hint == EnhancedAutofillStructureParserV2.FieldHint.PERSON_NAME.name.lowercase() -> data.displayFullName().ifBlank { data.fullName }
-        hint == EnhancedAutofillStructureParserV2.FieldHint.PERSON_FIRST_NAME.name.lowercase() -> resolveDocumentFirstName(data)
-        hint == EnhancedAutofillStructureParserV2.FieldHint.PERSON_LAST_NAME.name.lowercase() -> resolveDocumentLastName(data)
-        hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name.lowercase() -> data.email
-        hint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name.lowercase() -> data.phone
-        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_ADDRESS.name.lowercase() -> data.toAutofillAddress()
-        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_CODE.name.lowercase() -> data.postalCode
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_CITY.name.lowercase() -> data.city
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_REGION.name.lowercase() -> data.stateProvince
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_COUNTRY.name.lowercase() -> data.country
-        hint == EnhancedAutofillStructureParserV2.FieldHint.COMPANY_NAME.name.lowercase() -> data.company
-        hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name.lowercase() -> data.username
-        hint == EnhancedAutofillStructureParserV2.FieldHint.IDENTITY_NUMBER.name.lowercase() -> resolveIdentityNumber(hint, data)
-        hint.contains("given_name") || hint.contains("first_name") -> resolveDocumentFirstName(data)
-        hint.contains("family_name") || hint.contains("last_name") || hint.contains("surname") -> resolveDocumentLastName(data)
-        hint.contains("full_name") || hint.contains("person_name") || hint.contains("name") -> data.displayFullName().ifBlank { data.fullName }
-        hint.contains("street_address") || hint.contains("address_line") || hint.contains("postal_address") -> data.toAutofillAddress()
-        hint.contains("postal") || hint.contains("zip") -> data.postalCode
-        hint.contains("city") -> data.city
-        hint.contains("state") || hint.contains("province") || hint.contains("region") -> data.stateProvince
-        hint.contains("country") -> data.country
-        hint.contains("organization") || hint.contains("company") -> data.company
-        hint.contains("email") -> data.email
-        hint.contains("phone") || hint.contains("mobile") || hint.contains("tel") -> data.phone
-        hint.contains("passport") || hint.contains("license") || hint.contains("document") || hint.contains("identity") || hint.contains("ssn") -> resolveIdentityNumber(hint, data)
-        else -> null
-    }?.takeIf { it.isNotBlank() }
-}
-
-internal fun mapBillingAddressAutofillValue(rawHint: String?, data: BillingAddressData): String? {
-    val hint = normalizeAutofillHint(rawHint)
-    return when {
-        hint == EnhancedAutofillStructureParserV2.FieldHint.PERSON_NAME.name.lowercase() -> data.fullName
-        hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name.lowercase() -> data.email
-        hint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name.lowercase() -> data.phone
-        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_ADDRESS.name.lowercase() -> data.toAutofillAddress()
-        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_CODE.name.lowercase() -> data.postalCode
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_CITY.name.lowercase() -> data.city
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_REGION.name.lowercase() -> data.stateProvince
-        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_COUNTRY.name.lowercase() -> data.country
-        hint == EnhancedAutofillStructureParserV2.FieldHint.COMPANY_NAME.name.lowercase() -> data.company
-        hint.contains("given_name") || hint.contains("first_name") -> data.fullName.split(' ').firstOrNull().orEmpty()
-        hint.contains("family_name") || hint.contains("last_name") || hint.contains("surname") -> data.fullName.split(' ').lastOrNull().orEmpty()
-        hint.contains("full_name") || hint.contains("person_name") || hint.contains("name") -> data.fullName
-        hint.contains("email") -> data.email
-        hint.contains("phone") || hint.contains("mobile") || hint.contains("tel") -> data.phone
-        hint.contains("company") || hint.contains("organization") -> data.company
-        hint.contains("street_address") || hint.contains("address_line") || hint.contains("postal_address") -> data.toAutofillAddress()
-        hint.contains("postal") || hint.contains("zip") -> data.postalCode
-        hint.contains("city") -> data.city
-        hint.contains("state") || hint.contains("province") || hint.contains("region") -> data.stateProvince
-        hint.contains("country") -> data.country
-        else -> null
-    }?.takeIf { it.isNotBlank() }
-}
+internal fun mapBillingAddressAutofillValue(rawHint: String?, data: BillingAddressData): String? = AutofillProfileValues.address(rawHint, data)
 
 internal fun parseBankCardCandidate(
     item: SecureItem,
@@ -281,6 +76,10 @@ internal fun parseBankCardCandidate(
         decryptIfNeeded = decryptIfNeeded
     ) ?: return null
     return item to data.copy(
+        cardholderFirstName = readableAutofillText(data.cardholderFirstName, decryptIfNeeded),
+        cardholderMiddleName = readableAutofillText(data.cardholderMiddleName, decryptIfNeeded),
+        cardholderLastName = readableAutofillText(data.cardholderLastName, decryptIfNeeded),
+
         cardNumber = readableAutofillText(data.cardNumber, decryptIfNeeded),
         cardholderName = readableAutofillText(data.cardholderName, decryptIfNeeded),
         expiryMonth = readableAutofillText(data.expiryMonth, decryptIfNeeded),
@@ -307,6 +106,12 @@ internal fun parseDocumentCandidate(
         decryptIfNeeded = decryptIfNeeded
     ) ?: return null
     return item to data.copy(
+        district = readableAutofillText(data.district, decryptIfNeeded),
+        homeEmail = readableAutofillText(data.homeEmail, decryptIfNeeded),
+        homePhone = readableAutofillText(data.homePhone, decryptIfNeeded),
+        workEmail = readableAutofillText(data.workEmail, decryptIfNeeded),
+        workPhone = readableAutofillText(data.workPhone, decryptIfNeeded),
+
         documentNumber = readableAutofillText(data.documentNumber, decryptIfNeeded),
         fullName = readableAutofillText(data.fullName, decryptIfNeeded),
         firstName = readableAutofillText(data.firstName, decryptIfNeeded),
@@ -339,6 +144,16 @@ internal fun parseBillingAddressCandidate(
         decryptIfNeeded = decryptIfNeeded
     ) ?: return null
     return item to data.copy(
+        firstName = readableAutofillText(data.firstName, decryptIfNeeded),
+        middleName = readableAutofillText(data.middleName, decryptIfNeeded),
+        lastName = readableAutofillText(data.lastName, decryptIfNeeded),
+        addressLine3 = readableAutofillText(data.addressLine3, decryptIfNeeded),
+        district = readableAutofillText(data.district, decryptIfNeeded),
+        homeEmail = readableAutofillText(data.homeEmail, decryptIfNeeded),
+        homePhone = readableAutofillText(data.homePhone, decryptIfNeeded),
+        workEmail = readableAutofillText(data.workEmail, decryptIfNeeded),
+        workPhone = readableAutofillText(data.workPhone, decryptIfNeeded),
+
         fullName = readableAutofillText(data.fullName, decryptIfNeeded),
         company = readableAutofillText(data.company, decryptIfNeeded),
         streetAddress = readableAutofillText(data.streetAddress, decryptIfNeeded),
@@ -357,6 +172,10 @@ internal fun BankCardData.matchesAutofillSearch(query: String): Boolean {
     if (normalized.isBlank()) return true
     val billingAddress = CardWalletDataCodec.parseBillingAddress(billingAddress)
     return listOf(
+        cardholderFirstName,
+        cardholderMiddleName,
+        cardholderLastName,
+
         cardNumber,
         cardholderName,
         bankName,
@@ -375,6 +194,15 @@ internal fun DocumentData.matchesAutofillSearch(query: String): Boolean {
     val normalized = query.trim().lowercase()
     if (normalized.isBlank()) return true
     return listOf(
+        firstName,
+        middleName,
+        lastName,
+        district,
+        homeEmail,
+        homePhone,
+        workEmail,
+        workPhone,
+
         documentNumber,
         fullName,
         displayFullName(),
@@ -394,6 +222,16 @@ internal fun BillingAddressData.matchesAutofillSearch(query: String): Boolean {
     val normalized = query.trim().lowercase()
     if (normalized.isBlank()) return true
     return listOf(
+        firstName,
+        middleName,
+        lastName,
+        addressLine3,
+        district,
+        homeEmail,
+        homePhone,
+        workEmail,
+        workPhone,
+
         fullName,
         company,
         streetAddress,
@@ -492,22 +330,6 @@ private fun buildCardExpirationValue(data: BankCardData): String {
         year.length <= 2 -> "$month/$year"
         else -> "$month/$year"
     }
-}
-
-private fun resolveDocumentFirstName(data: DocumentData): String {
-    if (data.firstName.isNotBlank()) return data.firstName
-    return data.displayFullName()
-        .split(' ')
-        .firstOrNull()
-        .orEmpty()
-}
-
-private fun resolveDocumentLastName(data: DocumentData): String {
-    if (data.lastName.isNotBlank()) return data.lastName
-    return data.displayFullName()
-        .split(' ')
-        .lastOrNull()
-        .orEmpty()
 }
 
 private fun resolveIdentityNumber(normalizedHint: String, data: DocumentData): String {

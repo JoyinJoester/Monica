@@ -1,5 +1,8 @@
 package takagi.ru.monica.ui.screens
 
+import takagi.ru.monica.ui.components.WalletSplitNameFields
+import takagi.ru.monica.ui.components.WalletContactGroup
+import takagi.ru.monica.ui.components.WalletProfileField
 import android.widget.Toast
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material.icons.filled.ContactMail
@@ -114,6 +117,15 @@ fun AddEditBillingAddressScreen(
 
     var title by rememberSaveable { mutableStateOf("") }
     var fullName by rememberSaveable { mutableStateOf("") }
+    var firstName by rememberSaveable { mutableStateOf("") }
+    var middleName by rememberSaveable { mutableStateOf("") }
+    var lastName by rememberSaveable { mutableStateOf("") }
+    var homeEmail by rememberSaveable { mutableStateOf("") }
+    var homePhone by rememberSaveable { mutableStateOf("") }
+    var workEmail by rememberSaveable { mutableStateOf("") }
+    var workPhone by rememberSaveable { mutableStateOf("") }
+    var district by rememberSaveable { mutableStateOf("") }
+    var addressLine3 by rememberSaveable { mutableStateOf("") }
     var company by rememberSaveable { mutableStateOf("") }
     var streetAddress by rememberSaveable { mutableStateOf("") }
     var apartment by rememberSaveable { mutableStateOf("") }
@@ -197,6 +209,15 @@ fun AddEditBillingAddressScreen(
                 mdbxDatabaseId = item.mdbxDatabaseId
                 mdbxFolderId = item.mdbxFolderId
                 fullName = parsedData.fullName
+                firstName = parsedData.firstName
+                middleName = parsedData.middleName
+                lastName = parsedData.lastName
+                homeEmail = parsedData.homeEmail
+                homePhone = parsedData.homePhone
+                workEmail = parsedData.workEmail
+                workPhone = parsedData.workPhone
+                district = parsedData.district
+                addressLine3 = parsedData.addressLine3
                 company = parsedData.company
                 streetAddress = parsedData.streetAddress
                 apartment = parsedData.apartment
@@ -227,6 +248,15 @@ fun AddEditBillingAddressScreen(
 
     val addressData = BillingAddressData(
         fullName = fullName.trim(),
+            firstName = firstName,
+            middleName = middleName,
+            lastName = lastName,
+            homeEmail = homeEmail,
+            homePhone = homePhone,
+            workEmail = workEmail,
+            workPhone = workPhone,
+            district = district,
+            addressLine3 = addressLine3,
         company = company.trim(),
         streetAddress = streetAddress.trim(),
         apartment = apartment.trim(),
@@ -452,6 +482,31 @@ fun AddEditBillingAddressScreen(
                 }
 }
 
+            ItemEditorOptionalSection(editorSections, "name_parts", listOf(firstName, middleName, lastName).any { it.isNotBlank() }) {
+                InfoCard(title = stringResource(R.string.wallet_name_parts)) {
+                    WalletSplitNameFields(firstName, middleName, lastName, { firstName = it }, { middleName = it }, { lastName = it })
+                }
+            }
+
+            ItemEditorOptionalSection(editorSections, "address_extra", listOf(district, addressLine3).any { it.isNotBlank() }) {
+                InfoCard(title = stringResource(R.string.wallet_address_extra)) {
+                    WalletProfileField(district, { district = it }, R.string.wallet_district)
+                    WalletProfileField(addressLine3, { addressLine3 = it }, R.string.wallet_address_line3)
+                }
+            }
+
+            ItemEditorOptionalSection(editorSections, "home_contact", listOf(homeEmail, homePhone).any { it.isNotBlank() }) {
+                InfoCard(title = stringResource(R.string.wallet_home_contact)) {
+                    WalletContactGroup(homeEmail, homePhone, { homeEmail = it }, { homePhone = it })
+                }
+            }
+
+            ItemEditorOptionalSection(editorSections, "work_contact", listOf(workEmail, workPhone).any { it.isNotBlank() }) {
+                InfoCard(title = stringResource(R.string.wallet_work_contact)) {
+                    WalletContactGroup(workEmail, workPhone, { workEmail = it }, { workPhone = it })
+                }
+            }
+
             ItemEditorOptionalSection(editorSections, "contact", email.isNotBlank() || phone.isNotBlank()) {
 InfoCard(title = stringResource(R.string.billing_address_contact_title)) {
                 if (takagi.ru.monica.ui.components.rememberEntryContentStyle()) {
@@ -508,6 +563,10 @@ InfoCard(title = stringResource(R.string.notes)) {
             embeddedAttachmentsContent?.invoke()
 
             ItemEditorAddContent(editorSections, options = listOf(
+                    ItemEditorContentOption("name_parts", R.string.wallet_name_parts, Icons.Default.Person, editorSections.visible("name_parts", listOf(firstName, middleName, lastName).any { it.isNotBlank() })),
+                    ItemEditorContentOption("address_extra", R.string.wallet_address_extra, Icons.Default.Person, editorSections.visible("address_extra", listOf(district, addressLine3).any { it.isNotBlank() })),
+                    ItemEditorContentOption("home_contact", R.string.wallet_home_contact, Icons.Default.Person, editorSections.visible("home_contact", listOf(homeEmail, homePhone).any { it.isNotBlank() })),
+                    ItemEditorContentOption("work_contact", R.string.wallet_work_contact, Icons.Default.Person, editorSections.visible("work_contact", listOf(workEmail, workPhone).any { it.isNotBlank() })),
                     ItemEditorContentOption("contact", R.string.billing_address_contact_title, Icons.Default.ContactMail, editorSections.visible("contact", email.isNotBlank() || phone.isNotBlank())),
                     ItemEditorContentOption("notes", R.string.notes, Icons.Default.Notes, editorSections.visible("notes", notes.isNotBlank()))
                 ), fields = customFields, onFieldsChange = { customFields = it },

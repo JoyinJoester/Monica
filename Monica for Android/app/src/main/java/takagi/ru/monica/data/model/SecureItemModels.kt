@@ -81,7 +81,11 @@ data class BankCardData(
     /** Presentation only; absent on older entries. */
     val editorSectionOrder: List<String> = emptyList(),
     /** Account-opening branch name; independent of the bank name and branch code. */
-    val bankBranch: String = ""
+    val bankBranch: String = "",
+    /** Optional independent values; never derived from or merged into cardholderName. */
+    val cardholderFirstName: String = "",
+    val cardholderMiddleName: String = "",
+    val cardholderLastName: String = ""
 )
 
 @Serializable
@@ -136,7 +140,9 @@ data class BillingAddress(
     val city: String = "",            // 城市
     val stateProvince: String = "",   // 州/省
     val postalCode: String = "",      // 邮政编码
-    val country: String = ""          // 国家
+    val country: String = "",         // 国家
+    val district: String = "",
+    val addressLine3: String = ""
 )
 
 fun BillingAddress.isEmpty(): Boolean {
@@ -145,7 +151,7 @@ fun BillingAddress.isEmpty(): Boolean {
         city.isBlank() &&
         stateProvince.isBlank() &&
         postalCode.isBlank() &&
-        country.isBlank()
+        country.isBlank() && district.isBlank() && addressLine3.isBlank()
 }
 
 fun BillingAddress.formatForDisplay(): String {
@@ -156,7 +162,8 @@ fun BillingAddress.formatForDisplay(): String {
     if (apartment.isNotBlank()) {
         lines += apartment
     }
-    val cityState = listOf(city, stateProvince)
+    if (addressLine3.isNotBlank()) lines += addressLine3
+    val cityState = listOf(district, city, stateProvince)
         .filter { it.isNotBlank() }
         .joinToString(", ")
     if (cityState.isNotBlank()) {
@@ -186,12 +193,22 @@ data class BillingAddressData(
     val isDefault: Boolean = false,
     val customFields: List<SecureCustomField> = emptyList(),
     /** Optional visual card face. The image itself is stored as an encrypted attachment. */
-    val cardFace: CardFaceConfig? = null
+    val cardFace: CardFaceConfig? = null,
+    /** These values stay independent of fullName and the default contact fields. */
+    val firstName: String = "",
+    val middleName: String = "",
+    val lastName: String = "",
+    val addressLine3: String = "",
+    val district: String = "",
+    val homeEmail: String = "",
+    val homePhone: String = "",
+    val workEmail: String = "",
+    val workPhone: String = ""
 )
 
 fun BillingAddressData.isEmpty(): Boolean {
-    return fullName.isBlank() &&
-        company.isBlank() &&
+    return listOf(firstName, middleName, lastName, addressLine3, district, homeEmail, homePhone, workEmail, workPhone).all { it.isBlank() } &&
+        fullName.isBlank() && company.isBlank() &&
         streetAddress.isBlank() &&
         apartment.isBlank() &&
         city.isBlank() &&
@@ -211,7 +228,9 @@ fun BillingAddressData.toBillingAddress(): BillingAddress =
         city = city,
         stateProvince = stateProvince,
         postalCode = postalCode,
-        country = country
+        country = country,
+        district = district,
+        addressLine3 = addressLine3
     )
 
 fun BillingAddressData.formatForDisplay(): String {
@@ -336,7 +355,12 @@ data class DocumentData(
     /** Optional visual card face. The image itself is stored as an encrypted attachment. */
     val cardFace: CardFaceConfig? = null,
     /** Presentation only; absent on older entries. */
-    val editorSectionOrder: List<String> = emptyList()
+    val editorSectionOrder: List<String> = emptyList(),
+    val district: String = "",
+    val homeEmail: String = "",
+    val homePhone: String = "",
+    val workEmail: String = "",
+    val workPhone: String = ""
 )
 
 enum class DocumentType {
@@ -350,8 +374,8 @@ enum class DocumentType {
 fun DocumentData.displayFullName(): String {
     val parts = listOf(firstName, middleName, lastName).filter { it.isNotBlank() }
     return when {
-        parts.isNotEmpty() -> parts.joinToString(" ")
         fullName.isNotBlank() -> fullName
+        parts.isNotEmpty() -> parts.joinToString(" ")
         else -> ""
     }
 }

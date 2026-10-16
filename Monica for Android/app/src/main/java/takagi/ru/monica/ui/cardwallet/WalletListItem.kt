@@ -111,6 +111,9 @@ fun SecureItem.toBillingAddressWalletListItem(addressData: BillingAddressData): 
     )
 
 private fun BankCardData.matchesBankCardSearch(query: String): Boolean =
+    cardholderFirstName.contains(query, ignoreCase = true) ||
+    cardholderMiddleName.contains(query, ignoreCase = true) ||
+    cardholderLastName.contains(query, ignoreCase = true) ||
     cardNumber.contains(query, ignoreCase = true) ||
         bankName.contains(query, ignoreCase = true) ||
         bankBranch.contains(query, ignoreCase = true) ||
@@ -119,6 +122,14 @@ private fun BankCardData.matchesBankCardSearch(query: String): Boolean =
         brand.contains(query, ignoreCase = true)
 
 private fun DocumentData.matchesDocumentSearch(query: String): Boolean =
+    firstName.contains(query, ignoreCase = true) ||
+    middleName.contains(query, ignoreCase = true) ||
+    lastName.contains(query, ignoreCase = true) ||
+    district.contains(query, ignoreCase = true) ||
+    homeEmail.contains(query, ignoreCase = true) ||
+    homePhone.contains(query, ignoreCase = true) ||
+    workEmail.contains(query, ignoreCase = true) ||
+    workPhone.contains(query, ignoreCase = true) ||
     documentNumber.contains(query, ignoreCase = true) ||
         fullName.contains(query, ignoreCase = true) ||
         firstName.contains(query, ignoreCase = true) ||
@@ -129,6 +140,15 @@ private fun DocumentData.matchesDocumentSearch(query: String): Boolean =
         country.contains(query, ignoreCase = true)
 
 private fun BillingAddressData.matchesBillingAddressSearch(query: String): Boolean =
+    firstName.contains(query, ignoreCase = true) ||
+    middleName.contains(query, ignoreCase = true) ||
+    lastName.contains(query, ignoreCase = true) ||
+    addressLine3.contains(query, ignoreCase = true) ||
+    district.contains(query, ignoreCase = true) ||
+    homeEmail.contains(query, ignoreCase = true) ||
+    homePhone.contains(query, ignoreCase = true) ||
+    workEmail.contains(query, ignoreCase = true) ||
+    workPhone.contains(query, ignoreCase = true) ||
     fullName.contains(query, ignoreCase = true) ||
         company.contains(query, ignoreCase = true) ||
         streetAddress.contains(query, ignoreCase = true) ||

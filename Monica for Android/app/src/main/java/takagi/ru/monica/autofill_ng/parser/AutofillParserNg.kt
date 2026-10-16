@@ -136,6 +136,7 @@ class AutofillParserNg {
             textValue = value.takeIf { hint == FieldHint.USERNAME || hint == FieldHint.EMAIL_ADDRESS || hint == FieldHint.PHONE_NUMBER },
             website = website,
             hint = hint,
+            semanticHint = semanticHint,
         )
         return when (hint) {
             FieldHint.PASSWORD, FieldHint.NEW_PASSWORD -> AutofillView.Login.Password(data)

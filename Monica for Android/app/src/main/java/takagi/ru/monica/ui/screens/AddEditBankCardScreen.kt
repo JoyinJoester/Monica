@@ -1,5 +1,8 @@
 package takagi.ru.monica.ui.screens
 
+import takagi.ru.monica.ui.components.WalletSplitNameFields
+import takagi.ru.monica.ui.components.WalletContactGroup
+import takagi.ru.monica.ui.components.WalletProfileField
 import takagi.ru.monica.ui.components.MonicaExpandableContent
 import android.widget.Toast
 import android.graphics.Bitmap
@@ -149,6 +152,9 @@ fun AddEditBankCardScreen(
     var title by rememberSaveable { mutableStateOf("") }
     var cardNumber by rememberSaveable { mutableStateOf("") }
     var cardholderName by rememberSaveable { mutableStateOf("") }
+    var cardholderFirstName by rememberSaveable { mutableStateOf("") }
+    var cardholderMiddleName by rememberSaveable { mutableStateOf("") }
+    var cardholderLastName by rememberSaveable { mutableStateOf("") }
     var expiryMonth by rememberSaveable { mutableStateOf("") }
     var expiryYear by rememberSaveable { mutableStateOf("") }
     var cvv by rememberSaveable { mutableStateOf("") }
@@ -414,6 +420,9 @@ fun AddEditBankCardScreen(
                 parsedCardData?.let { data ->
                     cardNumber = data.cardNumber
                     cardholderName = data.cardholderName
+                cardholderFirstName = data.cardholderFirstName
+                cardholderMiddleName = data.cardholderMiddleName
+                cardholderLastName = data.cardholderLastName
                     expiryMonth = data.expiryMonth
                     expiryYear = data.expiryYear
                     cvv = data.cvv
@@ -457,6 +466,9 @@ fun AddEditBankCardScreen(
             title = ""
             cardNumber = ""
             cardholderName = ""
+            cardholderFirstName = ""
+            cardholderMiddleName = ""
+            cardholderLastName = ""
             expiryMonth = ""
             expiryYear = ""
             cvv = ""
@@ -559,6 +571,9 @@ fun AddEditBankCardScreen(
         return BankCardData(
             cardNumber = cardNumber,
             cardholderName = cardholderName,
+            cardholderFirstName = cardholderFirstName,
+            cardholderMiddleName = cardholderMiddleName,
+            cardholderLastName = cardholderLastName,
             expiryMonth = expiryMonth,
             expiryYear = expiryYear,
             cvv = cvv,
@@ -803,6 +818,12 @@ fun AddEditBankCardScreen(
                 )
             }
         },
+        WalletEditorSection("name_parts", R.string.wallet_cardholder_name_parts, Icons.Default.Person, editorSections.visible("name_parts", listOf(cardholderFirstName, cardholderMiddleName, cardholderLastName).any { it.isNotBlank() })) {
+            InfoCard(title = stringResource(R.string.wallet_cardholder_name_parts)) {
+                WalletSplitNameFields(cardholderFirstName, cardholderMiddleName, cardholderLastName,
+                    { cardholderFirstName = it }, { cardholderMiddleName = it }, { cardholderLastName = it })
+            }
+        },
         WalletEditorSection("custom", R.string.custom_field_title, Icons.Default.TextFields, editorSections.visible("custom", customFields.isNotEmpty())) {
             WalletCustomFields(customFields) { customFields = it }
         },
@@ -1009,6 +1030,7 @@ run {
 
                 },
                 addContent = { ItemEditorAddContent(editorSections, options = listOf(
+                    ItemEditorContentOption("name_parts", R.string.wallet_cardholder_name_parts, Icons.Default.Person, editorSections.visible("name_parts", listOf(cardholderFirstName, cardholderMiddleName, cardholderLastName).any { it.isNotBlank() })),
                     ItemEditorContentOption("billing", R.string.billing_address, Icons.Default.Home, editorSections.visible("billing", hasBillingAddress)),
                     ItemEditorContentOption("extended", R.string.extended_fields_title, Icons.Default.Tune, editorSections.visible("extended", listOf(brand, nickname, validFromMonth, validFromYear, pin, iban, swiftBic, routingNumber, accountNumber, branchCode, currency, customerServicePhone).any { it.isNotBlank() })),
                     ItemEditorContentOption("photos", R.string.section_photos, Icons.Default.PhotoCamera, editorSections.visible("photos", frontImageFileName != null || backImageFileName != null)),

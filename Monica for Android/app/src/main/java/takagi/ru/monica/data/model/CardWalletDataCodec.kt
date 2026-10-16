@@ -179,6 +179,10 @@ object CardWalletDataCodec {
         return BankCardData(
             cardNumber = obj.string("cardNumber", "number"),
             cardholderName = obj.string("cardholderName"),
+            cardholderFirstName = obj.string("cardholderFirstName"),
+            cardholderMiddleName = obj.string("cardholderMiddleName"),
+            cardholderLastName = obj.string("cardholderLastName"),
+
             expiryMonth = obj.string("expiryMonth", "expMonth"),
             expiryYear = obj.string("expiryYear", "expYear"),
             cvv = obj.string("cvv", "code"),
@@ -199,10 +203,7 @@ object CardWalletDataCodec {
         val firstName = legacy?.firstName ?: obj.string("firstName")
         val middleName = legacy?.middleName ?: obj.string("middleName")
         val lastName = legacy?.lastName ?: obj.string("lastName")
-        val fullName = listOf(firstName, middleName, lastName)
-            .filter { it.isNotBlank() }
-            .joinToString(" ")
-            .ifBlank { obj.string("fullName", "name") }
+        val fullName = obj.string("fullName", "name")
         val documentType = parseDocumentType(
             legacy?.documentType
                 ?: obj.string("documentType", "type")
@@ -224,6 +225,12 @@ object CardWalletDataCodec {
             address1 = legacy?.address1 ?: obj.string("address1"),
             address2 = legacy?.address2 ?: obj.string("address2"),
             address3 = obj.string("address3"),
+            district = obj.string("district"),
+            homeEmail = obj.string("homeEmail"),
+            homePhone = obj.string("homePhone"),
+            workEmail = obj.string("workEmail"),
+            workPhone = obj.string("workPhone"),
+
             city = legacy?.city ?: obj.string("city"),
             stateProvince = legacy?.state ?: obj.string("stateProvince", "state"),
             postalCode = legacy?.postalCode ?: obj.string("postalCode"),
@@ -246,6 +253,8 @@ object CardWalletDataCodec {
             return BillingAddressData(
                 streetAddress = address.streetAddress,
                 apartment = address.apartment,
+                addressLine3 = address.addressLine3,
+                district = address.district,
                 city = address.city,
                 stateProvince = address.stateProvince,
                 postalCode = address.postalCode,
@@ -256,6 +265,16 @@ object CardWalletDataCodec {
         val obj = runCatching { json.parseToJsonElement(raw) as? JsonObject }.getOrNull() ?: return null
         return BillingAddressData(
             fullName = obj.string("fullName", "name"),
+            firstName = obj.string("firstName"),
+            middleName = obj.string("middleName"),
+            lastName = obj.string("lastName"),
+            addressLine3 = obj.string("addressLine3"),
+            district = obj.string("district"),
+            homeEmail = obj.string("homeEmail"),
+            homePhone = obj.string("homePhone"),
+            workEmail = obj.string("workEmail"),
+            workPhone = obj.string("workPhone"),
+
             company = obj.string("company", "organization"),
             streetAddress = obj.string("streetAddress", "address1", "addressLine1"),
             apartment = obj.string("apartment", "address2", "addressLine2"),

@@ -116,19 +116,11 @@ class AutofillDetectionIntegrationGuardTest {
             "app/src/main/java/takagi/ru/monica/autofill_ng/AutofillPickerActivity.kt"
         ).readText()
 
-        assertTrue(
-            modernPicker.contains("FieldHint.PHONE_NUMBER.name.lowercase()") &&
-                modernPicker.contains("normalizedHint.contains(\"phone\")") &&
-                modernPicker.contains("normalizedHint.contains(\"tel\") -> accountValue")
-        )
-        assertTrue(
-            authenticatedCallback.contains("FieldHint.PHONE_NUMBER.name.lowercase()") &&
-                authenticatedCallback.contains("normalizedHint.contains(\"phone\")") &&
-                authenticatedCallback.contains("normalizedHint.contains(\"tel\") -> accountValue")
-        )
+        assertTrue(modernPicker.contains("AutofillAccountValues.resolve(normalizedHint, accountValue, allowAccountInEmailField)"))
+        assertTrue(authenticatedCallback.contains("AutofillAccountValues.resolve(normalizedHint, accountValue, allowAccountInEmailField)"))
         assertTrue(
             "The legacy picker must also treat an explicit phone login field as the saved account identifier.",
-            legacyPicker.contains("FieldHint.PHONE_NUMBER.name -> accountValue")
+            legacyPicker.contains("FieldHint.PHONE_NUMBER.name -> AutofillAccountValues.resolve(hint, accountValue, false)")
         )
         assertFalse(
             "A phone login field must never receive the password value.",

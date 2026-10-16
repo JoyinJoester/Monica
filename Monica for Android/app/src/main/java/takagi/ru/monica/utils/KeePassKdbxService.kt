@@ -5017,6 +5017,10 @@ class KeePassKdbxService(
 
         addProtected(FIELD_CARD_NUMBER, cardData.cardNumber)
         addPlain(FIELD_CARD_HOLDER, cardData.cardholderName)
+        addPlain("Cardholder First Name", cardData.cardholderFirstName)
+        addPlain("Cardholder Middle Name", cardData.cardholderMiddleName)
+        addPlain("Cardholder Last Name", cardData.cardholderLastName)
+
         addPlain("Expiry Month", cardData.expiryMonth)
         addPlain("Expiry Year", cardData.expiryYear)
         addProtected(FIELD_CARD_CVV, cardData.cvv)
@@ -6341,6 +6345,10 @@ class KeePassKdbxService(
             cvv = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_CARD_CVV, "CardCVV", "CVV", "CVC"),
             bankName = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_BANK_NAME),
             bankBranch = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_BANK_BRANCH),
+            cardholderFirstName = getFieldValueIgnoreCase(entry, resolutionContext, "Cardholder First Name"),
+            cardholderMiddleName = getFieldValueIgnoreCase(entry, resolutionContext, "Cardholder Middle Name"),
+            cardholderLastName = getFieldValueIgnoreCase(entry, resolutionContext, "Cardholder Last Name"),
+
             cardType = parseKeePassCardType(getFieldValueIgnoreCase(entry, resolutionContext, FIELD_CARD_TYPE)),
             billingAddress = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_BILLING_ADDRESS),
             brand = getFieldValueIgnoreCase(entry, resolutionContext, FIELD_BRAND),
@@ -6360,6 +6368,10 @@ class KeePassKdbxService(
         val hasAnyCardField = listOf(
             data.cardNumber,
             data.cardholderName,
+            data.cardholderFirstName,
+            data.cardholderMiddleName,
+            data.cardholderLastName,
+
             data.expiryMonth,
             data.expiryYear,
             data.cvv,
@@ -6465,6 +6477,7 @@ class KeePassKdbxService(
             "CVC",
             FIELD_BANK_NAME,
             FIELD_BANK_BRANCH,
+            "Cardholder First Name", "Cardholder Middle Name", "Cardholder Last Name",
             FIELD_CARD_TYPE,
             FIELD_BILLING_ADDRESS,
             FIELD_BRAND,

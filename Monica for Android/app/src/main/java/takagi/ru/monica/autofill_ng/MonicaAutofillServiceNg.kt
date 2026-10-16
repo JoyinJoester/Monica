@@ -1107,6 +1107,14 @@ class MonicaAutofillServiceNg : AutofillService() {
             )
         }
         val structured = targets.filterNot { isLoginHint(it.hint) }
+        val explicitSingle = structured.singleOrNull()?.takeIf {
+            it.isFocused && it.accuracy == EnhancedAutofillStructureParserV2.Accuracy.HIGHEST &&
+                it.semanticHint?.startsWith("cc-") == true
+        }
+        if (explicitSingle != null) return StructuredConfidenceDecision(
+            highConfidence = true, reason = "explicit_single_card_field", structuredCount = 1,
+            bankCardCount = 1, documentCount = 0, dominantCount = 1, keyHintCount = 1, confidentCount = 1,
+        )
         if (structured.size < 2) {
             return StructuredConfidenceDecision(
                 highConfidence = false,

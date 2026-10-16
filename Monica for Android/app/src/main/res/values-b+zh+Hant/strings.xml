@@ -4356,4 +4356,16 @@
     <string name="keepass_delete_failed_reload">未能完成 KDBX 刪除。請重新載入資料庫，檢查檔案或寫入權限後重試。</string>
     <string name="bank_branch">開戶行</string>
     <string name="bank_branch_example">例如：中國工商銀行北京海淀支行</string>
+    <string name="autofill_device_auth_description">使用指紋或裝置螢幕鎖定憑證驗證後填入。</string>
+    <string name="autofill_device_auth_unavailable">請先設定裝置螢幕鎖定密碼或指紋，再使用自動填入選擇器。</string>
+    <string name="autofill_device_auth_unlock_app">請先開啟 Monica 解鎖一次保管庫以恢復金鑰存取，再重試自動填入。</string>
+    <string name="autofill_use_screen_lock">使用螢幕鎖定密碼</string>
+    <string name="wallet_name_parts">分段姓名（選填）</string>
+    <string name="wallet_cardholder_name_parts">持卡人分段姓名（選填）</string>
+    <string name="wallet_name_parts_help">請分別填寫，不會更改原有全名。僅用於填入對應的姓名分段欄位。</string>
+    <string name="wallet_home_contact">家庭聯絡方式</string>
+    <string name="wallet_work_contact">工作聯絡方式</string>
+    <string name="wallet_district">區／縣</string>
+    <string name="wallet_address_line3">地址第三行</string>
+    <string name="wallet_address_extra">補充地址欄位</string>
 </resources>

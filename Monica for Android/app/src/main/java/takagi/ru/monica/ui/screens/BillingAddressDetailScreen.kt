@@ -219,6 +219,10 @@ fun BillingAddressDetailScreen(
                     }
                 }
 
+                takagi.ru.monica.ui.components.WalletNamePartsDetails(data.firstName, data.middleName, data.lastName)
+                takagi.ru.monica.ui.components.WalletContactsDetails(data.homeEmail, data.homePhone, data.workEmail, data.workPhone)
+                takagi.ru.monica.ui.components.WalletProfileDetails(R.string.billing_address, listOf(R.string.wallet_district to data.district, R.string.wallet_address_line3 to data.addressLine3))
+
                 if (data.customFields.isNotEmpty()) {
                     BillingAddressCustomFieldsCard(
                         fields = CardWalletDataCodec.customFieldsToDisplay(data.customFields),

@@ -416,7 +416,9 @@ fun BankCardDetailScreen(
                         }
                     }
 
-                    if (data.customFields.isNotEmpty()) {
+                    takagi.ru.monica.ui.components.WalletNamePartsDetails(data.cardholderFirstName, data.cardholderMiddleName, data.cardholderLastName, R.string.wallet_cardholder_name_parts)
+
+                if (data.customFields.isNotEmpty()) {
                         BankCardCustomFieldsCard(
                             fields = CardWalletDataCodec.customFieldsToDisplay(data.customFields),
                             context = context,

@@ -333,7 +333,7 @@ class AutofillFlowInstrumentedTest {
         SessionManager.markLocked()
         open("change")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
         verifyAndSelectCredential()
         expectStatus("user=OK password=OK")
         expectStatus("new=EMPTY confirmation=EMPTY")
@@ -606,8 +606,8 @@ class AutofillFlowInstrumentedTest {
         AutofillSessionGrants.clear()
         open("standard")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
-        tap(waitNode { it.text?.toString() == context.getString(R.string.cancel) })
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
+        cancelDeviceVerification()
         expectStatus("user=EMPTY password=EMPTY")
         // Cancelling authentication dismisses the IME on some Android versions.
         // One normal tap may reopen it; no second tap or explicit dismissal of
@@ -761,7 +761,7 @@ class AutofillFlowInstrumentedTest {
         AutofillSessionGrants.clear()
         open("standard")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
         assertNoOtpNotificationFor(750)
         tap(waitNode { it.text?.toString() == context.getString(R.string.cancel) })
         expectStatus("user=EMPTY password=EMPTY")
@@ -776,7 +776,7 @@ class AutofillFlowInstrumentedTest {
         AutofillSessionGrants.clear()
         open("standard")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
         assertNoOtpNotificationFor(750)
         verifyAndSelectCredential()
         expectStatus("user=OK password=OK")
@@ -844,7 +844,7 @@ class AutofillFlowInstrumentedTest {
         SessionManager.markLocked()
         open("step")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
         verifyAndSelectCredential()
         expectStatus("user=OK password=ABSENT")
         assertEquals(keepUnlocked, AutofillSessionGrants.isGranted(issue153Context()))
@@ -873,8 +873,8 @@ class AutofillFlowInstrumentedTest {
         assertFalse(AutofillSessionGrants.isGranted(issue153Context()))
         open("password")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
-        waitNode { it.isEditable && it.packageName?.toString() == context.packageName }
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
+        deviceCredentialField()
         issue153Screenshot("expired-verification")
         verifyAndSelectCredential()
         expectStatus("user=ABSENT password=OK")
@@ -887,7 +887,7 @@ class AutofillFlowInstrumentedTest {
         assertFalse(AutofillSessionGrants.isGranted(issue153Context()))
         open("password")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
         verifyAndSelectCredential()
         expectStatus("user=ABSENT password=OK")
     }
@@ -904,12 +904,22 @@ class AutofillFlowInstrumentedTest {
         } finally {
             shell("input keyevent KEYCODE_WAKEUP")
             shell("wm dismiss-keyguard")
+            if (context.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) {
+                shell("input swipe 500 1600 500 300 250")
+                waitNode { it.viewIdResourceName == "com.android.systemui:id/pinEntry" }
+                shell("input text ${devicePin()}")
+                shell("input keyevent KEYCODE_ENTER")
+                val unlockedDeadline = SystemClock.elapsedRealtime() + 5000
+                while (context.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked &&
+                    SystemClock.elapsedRealtime() < unlockedDeadline) delay(50)
+                check(!context.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked)
+            }
         }
         delay(500)
         assertFalse(AutofillSessionGrants.isGranted(issue153Context()))
         open("password")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
         verifyAndSelectCredential()
         expectStatus("user=ABSENT password=OK")
     }
@@ -921,11 +931,7 @@ class AutofillFlowInstrumentedTest {
         SessionManager.markLocked()
         val intent = AutofillPickerActivityV2.getIntent(context, AutofillPickerActivityV2.Args(applicationId = fixturePackage))
         androidx.test.core.app.ActivityScenario.launch<AutofillPickerActivityV2>(intent).use { scenario ->
-            val field = waitNode { it.isEditable && it.packageName?.toString() == context.packageName }
-            assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
-                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, MASTER_PASSWORD)
-            }))
-            tap(waitNode { it.text?.toString() == context.getString(R.string.unlock) })
+            enterDevicePin()
             waitNode { it.text?.toString() == NATIVE_TITLE }
             assertTrue(AutofillSessionGrants.isGranted(issue153Context()))
             scenario.recreate()
@@ -949,11 +955,7 @@ class AutofillFlowInstrumentedTest {
             autofillIds = arrayListOf(id), autofillHints = arrayListOf("USERNAME"), requireAuthentication = true,
         ))
         androidx.test.core.app.ActivityScenario.launchActivityForResult<AutofillCipherCallbackActivity>(intent).use { scenario ->
-            val field = waitNode { it.isEditable && it.packageName?.toString() == context.packageName }
-            assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
-                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, MASTER_PASSWORD)
-            }))
-            tap(waitNode { it.text?.toString() == context.getString(R.string.confirm) })
+            enterDevicePin()
             val result = scenario.result
             assertEquals(android.app.Activity.RESULT_OK, result.resultCode)
             @Suppress("DEPRECATION")
@@ -971,25 +973,20 @@ class AutofillFlowInstrumentedTest {
         issue153UnlockFirstStep()
         open("web")
         focusFirstField(web = true)
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
-        waitNode { it.isEditable && it.packageName?.toString() == context.packageName }
-        tap(waitNode { it.text?.toString() == context.getString(R.string.cancel) })
+        tap(waitNode { it.text?.toString() == WEB_TITLE })
+        cancelDeviceVerification()
         expectStatus("user=EMPTY password=EMPTY")
     }
 
-    @Test fun issue153WrongPasswordDoesNotGrantAccessAndCanRetry() = runBlocking {
+    @Test fun issue153WrongDevicePinDoesNotGrantAccessAndCanRetry() = runBlocking {
         settings.updateAutofillKeepUnlocked(true)
         settings.updateAutofillAuthRequired(true)
         SessionManager.markLocked()
         open("step")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
-        val field = waitNode { it.isEditable && it.packageName?.toString() == context.packageName }
-        assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "incorrect-test-password")
-        }))
-        tap(waitNode { it.text?.toString() == context.getString(R.string.confirm) })
-        waitNode { it.text?.toString() == context.getString(R.string.password_incorrect) }
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
+        enterDevicePin(if (devicePin() == "000000") "111111" else "000000")
+        waitNode { it.text?.toString()?.contains("Wrong PIN", ignoreCase = true) == true }
         assertFalse(AutofillSessionGrants.isGranted(issue153Context()))
         assertFalse(SessionManager.isUnlocked.value)
         verifyAndSelectCredential()
@@ -1001,7 +998,7 @@ class AutofillFlowInstrumentedTest {
         issue153UnlockFirstStep(keepUnlocked = false)
         open("password")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
         verifyAndSelectCredential()
         expectStatus("user=ABSENT password=OK")
         assertFalse(AutofillSessionGrants.isGranted(issue153Context()))
@@ -1015,7 +1012,7 @@ class AutofillFlowInstrumentedTest {
         assertFalse(AutofillSessionGrants.isGranted(issue153Context()))
         open("password")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
         verifyAndSelectCredential()
         expectStatus("user=ABSENT password=OK")
     }
@@ -1055,7 +1052,7 @@ class AutofillFlowInstrumentedTest {
             assertFalse(SessionManager.canSkipVerification(context))
             open("password")
             focusFirstField()
-            tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
+            tap(waitNode { it.text?.toString() == NATIVE_TITLE })
             verifyAndSelectCredential()
             expectStatus("user=ABSENT password=OK")
             androidx.test.core.app.ActivityScenario.launch<takagi.ru.monica.MainActivity>(
@@ -1085,6 +1082,7 @@ class AutofillFlowInstrumentedTest {
                 // background-switch test does not accidentally remove the real main task.
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
             androidx.test.core.app.ActivityScenario.launch<AutofillPickerActivityV2>(intent).use { picker ->
+                enterDevicePin()
                 waitNode { it.text?.toString() == NATIVE_TITLE }
                 val field = SessionManager::class.java.getDeclaredField("unlockElapsedTimestamp").apply { isAccessible = true }
                 val before = field.getLong(SessionManager)
@@ -1114,9 +1112,51 @@ class AutofillFlowInstrumentedTest {
         AutofillSessionGrants.clear()
         open("standard")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
         verifyAndSelectCredential()
         expectStatus("user=OK password=OK")
+    }
+
+    @Test fun fingerprintFailureStaysInSystemPromptThenSuccessFillsOnce() = runBlocking {
+        assumeTrue("Host must inject a wrong and then enrolled emulator fingerprint", InstrumentationRegistry.getArguments().getString("autofillFingerprintAudit") == "true")
+        settings.updateAutofillAuthRequired(true)
+        SessionManager.markLocked()
+        open("standard")
+        fillFromSystem(NATIVE_TITLE)
+        waitNode { it.text?.toString() == context.getString(R.string.autofill_device_auth_description) }
+        android.util.Log.i("AutofillDeviceAuthTest", "FINGERPRINT_READY")
+        waitNode { it.text?.toString()?.contains("Not recognized", ignoreCase = true) == true }
+        assertFalse(AutofillSessionGrants.isGranted(issue153Context()))
+        assertFalse(SessionManager.isUnlocked.value)
+        android.util.Log.i("AutofillDeviceAuthTest", "FINGERPRINT_REJECTED")
+        expectStatus("user=OK password=OK")
+    }
+
+    @Test fun unlockedMainSessionStillVerifiesSelectedSuggestion() = runBlocking {
+        settings.updateAutofillAuthRequired(true)
+        check(SessionManager.isUnlocked.value)
+        open("standard")
+        fillFromSystem(NATIVE_TITLE)
+        enterDevicePin()
+        expectStatus("user=OK password=OK")
+    }
+
+    @Test fun fullPickerVerifiesOnceEvenWithQuickVerificationDisabled() = runBlocking {
+        for (required in listOf(false, true)) {
+            settings.updateAutofillAuthRequired(required)
+            AutofillSessionGrants.clear()
+            open("standard")
+            focusFirstField()
+            tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_manual_entry_title) })
+            enterDevicePin()
+            waitNode { it.text?.toString() == NATIVE_TITLE }
+            tap(waitNode { it.text?.toString() == NATIVE_TITLE })
+            // The full picker may expose its existing entry action sheet.
+            val action = waitNode { it.text?.toString() == context.getString(R.string.autofill) ||
+                (it.contentDescription?.toString() == "fixture-status" && it.text?.toString() == "user=OK password=OK") }
+            if (action.contentDescription?.toString() != "fixture-status") tap(action)
+            expectStatus("user=OK password=OK")
+        }
     }
 
     @Test fun cancellingVerificationLeavesTheFormEmptyAndAllowsRetry() = runBlocking {
@@ -1125,8 +1165,8 @@ class AutofillFlowInstrumentedTest {
         AutofillSessionGrants.clear()
         open("standard")
         focusFirstField()
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
-        tap(waitNode { it.text?.toString() == context.getString(R.string.cancel) })
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
+        cancelDeviceVerification()
         expectStatus("user=EMPTY password=EMPTY")
         assertFalse(AutofillSessionGrants.isGranted(
             takagi.ru.monica.autofill_ng.auth.AutofillGrantContext(fixturePackage,null,null,null)))
@@ -1134,7 +1174,7 @@ class AutofillFlowInstrumentedTest {
         // overlap the first field and a second tap would already open it.
         assertTrue(waitNode { it.contentDescription?.toString() == "fixture-field-1" }
             .performAction(AccessibilityNodeInfo.ACTION_FOCUS))
-        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_unlock_monica) })
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
         verifyAndSelectCredential()
         expectStatus("user=OK password=OK")
     }
@@ -1353,13 +1393,37 @@ class AutofillFlowInstrumentedTest {
         android.util.Log.i("AutofillFlowTest","Suggestion selection after ${SystemClock.elapsedRealtime()-started}ms")
     }
 
-    private fun verifyAndSelectCredential() {
-        val masterField = waitNode { it.isEditable && it.packageName?.toString() == context.packageName }
-        assertTrue(masterField.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, MASTER_PASSWORD)
-        }))
-        tap(waitNode { it.text?.toString() == context.getString(R.string.confirm) })
-        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
+    private fun devicePin(): String {
+        val pin = InstrumentationRegistry.getArguments().getString("autofillDevicePin")
+        assumeTrue("System verification tests need a PIN configured in the isolated user", pin?.matches(Regex("[0-9]{4,12}")) == true)
+        return requireNotNull(pin)
+    }
+
+    private fun deviceCredentialField(): AccessibilityNodeInfo {
+        devicePin()
+        val first = waitNode { (it.isEditable && it.packageName?.toString() in setOf("com.android.settings", "com.android.systemui")) ||
+            it.text?.toString() in setOf("Use PIN", "Use screen lock") }
+        if (first.isEditable) return first
+        tap(first)
+        return waitNode { it.isEditable && it.packageName?.toString() in setOf("com.android.settings", "com.android.systemui") }
+    }
+
+    private fun enterDevicePin(pin: String = devicePin()) {
+        tap(deviceCredentialField())
+        shell("input text $pin")
+        shell("input keyevent KEYCODE_ENTER")
+    }
+
+    // The candidate is already selected. One native system prompt completes the fill.
+    private fun verifyAndSelectCredential() = enterDevicePin()
+
+    private fun cancelDeviceVerification() {
+        deviceCredentialField()
+        // System credential UI consumes the first Back to hide its keyboard.
+        repeat(2) {
+            ui.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            SystemClock.sleep(250)
+        }
     }
 
     private fun awaitAccessibility() {
@@ -1410,19 +1474,8 @@ class AutofillFlowInstrumentedTest {
             putExtra(AutofillPickerActivityV2.EXTRA_MANUAL_MODE,true)
             putExtra(AutofillPickerActivityV2.EXTRA_MANUAL_TARGET_PACKAGE,fixturePackage)
         })
-        val first = waitNode { it.text?.toString() == title ||
-            (it.packageName?.toString() == context.packageName && it.isEditable && it.isPassword) }
-        if (first.isEditable && first.isPassword) {
-            // A removed main task correctly revokes a fixture's direct session
-            // setup. Follow the real picker verification instead of bypassing it.
-            assertTrue(first.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
-                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, MASTER_PASSWORD)
-            }))
-            tap(waitNode { it.text?.toString() == context.getString(R.string.unlock) })
-            tap(waitNode { it.text?.toString() == title })
-        } else {
-            tap(first)
-        }
+        enterDevicePin()
+        tap(waitNode { it.text?.toString() == title })
         // The regular vault list opens the entry's actions first.
         tap(waitNode { it.text?.toString() == context.getString(R.string.autofill) })
         // A DOM input event can report the values before the bounded background

@@ -1,5 +1,8 @@
 package takagi.ru.monica.ui.screens
 
+import takagi.ru.monica.ui.components.WalletSplitNameFields
+import takagi.ru.monica.ui.components.WalletContactGroup
+import takagi.ru.monica.ui.components.WalletProfileField
 import takagi.ru.monica.ui.components.MonicaExpansionChevron
 import takagi.ru.monica.ui.components.MonicaExpandableContent
 import android.widget.Toast
@@ -154,6 +157,11 @@ fun AddEditDocumentScreen(
     var company by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
+    var district by rememberSaveable { mutableStateOf("") }
+    var homeEmail by rememberSaveable { mutableStateOf("") }
+    var homePhone by rememberSaveable { mutableStateOf("") }
+    var workEmail by rememberSaveable { mutableStateOf("") }
+    var workPhone by rememberSaveable { mutableStateOf("") }
     var ssn by rememberSaveable { mutableStateOf("") }
     var username by rememberSaveable { mutableStateOf("") }
     var passportNumber by rememberSaveable { mutableStateOf("") }
@@ -406,6 +414,11 @@ fun AddEditDocumentScreen(
                     company = data.company
                     email = data.email
                     phone = data.phone
+                district = data.district
+                homeEmail = data.homeEmail
+                homePhone = data.homePhone
+                workEmail = data.workEmail
+                workPhone = data.workPhone
                     ssn = data.ssn
                     username = data.username
                     passportNumber = data.passportNumber
@@ -446,6 +459,11 @@ fun AddEditDocumentScreen(
             company = ""
             email = ""
             phone = ""
+            district = ""
+            homeEmail = ""
+            homePhone = ""
+            workEmail = ""
+            workPhone = ""
             ssn = ""
             username = ""
             passportNumber = ""
@@ -512,12 +530,9 @@ fun AddEditDocumentScreen(
     fun currentDocumentData(): DocumentData {
         // Full name and structured name parts may intentionally differ (for example,
         // a local-script legal name and a transliteration). Editing notes must keep both.
-        val resolvedFullName = if (embeddedEditor != null) fullName else fullName.ifBlank {
-            listOf(firstName, middleName, lastName).filter { it.isNotBlank() }.joinToString(" ")
-        }
         return DocumentData(
             documentNumber = documentNumber,
-            fullName = resolvedFullName,
+            fullName = fullName,
             issuedDate = issuedDate,
             expiryDate = expiryDate,
             issuedBy = issuedBy,
@@ -538,6 +553,11 @@ fun AddEditDocumentScreen(
             company = company,
             email = email,
             phone = phone,
+            district = district,
+            homeEmail = homeEmail,
+            homePhone = homePhone,
+            workEmail = workEmail,
+            workPhone = workPhone,
             ssn = ssn,
             username = username,
             passportNumber = passportNumber,
@@ -710,6 +730,7 @@ fun AddEditDocumentScreen(
             InfoCard(title = stringResource(R.string.document_identity_extended_title)) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     OutlinedTextField(value = titlePrefix, onValueChange = { titlePrefix = it }, label = { Text(stringResource(R.string.document_title_prefix_label)) }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
+                    Text(stringResource(R.string.wallet_name_parts_help), style = MaterialTheme.typography.bodySmall)
                     SuggestedOutlinedTextField(suggestionField = CommonSuggestionField.FIRST_NAME, value = firstName, onValueChange = { firstName = it }, label = { Text(stringResource(R.string.document_first_name_label)) }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
                 }
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -723,8 +744,9 @@ fun AddEditDocumentScreen(
 
             }
         },
-        WalletEditorSection("address", R.string.document_address_extra_title, Icons.Default.Home, editorSections.visible("address", listOf(address1, address2, address3, city, stateProvince, postalCode, country, passportNumber, licenseNumber, ssn, additionalInfo).any { it.isNotBlank() })) {
+        WalletEditorSection("address", R.string.document_address_extra_title, Icons.Default.Home, editorSections.visible("address", listOf(district, address1, address2, address3, city, stateProvince, postalCode, country, passportNumber, licenseNumber, ssn, additionalInfo).any { it.isNotBlank() })) {
             InfoCard(title = stringResource(R.string.document_address_extra_title)) {
+                WalletProfileField(district, { district = it }, R.string.wallet_district)
                 SuggestedOutlinedTextField(suggestionField = CommonSuggestionField.STREET, value = address1, onValueChange = { address1 = it }, label = { Text(stringResource(R.string.document_address_line_1)) }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
                 SuggestedOutlinedTextField(suggestionField = CommonSuggestionField.APARTMENT, value = address2, onValueChange = { address2 = it }, label = { Text(stringResource(R.string.document_address_line_2)) }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
                 SuggestedOutlinedTextField(suggestionField = CommonSuggestionField.ADDRESS_LINE_3, value = address3, onValueChange = { address3 = it }, label = { Text(stringResource(R.string.document_address_line_3)) }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
@@ -742,6 +764,12 @@ fun AddEditDocumentScreen(
                 OutlinedTextField(value = additionalInfo, onValueChange = { additionalInfo = it }, label = { Text(stringResource(R.string.document_additional_info_label)) }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4, shape = RoundedCornerShape(12.dp))
 
             }
+        },
+        WalletEditorSection("home_contact", R.string.wallet_home_contact, Icons.Default.Person, editorSections.visible("home_contact", listOf(homeEmail, homePhone).any { it.isNotBlank() })) {
+            InfoCard(title = stringResource(R.string.wallet_home_contact)) { WalletContactGroup(homeEmail, homePhone, { homeEmail = it }, { homePhone = it }) }
+        },
+        WalletEditorSection("work_contact", R.string.wallet_work_contact, Icons.Default.Person, editorSections.visible("work_contact", listOf(workEmail, workPhone).any { it.isNotBlank() })) {
+            InfoCard(title = stringResource(R.string.wallet_work_contact)) { WalletContactGroup(workEmail, workPhone, { workEmail = it }, { workPhone = it }) }
         },
         WalletEditorSection("custom", R.string.custom_field_title, Icons.Default.TextFields, editorSections.visible("custom", customFields.isNotEmpty())) {
             WalletCustomFields(customFields) { customFields = it }
@@ -858,9 +886,7 @@ fun AddEditDocumentScreen(
                         DocumentData(
                             documentType = documentType,
                             documentNumber = documentNumber,
-                            fullName = fullName.ifBlank {
-                                listOf(firstName, middleName, lastName).filter(String::isNotBlank).joinToString(" ")
-                            },
+                            fullName = fullName,
                             issuedBy = issuedBy,
                             expiryDate = expiryDate
                         )
@@ -1029,8 +1055,10 @@ fun AddEditDocumentScreen(
 
                 },
                 addContent = { ItemEditorAddContent(editorSections, options = listOf(
+                    ItemEditorContentOption("home_contact", R.string.wallet_home_contact, Icons.Default.Person, editorSections.visible("home_contact", listOf(homeEmail, homePhone).any { it.isNotBlank() })),
+                    ItemEditorContentOption("work_contact", R.string.wallet_work_contact, Icons.Default.Person, editorSections.visible("work_contact", listOf(workEmail, workPhone).any { it.isNotBlank() })),
                     ItemEditorContentOption("identity", R.string.document_identity_extended_title, Icons.Default.Badge, editorSections.visible("identity", listOf(titlePrefix, firstName, middleName, lastName, company, username, email, phone).any { it.isNotBlank() })),
-                    ItemEditorContentOption("address", R.string.document_address_extra_title, Icons.Default.Home, editorSections.visible("address", listOf(address1, address2, address3, city, stateProvince, postalCode, country, passportNumber, licenseNumber, ssn, additionalInfo).any { it.isNotBlank() })),
+                    ItemEditorContentOption("address", R.string.document_address_extra_title, Icons.Default.Home, editorSections.visible("address", listOf(district, address1, address2, address3, city, stateProvince, postalCode, country, passportNumber, licenseNumber, ssn, additionalInfo).any { it.isNotBlank() })),
                     ItemEditorContentOption("photos", R.string.section_photos, Icons.Default.PhotoCamera, editorSections.visible("photos", frontImageFileName != null || backImageFileName != null)),
                     ItemEditorContentOption("attachments", R.string.attachments, Icons.Default.AttachFile, editorSections.visible("attachments", existingDocumentItem != null || pendingAttachmentDrafts.isNotEmpty() || embeddedAttachmentsContent != null)),
                     ItemEditorContentOption("notes", R.string.notes, Icons.Default.Notes, editorSections.visible("notes", notes.isNotBlank()))

@@ -77,6 +77,10 @@ class CipherSyncProcessor(
         private val READABLE_CARD_FIELD_NAMES = setOf(
             "bank name",
             "bank branch",
+            "cardholder first name",
+            "cardholder middle name",
+            "cardholder last name",
+
             "card type",
             "billing address",
             "nickname",
@@ -95,6 +99,13 @@ class CipherSyncProcessor(
         )
         private val DOCUMENT_RESERVED_FIELD_NAMES = setOf(
             "monica_document_type",
+            "monica_full_name",
+            "monica_district",
+            "monica_home_email",
+            "monica_home_phone",
+            "monica_work_email",
+            "monica_work_phone",
+
             "monica_issue_date",
             "monica_expiry_date",
             "monica_issued_by",
@@ -1107,6 +1118,10 @@ class CipherSyncProcessor(
             cvv = cvv,
             bankName = fieldMap.valueByNames("Bank Name", "monica_bank_name"),
             bankBranch = fieldMap.valueByNames("Bank Branch", "monica_bank_branch"),
+            cardholderFirstName = fieldMap.valueByNames("Cardholder First Name"),
+            cardholderMiddleName = fieldMap.valueByNames("Cardholder Middle Name"),
+            cardholderLastName = fieldMap.valueByNames("Cardholder Last Name"),
+
             cardType = parseCardType(fieldMap.valueByNames("Card Type", "monica_card_type")),
             billingAddress = resolveSyncedCardBillingAddress(existingCardData, remoteBillingAddress),
             brand = brand,
@@ -1213,9 +1228,6 @@ class CipherSyncProcessor(
         val firstName = decryptString(identity.firstName, symmetricKey) ?: ""
         val middleName = decryptString(identity.middleName, symmetricKey) ?: ""
         val lastName = decryptString(identity.lastName, symmetricKey) ?: ""
-        val fullName = listOf(firstName, middleName, lastName)
-            .filter { it.isNotBlank() }
-            .joinToString(" ")
         val passportNumber = decryptString(identity.passportNumber, symmetricKey).orEmpty()
         val licenseNumber = decryptString(identity.licenseNumber, symmetricKey).orEmpty()
         val ssn = decryptString(identity.ssn, symmetricKey).orEmpty()
@@ -1235,10 +1247,21 @@ class CipherSyncProcessor(
             }
         }
         
+        val existingDocument = existing?.let {
+            CardWalletDataCodec.parseDocumentData(it.itemData, securityManager::decryptData)
+        }
         val docData = DocumentData(
             documentType = resolvedDocumentType,
             documentNumber = idNumber,
-            fullName = fullName,
+            // Older remote identities have no full-name field; keep an existing local value.
+            // A present empty field is an explicit clear, never rebuilt from the name parts.
+            fullName = customFieldMap["monica_full_name"] ?: existingDocument?.fullName.orEmpty(),
+            district = customFieldMap["monica_district"].orEmpty(),
+            homeEmail = customFieldMap["monica_home_email"].orEmpty(),
+            homePhone = customFieldMap["monica_home_phone"].orEmpty(),
+            workEmail = customFieldMap["monica_work_email"].orEmpty(),
+            workPhone = customFieldMap["monica_work_phone"].orEmpty(),
+
             issuedDate = customFieldMap["monica_issue_date"].orEmpty(),
             expiryDate = customFieldMap["monica_expiry_date"].orEmpty(),
             issuedBy = customFieldMap["monica_issued_by"].orEmpty(),
@@ -1262,9 +1285,7 @@ class CipherSyncProcessor(
             username = decryptString(identity.username, symmetricKey) ?: "",
             passportNumber = passportNumber,
             licenseNumber = licenseNumber,
-            editorSectionOrder = existing?.let {
-                CardWalletDataCodec.parseDocumentData(it.itemData, securityManager::decryptData)?.editorSectionOrder
-            }.orEmpty(),
+            editorSectionOrder = existingDocument?.editorSectionOrder.orEmpty(),
             customFields = decryptedFields.toDocumentCustomFields(),
             cardFace = CardWalletDataCodec.parseCardFaceConfig(
                 customFieldMap.valueByNames(CARD_FACE_FIELD_NAME, "monica_card_face")

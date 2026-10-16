@@ -89,6 +89,10 @@ class CipherUploadProcessor(
         private val READABLE_CARD_FIELD_NAMES = setOf(
             "bank name",
             "bank branch",
+            "cardholder first name",
+            "cardholder middle name",
+            "cardholder last name",
+
             "card type",
             "billing address",
             "nickname",
@@ -107,6 +111,13 @@ class CipherUploadProcessor(
         )
         private val DOCUMENT_RESERVED_FIELD_NAMES = setOf(
             "monica_document_type",
+            "monica_full_name",
+            "monica_district",
+            "monica_home_email",
+            "monica_home_phone",
+            "monica_work_email",
+            "monica_work_phone",
+
             "monica_issue_date",
             "monica_expiry_date",
             "monica_issued_by",
@@ -1473,6 +1484,13 @@ class CipherUploadProcessor(
     ): List<CipherFieldApiData>? {
         val reserved = buildList {
             add("monica_document_type" to docData.documentType.name)
+            add("monica_full_name" to docData.fullName)
+            add("monica_district" to docData.district)
+            add("monica_home_email" to docData.homeEmail)
+            add("monica_home_phone" to docData.homePhone)
+            add("monica_work_email" to docData.workEmail)
+            add("monica_work_phone" to docData.workPhone)
+
             add("monica_issue_date" to docData.issuedDate)
             add("monica_expiry_date" to docData.expiryDate)
             add("monica_issued_by" to docData.issuedBy)
@@ -1486,7 +1504,9 @@ class CipherUploadProcessor(
             symmetricKey = symmetricKey,
             reservedFields = reserved,
             customFields = docData.customFields
-                .filterNot { field -> field.label.trim().lowercase() in DOCUMENT_RESERVED_FIELD_NAMES }
+                .filterNot { field -> field.label.trim().lowercase() in DOCUMENT_RESERVED_FIELD_NAMES },
+            // An explicit empty value distinguishes clearing from pre-extension records.
+            includeEmptyReservedFields = setOf("monica_full_name")
         )
     }
 
@@ -1500,6 +1520,10 @@ class CipherUploadProcessor(
         val reserved = buildList {
             add("Bank Name" to cardData.bankName)
             add("Bank Branch" to cardData.bankBranch)
+            add("Cardholder First Name" to cardData.cardholderFirstName)
+            add("Cardholder Middle Name" to cardData.cardholderMiddleName)
+            add("Cardholder Last Name" to cardData.cardholderLastName)
+
             add("Card Type" to cardData.cardType.name)
             add("Billing Address" to billingAddressDisplay)
             add("Nickname" to cardData.nickname)
@@ -1529,13 +1553,14 @@ class CipherUploadProcessor(
         symmetricKey: SymmetricCryptoKey,
         reservedFields: List<Pair<String, String>>,
         customFields: List<SecureCustomField>,
-        excludedCustomFieldNames: Set<String> = emptySet()
+        excludedCustomFieldNames: Set<String> = emptySet(),
+        includeEmptyReservedFields: Set<String> = emptySet()
     ): List<CipherFieldApiData>? {
         val crypto = BitwardenCrypto
         val result = mutableListOf<CipherFieldApiData>()
 
         reservedFields
-            .filter { (_, value) -> value.isNotBlank() }
+            .filter { (name, value) -> value.isNotBlank() || name in includeEmptyReservedFields }
             .forEach { (name, value) ->
                 result += CipherFieldApiData(
                     name = crypto.encryptString(name, symmetricKey),

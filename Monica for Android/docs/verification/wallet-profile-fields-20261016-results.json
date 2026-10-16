@@ -1,0 +1,3698 @@
+{
+  "date": "2026-10-16",
+  "edition": "normal",
+  "api": 32,
+  "synthetic_only": true,
+  "note": "Selection is not a pass assertion. Dynamic forms can create/remove nodes; see verification narrative. No website submissions.",
+  "counts": {
+    "selected": 80,
+    "no_suggestion": 4
+  },
+  "cases": [
+    {
+      "case": "all-address",
+      "path": "autocomplete-all.html",
+      "focus": 0,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "given-name",
+          "form": 0,
+          "value": "Independent"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "additional-name",
+          "form": 0,
+          "value": "Middle"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "family-name",
+          "form": 0,
+          "value": "Parts"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 5,
+          "id": "",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "address-line1",
+          "form": 0,
+          "value": "123 Test Street"
+        },
+        {
+          "index": 7,
+          "id": "",
+          "hint": "address-line2",
+          "form": 0,
+          "value": "Suite 45"
+        },
+        {
+          "index": 8,
+          "id": "",
+          "hint": "address-line3",
+          "form": 0,
+          "value": "Building 7"
+        },
+        {
+          "index": 9,
+          "id": "",
+          "hint": "address-level3",
+          "form": 0,
+          "value": "Santa Clara"
+        },
+        {
+          "index": 10,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 11,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 12,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 13,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 14,
+          "id": "",
+          "hint": "country-name",
+          "form": 0,
+          "value": "United States"
+        },
+        {
+          "index": 15,
+          "id": "",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 16,
+          "id": "",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        },
+        {
+          "index": 17,
+          "id": "",
+          "hint": "tel-country-code",
+          "form": 0,
+          "value": "1"
+        },
+        {
+          "index": 18,
+          "id": "",
+          "hint": "tel-national",
+          "form": 0,
+          "value": "2025550142"
+        },
+        {
+          "index": 19,
+          "id": "",
+          "hint": "tel-area-code",
+          "form": 0,
+          "value": "202"
+        },
+        {
+          "index": 20,
+          "id": "",
+          "hint": "tel-local",
+          "form": 0,
+          "value": "5550142"
+        },
+        {
+          "index": 21,
+          "id": "",
+          "hint": "tel-local-prefix",
+          "form": 0,
+          "value": "555"
+        },
+        {
+          "index": 22,
+          "id": "",
+          "hint": "tel-local-suffix",
+          "form": 0,
+          "value": "0142"
+        }
+      ]
+    },
+    {
+      "case": "all-card",
+      "path": "autocomplete-all.html",
+      "focus": 28,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 23,
+          "id": "",
+          "hint": "cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 24,
+          "id": "",
+          "hint": "cc-given-name",
+          "form": 0,
+          "value": "CardFirst"
+        },
+        {
+          "index": 25,
+          "id": "",
+          "hint": "cc-additional-name",
+          "form": 0,
+          "value": "CardMiddle"
+        },
+        {
+          "index": 26,
+          "id": "",
+          "hint": "cc-family-name",
+          "form": 0,
+          "value": "CardLast"
+        },
+        {
+          "index": 27,
+          "id": "",
+          "hint": "cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 28,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 0,
+          "value": "08"
+        },
+        {
+          "index": 29,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 0,
+          "value": "2030"
+        },
+        {
+          "index": 30,
+          "id": "",
+          "hint": "cc-exp",
+          "form": 0,
+          "value": "08/2030"
+        }
+      ]
+    },
+    {
+      "case": "all-cc-given-name",
+      "path": "autocomplete-all.html",
+      "focus": 24,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 23,
+          "id": "",
+          "hint": "cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 24,
+          "id": "",
+          "hint": "cc-given-name",
+          "form": 0,
+          "value": "CardFirst"
+        },
+        {
+          "index": 25,
+          "id": "",
+          "hint": "cc-additional-name",
+          "form": 0,
+          "value": "CardMiddle"
+        },
+        {
+          "index": 26,
+          "id": "",
+          "hint": "cc-family-name",
+          "form": 0,
+          "value": "CardLast"
+        },
+        {
+          "index": 27,
+          "id": "",
+          "hint": "cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 28,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 0,
+          "value": "08"
+        },
+        {
+          "index": 29,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 0,
+          "value": "2030"
+        },
+        {
+          "index": 30,
+          "id": "",
+          "hint": "cc-exp",
+          "form": 0,
+          "value": "08/2030"
+        }
+      ]
+    },
+    {
+      "case": "all-cc-name",
+      "path": "autocomplete-all.html",
+      "focus": 23,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 23,
+          "id": "",
+          "hint": "cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 24,
+          "id": "",
+          "hint": "cc-given-name",
+          "form": 0,
+          "value": "CardFirst"
+        },
+        {
+          "index": 25,
+          "id": "",
+          "hint": "cc-additional-name",
+          "form": 0,
+          "value": "CardMiddle"
+        },
+        {
+          "index": 26,
+          "id": "",
+          "hint": "cc-family-name",
+          "form": 0,
+          "value": "CardLast"
+        },
+        {
+          "index": 27,
+          "id": "",
+          "hint": "cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 28,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 0,
+          "value": "08"
+        },
+        {
+          "index": 29,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 0,
+          "value": "2030"
+        },
+        {
+          "index": 30,
+          "id": "",
+          "hint": "cc-exp",
+          "form": 0,
+          "value": "08/2030"
+        }
+      ]
+    },
+    {
+      "case": "all-country-name",
+      "path": "autocomplete-all.html",
+      "focus": 14,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "given-name",
+          "form": 0,
+          "value": "Independent"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "additional-name",
+          "form": 0,
+          "value": "Middle"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "family-name",
+          "form": 0,
+          "value": "Parts"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 5,
+          "id": "",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "address-line1",
+          "form": 0,
+          "value": "123 Test Street"
+        },
+        {
+          "index": 7,
+          "id": "",
+          "hint": "address-line2",
+          "form": 0,
+          "value": "Suite 45"
+        },
+        {
+          "index": 8,
+          "id": "",
+          "hint": "address-line3",
+          "form": 0,
+          "value": "Building 7"
+        },
+        {
+          "index": 9,
+          "id": "",
+          "hint": "address-level3",
+          "form": 0,
+          "value": "Santa Clara"
+        },
+        {
+          "index": 10,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 11,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 12,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 13,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 14,
+          "id": "",
+          "hint": "country-name",
+          "form": 0,
+          "value": "United States"
+        },
+        {
+          "index": 15,
+          "id": "",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 16,
+          "id": "",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        },
+        {
+          "index": 17,
+          "id": "",
+          "hint": "tel-country-code",
+          "form": 0,
+          "value": "1"
+        },
+        {
+          "index": 18,
+          "id": "",
+          "hint": "tel-national",
+          "form": 0,
+          "value": "2025550142"
+        },
+        {
+          "index": 19,
+          "id": "",
+          "hint": "tel-area-code",
+          "form": 0,
+          "value": "202"
+        },
+        {
+          "index": 20,
+          "id": "",
+          "hint": "tel-local",
+          "form": 0,
+          "value": "5550142"
+        },
+        {
+          "index": 21,
+          "id": "",
+          "hint": "tel-local-prefix",
+          "form": 0,
+          "value": "555"
+        },
+        {
+          "index": 22,
+          "id": "",
+          "hint": "tel-local-suffix",
+          "form": 0,
+          "value": "0142"
+        }
+      ]
+    },
+    {
+      "case": "all-email-login",
+      "path": "autocomplete-all.html",
+      "focus": 15,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 15,
+          "id": "",
+          "hint": "email",
+          "form": 0,
+          "value": "mozilla.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "all-identity",
+      "path": "autocomplete-all.html",
+      "focus": 0,
+      "role": "identity",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "given-name",
+          "form": 0,
+          "value": "Independent"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "additional-name",
+          "form": 0,
+          "value": "Middle"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "family-name",
+          "form": 0,
+          "value": "Parts"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 5,
+          "id": "",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "address-line1",
+          "form": 0,
+          "value": "123 Test Street"
+        },
+        {
+          "index": 7,
+          "id": "",
+          "hint": "address-line2",
+          "form": 0,
+          "value": "Suite 45"
+        },
+        {
+          "index": 8,
+          "id": "",
+          "hint": "address-line3",
+          "form": 0,
+          "value": "Building 7"
+        },
+        {
+          "index": 9,
+          "id": "",
+          "hint": "address-level3",
+          "form": 0,
+          "value": "Santa Clara"
+        },
+        {
+          "index": 10,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 11,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 12,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 13,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 14,
+          "id": "",
+          "hint": "country-name",
+          "form": 0,
+          "value": "United States"
+        },
+        {
+          "index": 15,
+          "id": "",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 16,
+          "id": "",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        },
+        {
+          "index": 17,
+          "id": "",
+          "hint": "tel-country-code",
+          "form": 0,
+          "value": "1"
+        },
+        {
+          "index": 18,
+          "id": "",
+          "hint": "tel-national",
+          "form": 0,
+          "value": "2025550142"
+        },
+        {
+          "index": 19,
+          "id": "",
+          "hint": "tel-area-code",
+          "form": 0,
+          "value": "202"
+        },
+        {
+          "index": 20,
+          "id": "",
+          "hint": "tel-local",
+          "form": 0,
+          "value": "5550142"
+        },
+        {
+          "index": 21,
+          "id": "",
+          "hint": "tel-local-prefix",
+          "form": 0,
+          "value": "555"
+        },
+        {
+          "index": 22,
+          "id": "",
+          "hint": "tel-local-suffix",
+          "form": 0,
+          "value": "0142"
+        }
+      ]
+    },
+    {
+      "case": "all-login",
+      "path": "autocomplete-all.html",
+      "focus": 33,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 32,
+          "id": "",
+          "hint": "username",
+          "form": 1,
+          "value": "mozilla.audit@example.test"
+        },
+        {
+          "index": 33,
+          "id": "",
+          "hint": "current-password",
+          "form": 1,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "all-middle",
+      "path": "autocomplete-all.html",
+      "focus": 1,
+      "role": "identity",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "given-name",
+          "form": 0,
+          "value": "Independent"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "additional-name",
+          "form": 0,
+          "value": "Middle"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "family-name",
+          "form": 0,
+          "value": "Parts"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 5,
+          "id": "",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "address-line1",
+          "form": 0,
+          "value": "123 Test Street"
+        },
+        {
+          "index": 7,
+          "id": "",
+          "hint": "address-line2",
+          "form": 0,
+          "value": "Suite 45"
+        },
+        {
+          "index": 8,
+          "id": "",
+          "hint": "address-line3",
+          "form": 0,
+          "value": "Building 7"
+        },
+        {
+          "index": 9,
+          "id": "",
+          "hint": "address-level3",
+          "form": 0,
+          "value": "Santa Clara"
+        },
+        {
+          "index": 10,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 11,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 12,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 13,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 14,
+          "id": "",
+          "hint": "country-name",
+          "form": 0,
+          "value": "United States"
+        },
+        {
+          "index": 15,
+          "id": "",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 16,
+          "id": "",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        },
+        {
+          "index": 17,
+          "id": "",
+          "hint": "tel-country-code",
+          "form": 0,
+          "value": "1"
+        },
+        {
+          "index": 18,
+          "id": "",
+          "hint": "tel-national",
+          "form": 0,
+          "value": "2025550142"
+        },
+        {
+          "index": 19,
+          "id": "",
+          "hint": "tel-area-code",
+          "form": 0,
+          "value": "202"
+        },
+        {
+          "index": 20,
+          "id": "",
+          "hint": "tel-local",
+          "form": 0,
+          "value": "5550142"
+        },
+        {
+          "index": 21,
+          "id": "",
+          "hint": "tel-local-prefix",
+          "form": 0,
+          "value": "555"
+        },
+        {
+          "index": 22,
+          "id": "",
+          "hint": "tel-local-suffix",
+          "form": 0,
+          "value": "0142"
+        }
+      ]
+    },
+    {
+      "case": "all-registration",
+      "path": "autocomplete-all.html",
+      "focus": 36,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 35,
+          "id": "",
+          "hint": "username",
+          "form": 2,
+          "value": "mozilla.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "basic-address",
+      "path": "basic.html",
+      "focus": 0,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 5,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 7,
+          "id": "",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 8,
+          "id": "",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        }
+      ]
+    },
+    {
+      "case": "basic-card-csc",
+      "path": "basic_cc.html",
+      "focus": 4,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 0,
+          "value": "08"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 0,
+          "value": "2030"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "cc-csc",
+          "form": 0,
+          "value": "123"
+        }
+      ]
+    },
+    {
+      "case": "basic-card-number",
+      "path": "basic_cc.html",
+      "focus": 1,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 0,
+          "value": "08"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 0,
+          "value": "2030"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "cc-csc",
+          "form": 0,
+          "value": "123"
+        }
+      ]
+    },
+    {
+      "case": "basic-card",
+      "path": "basic_cc.html",
+      "focus": 0,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 0,
+          "value": "08"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 0,
+          "value": "2030"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "cc-csc",
+          "form": 0,
+          "value": "123"
+        }
+      ]
+    },
+    {
+      "case": "basic-identity",
+      "path": "basic.html",
+      "focus": 0,
+      "role": "identity",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 5,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 7,
+          "id": "",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 8,
+          "id": "",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        }
+      ]
+    },
+    {
+      "case": "billing",
+      "path": "billing_shipping.html",
+      "focus": 8,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 8,
+          "id": "organization",
+          "hint": "billing organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 9,
+          "id": "street-address",
+          "hint": "billing street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 10,
+          "id": "address-level2",
+          "hint": "billing address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 11,
+          "id": "address-level1",
+          "hint": "billing address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 12,
+          "id": "postal-code",
+          "hint": "billing postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 13,
+          "id": "country",
+          "hint": "billing country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 14,
+          "id": "tel",
+          "hint": "billing tel",
+          "form": 0,
+          "value": "+12025550142"
+        },
+        {
+          "index": 15,
+          "id": "email",
+          "hint": "billing email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "dynamic-nodes-card-revealed",
+      "path": "dynamic_form_changes/dynamic_forms_node_addition_and_removal.html",
+      "focus": 8,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 5,
+          "id": "cc-name",
+          "hint": "cc-name",
+          "form": 1,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 6,
+          "id": "cc-expiry-month",
+          "hint": null,
+          "form": 1,
+          "value": "08"
+        },
+        {
+          "index": 7,
+          "id": "cc-expiry-year",
+          "hint": null,
+          "form": 1,
+          "value": "2030"
+        },
+        {
+          "index": 8,
+          "id": "cc-code",
+          "hint": "cc-csc",
+          "form": 1,
+          "value": "123"
+        }
+      ]
+    },
+    {
+      "case": "dynamic-nodes-card",
+      "path": "dynamic_form_changes/dynamic_forms_node_addition_and_removal.html",
+      "focus": 4,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 4,
+          "id": "cc-number",
+          "hint": "cc-number",
+          "form": 1,
+          "value": "4242424242424242"
+        }
+      ]
+    },
+    {
+      "case": "dynamic-nodes-initial",
+      "path": "dynamic_form_changes/dynamic_forms_node_addition_and_removal.html",
+      "focus": 0,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "name",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "country",
+          "hint": null,
+          "form": 0,
+          "value": "us"
+        },
+        {
+          "index": 6,
+          "id": "email",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 7,
+          "id": "phone",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        }
+      ]
+    },
+    {
+      "case": "dynamic-nodes-switch-de",
+      "path": "dynamic_form_changes/dynamic_forms_node_addition_and_removal.html",
+      "focus": 2,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 1,
+          "id": "country",
+          "hint": null,
+          "form": 0,
+          "value": "us"
+        },
+        {
+          "index": 6,
+          "id": "email",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 7,
+          "id": "phone",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        }
+      ]
+    },
+    {
+      "case": "dynamic-nodes-us",
+      "path": "dynamic_form_changes/dynamic_forms_node_addition_and_removal.html",
+      "focus": 2,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "name",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 2,
+          "id": "us-street",
+          "hint": "address-line1",
+          "form": 0,
+          "value": "123 Test Street"
+        },
+        {
+          "index": 3,
+          "id": "us-city",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 4,
+          "id": "us-state",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 5,
+          "id": "us-zip",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 6,
+          "id": "email",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 7,
+          "id": "phone",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        }
+      ]
+    },
+    {
+      "case": "dynamic-visible-card-revealed",
+      "path": "dynamic_form_changes/dynamic_forms_visibility_state_change.html",
+      "focus": 15,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 12,
+          "id": "cc-name",
+          "hint": "cc-name",
+          "form": 1,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 13,
+          "id": "cc-expiry-month",
+          "hint": null,
+          "form": 1,
+          "value": "08"
+        },
+        {
+          "index": 14,
+          "id": "cc-expiry-year",
+          "hint": null,
+          "form": 1,
+          "value": "2030"
+        },
+        {
+          "index": 15,
+          "id": "cc-code",
+          "hint": "cc-csc",
+          "form": 1,
+          "value": "123"
+        }
+      ]
+    },
+    {
+      "case": "dynamic-visible-card",
+      "path": "dynamic_form_changes/dynamic_forms_visibility_state_change.html",
+      "focus": 11,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 11,
+          "id": "cc-number",
+          "hint": "cc-number",
+          "form": 1,
+          "value": "4242424242424242"
+        }
+      ]
+    },
+    {
+      "case": "dynamic-visible-initial",
+      "path": "dynamic_form_changes/dynamic_forms_visibility_state_change.html",
+      "focus": 0,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "name",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "country",
+          "hint": null,
+          "form": 0,
+          "value": "us"
+        },
+        {
+          "index": 9,
+          "id": "email",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 10,
+          "id": "phone",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        }
+      ]
+    },
+    {
+      "case": "dynamic-visible-switch-de",
+      "path": "dynamic_form_changes/dynamic_forms_visibility_state_change.html",
+      "focus": 6,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 1,
+          "id": "country",
+          "hint": null,
+          "form": 0,
+          "value": "us"
+        },
+        {
+          "index": 6,
+          "id": "de-street",
+          "hint": "address-line1",
+          "form": 0,
+          "value": "123 Test Street"
+        },
+        {
+          "index": 7,
+          "id": "de-city",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 8,
+          "id": "de-zip",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        }
+      ]
+    },
+    {
+      "case": "dynamic-visible-us",
+      "path": "dynamic_form_changes/dynamic_forms_visibility_state_change.html",
+      "focus": 2,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "name",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 2,
+          "id": "us-street",
+          "hint": "address-line1",
+          "form": 0,
+          "value": "123 Test Street"
+        },
+        {
+          "index": 3,
+          "id": "us-city",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 4,
+          "id": "us-state",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 5,
+          "id": "us-zip",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 9,
+          "id": "email",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 10,
+          "id": "phone",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        }
+      ]
+    },
+    {
+      "case": "home-final",
+      "path": "multiple_sections/section_autocomplete.html",
+      "focus": 20,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 19,
+          "id": "tel-b",
+          "hint": "home tel",
+          "form": 0,
+          "value": "+12025550143"
+        },
+        {
+          "index": 20,
+          "id": "email-b",
+          "hint": "home email",
+          "form": 0,
+          "value": "home.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "iframe-parent",
+      "path": "password_manager/form_with_iframe.html",
+      "focus": 0,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": null,
+          "form": 0,
+          "value": "mozilla.audit@example.test"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "current-password",
+          "form": 0,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "layout-address",
+      "path": "layout.html",
+      "focus": 0,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "organization",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 1,
+          "id": "street-address",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 2,
+          "id": "address-level2",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 3,
+          "id": "address-level1",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 4,
+          "id": "postal-code",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 5,
+          "id": "country",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 6,
+          "id": "tel",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        },
+        {
+          "index": 7,
+          "id": "email",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "layout-card-number",
+      "path": "layout_cc.html",
+      "focus": 1,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 0,
+          "value": "08"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 0,
+          "value": "2030"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "cc-csc",
+          "form": 0,
+          "value": "123"
+        }
+      ]
+    },
+    {
+      "case": "layout-card-second",
+      "path": "layout_cc.html",
+      "focus": 6,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 5,
+          "id": "",
+          "hint": "cc-name",
+          "form": 1,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "cc-number",
+          "form": 1,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 7,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 1,
+          "value": "08"
+        },
+        {
+          "index": 8,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 1,
+          "value": "2030"
+        },
+        {
+          "index": 9,
+          "id": "",
+          "hint": "cc-csc",
+          "form": 1,
+          "value": "123"
+        }
+      ]
+    },
+    {
+      "case": "layout-card",
+      "path": "layout_cc.html",
+      "focus": 0,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 0,
+          "value": "08"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 0,
+          "value": "2030"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "cc-csc",
+          "form": 0,
+          "value": "123"
+        }
+      ]
+    },
+    {
+      "case": "name-utils-identity",
+      "path": "name_utils.html",
+      "focus": 0,
+      "role": "identity",
+      "selection": "no_suggestion",
+      "observed_nonempty_changes": []
+    },
+    {
+      "case": "password-form-00",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 1,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": null,
+          "form": 0,
+          "value": "mozilla.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "password-form-01",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 4,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 3,
+          "id": "",
+          "hint": null,
+          "form": 1,
+          "value": "mozilla.audit@example.test"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "current-password",
+          "form": 1,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-02",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 6,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 6,
+          "id": "",
+          "hint": "current-password",
+          "form": 2,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-03",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 9,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 9,
+          "id": "",
+          "hint": "current-password",
+          "form": 3,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-04",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 13,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 13,
+          "id": "",
+          "hint": null,
+          "form": 4,
+          "value": "Mozilla-Audit-42!"
+        },
+        {
+          "index": 14,
+          "id": "",
+          "hint": null,
+          "form": 4,
+          "value": "Mozilla-Audit-42!"
+        },
+        {
+          "index": 15,
+          "id": "",
+          "hint": null,
+          "form": 4,
+          "value": "Mozilla-Audit-42!"
+        },
+        {
+          "index": 16,
+          "id": "",
+          "hint": null,
+          "form": 4,
+          "value": "Mozilla-Audit-42!"
+        },
+        {
+          "index": 17,
+          "id": "",
+          "hint": null,
+          "form": 4,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-05",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 19,
+      "role": "login",
+      "selection": "no_suggestion",
+      "observed_nonempty_changes": []
+    },
+    {
+      "case": "password-form-06",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 23,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 22,
+          "id": "",
+          "hint": "username",
+          "form": 6,
+          "value": "mozilla.audit@example.test"
+        },
+        {
+          "index": 23,
+          "id": "",
+          "hint": "current-password",
+          "form": 6,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-07",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 51,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 50,
+          "id": "",
+          "hint": null,
+          "form": 7,
+          "value": "mozilla.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "password-form-08",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 54,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 53,
+          "id": "",
+          "hint": null,
+          "form": 8,
+          "value": "mozilla.audit@example.test"
+        },
+        {
+          "index": 54,
+          "id": "",
+          "hint": "current-password",
+          "form": 8,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-09",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 56,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 56,
+          "id": "",
+          "hint": "current-password",
+          "form": 9,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-10",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 59,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 59,
+          "id": "",
+          "hint": "current-password",
+          "form": 10,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-11",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 63,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 63,
+          "id": "",
+          "hint": null,
+          "form": 11,
+          "value": "Mozilla-Audit-42!"
+        },
+        {
+          "index": 64,
+          "id": "",
+          "hint": null,
+          "form": 11,
+          "value": "Mozilla-Audit-42!"
+        },
+        {
+          "index": 65,
+          "id": "",
+          "hint": null,
+          "form": 11,
+          "value": "Mozilla-Audit-42!"
+        },
+        {
+          "index": 66,
+          "id": "",
+          "hint": null,
+          "form": 11,
+          "value": "Mozilla-Audit-42!"
+        },
+        {
+          "index": 67,
+          "id": "",
+          "hint": null,
+          "form": 11,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-12",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 69,
+      "role": "login",
+      "selection": "no_suggestion",
+      "observed_nonempty_changes": []
+    },
+    {
+      "case": "password-form-13",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 73,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 72,
+          "id": "",
+          "hint": "username",
+          "form": 13,
+          "value": "mozilla.audit@example.test"
+        },
+        {
+          "index": 73,
+          "id": "",
+          "hint": "current-password",
+          "form": 13,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-14",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 26,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 25,
+          "id": "",
+          "hint": null,
+          "form": 14,
+          "value": "mozilla.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "password-form-15",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 29,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 28,
+          "id": "",
+          "hint": null,
+          "form": 15,
+          "value": "mozilla.audit@example.test"
+        },
+        {
+          "index": 29,
+          "id": "",
+          "hint": "current-password",
+          "form": 15,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-16",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 31,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 31,
+          "id": "",
+          "hint": "current-password",
+          "form": 16,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-17",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 34,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 34,
+          "id": "",
+          "hint": "current-password",
+          "form": 17,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-18",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 38,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 38,
+          "id": "",
+          "hint": null,
+          "form": 18,
+          "value": "Mozilla-Audit-42!"
+        },
+        {
+          "index": 39,
+          "id": "",
+          "hint": null,
+          "form": 18,
+          "value": "Mozilla-Audit-42!"
+        },
+        {
+          "index": 40,
+          "id": "",
+          "hint": null,
+          "form": 18,
+          "value": "Mozilla-Audit-42!"
+        },
+        {
+          "index": 41,
+          "id": "",
+          "hint": null,
+          "form": 18,
+          "value": "Mozilla-Audit-42!"
+        },
+        {
+          "index": 42,
+          "id": "",
+          "hint": null,
+          "form": 18,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "password-form-19",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 44,
+      "role": "login",
+      "selection": "no_suggestion",
+      "observed_nonempty_changes": []
+    },
+    {
+      "case": "password-form-20",
+      "path": "password_manager/login_and_pw_change_forms.html",
+      "focus": 48,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 47,
+          "id": "",
+          "hint": "username",
+          "form": 20,
+          "value": "mozilla.audit@example.test"
+        },
+        {
+          "index": 48,
+          "id": "",
+          "hint": "current-password",
+          "form": 20,
+          "value": "Mozilla-Audit-42!"
+        }
+      ]
+    },
+    {
+      "case": "relay-address",
+      "path": "relay/relay_registration_form.html",
+      "focus": 5,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 5,
+          "id": "",
+          "hint": "email",
+          "form": 2,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "name",
+          "form": 2,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 7,
+          "id": "",
+          "hint": "organization",
+          "form": 2,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 8,
+          "id": "",
+          "hint": "street-address",
+          "form": 2,
+          "value": "123 Test Street, Suite 45, Building 7"
+        }
+      ]
+    },
+    {
+      "case": "relay-email",
+      "path": "relay/relay_registration_form.html",
+      "focus": 3,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 3,
+          "id": "",
+          "hint": "email",
+          "form": 1,
+          "value": "mozilla.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "relay-signup",
+      "path": "relay/relay_registration_form.html",
+      "focus": 0,
+      "role": "login",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "email",
+          "form": 0,
+          "value": "mozilla.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "section-autocomplete-card1",
+      "path": "multiple_sections/section_autocomplete.html",
+      "focus": 22,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 21,
+          "id": "",
+          "hint": "section-card1 cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 22,
+          "id": "",
+          "hint": "section-card1 cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 23,
+          "id": "",
+          "hint": "section-card1 cc-exp-month",
+          "form": 0,
+          "value": "08"
+        },
+        {
+          "index": 24,
+          "id": "",
+          "hint": "section-card1 cc-exp-year",
+          "form": 0,
+          "value": "2030"
+        }
+      ]
+    },
+    {
+      "case": "section-autocomplete-card2",
+      "path": "multiple_sections/section_autocomplete.html",
+      "focus": 26,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 25,
+          "id": "",
+          "hint": "section-card2 cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 26,
+          "id": "",
+          "hint": "section-card2 cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 27,
+          "id": "",
+          "hint": "section-card2 cc-exp-month",
+          "form": 0,
+          "value": "08"
+        },
+        {
+          "index": 28,
+          "id": "",
+          "hint": "section-card2 cc-exp-year",
+          "form": 0,
+          "value": "2030"
+        }
+      ]
+    },
+    {
+      "case": "section-autocomplete-custom",
+      "path": "multiple_sections/section_autocomplete.html",
+      "focus": 12,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 12,
+          "id": "street-address-c",
+          "hint": "section-my street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 13,
+          "id": "address-level2-c",
+          "hint": "section-my address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 14,
+          "id": "address-level1-c",
+          "hint": "section-my address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 15,
+          "id": "postal-code-c",
+          "hint": "section-my postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 16,
+          "id": "country-c",
+          "hint": "section-my country",
+          "form": 0,
+          "value": "US"
+        }
+      ]
+    },
+    {
+      "case": "section-autocomplete-home",
+      "path": "multiple_sections/section_autocomplete.html",
+      "focus": 20,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 19,
+          "id": "tel-b",
+          "hint": "home tel",
+          "form": 0,
+          "value": "+12025550143"
+        },
+        {
+          "index": 20,
+          "id": "email-b",
+          "hint": "home email",
+          "form": 0,
+          "value": "home.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "section-autocomplete-shipping",
+      "path": "multiple_sections/section_autocomplete.html",
+      "focus": 2,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 2,
+          "id": "street-address-a",
+          "hint": "shipping street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 3,
+          "id": "address-level2-a",
+          "hint": "shipping address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 4,
+          "id": "address-level1-a",
+          "hint": "shipping address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 5,
+          "id": "postal-code-a",
+          "hint": "shipping postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 6,
+          "id": "country-a",
+          "hint": "shipping country",
+          "form": 0,
+          "value": "US"
+        }
+      ]
+    },
+    {
+      "case": "section-autocomplete-work",
+      "path": "multiple_sections/section_autocomplete.html",
+      "focus": 18,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 17,
+          "id": "tel-a",
+          "hint": "work tel",
+          "form": 0,
+          "value": "+12025550144"
+        },
+        {
+          "index": 18,
+          "id": "email-a",
+          "hint": "work email",
+          "form": 0,
+          "value": "work.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "section-heuristics-card1",
+      "path": "multiple_sections/section_heuristics.html",
+      "focus": 22,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 21,
+          "id": "",
+          "hint": "cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 22,
+          "id": "",
+          "hint": "cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 23,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 0,
+          "value": "08"
+        },
+        {
+          "index": 24,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 0,
+          "value": "2030"
+        }
+      ]
+    },
+    {
+      "case": "section-heuristics-card2",
+      "path": "multiple_sections/section_heuristics.html",
+      "focus": 26,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 25,
+          "id": "",
+          "hint": "cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 26,
+          "id": "",
+          "hint": "cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 27,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 0,
+          "value": "08"
+        },
+        {
+          "index": 28,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 0,
+          "value": "2030"
+        }
+      ]
+    },
+    {
+      "case": "section-heuristics-custom",
+      "path": "multiple_sections/section_heuristics.html",
+      "focus": 12,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 12,
+          "id": "",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 13,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 14,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 15,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 16,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        }
+      ]
+    },
+    {
+      "case": "section-heuristics-home",
+      "path": "multiple_sections/section_heuristics.html",
+      "focus": 20,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 19,
+          "id": "",
+          "hint": "home tel",
+          "form": 0,
+          "value": "+12025550143"
+        },
+        {
+          "index": 20,
+          "id": "",
+          "hint": "home email",
+          "form": 0,
+          "value": "home.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "section-heuristics-shipping",
+      "path": "multiple_sections/section_heuristics.html",
+      "focus": 2,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 5,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        }
+      ]
+    },
+    {
+      "case": "section-heuristics-work",
+      "path": "multiple_sections/section_heuristics.html",
+      "focus": 18,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 17,
+          "id": "",
+          "hint": "work tel",
+          "form": 0,
+          "value": "+12025550144"
+        },
+        {
+          "index": 18,
+          "id": "",
+          "hint": "work email",
+          "form": 0,
+          "value": "work.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "sections-auto-first",
+      "path": "multiple_sections/section_autocomplete.html",
+      "focus": 0,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "name",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "organization",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        }
+      ]
+    },
+    {
+      "case": "sections-auto-second",
+      "path": "multiple_sections/section_autocomplete.html",
+      "focus": 7,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 7,
+          "id": "street-address-b",
+          "hint": "billing street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 8,
+          "id": "address-level2-b",
+          "hint": "billing address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 9,
+          "id": "address-level1-b",
+          "hint": "billing address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 10,
+          "id": "postal-code-b",
+          "hint": "billing postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 11,
+          "id": "country-b",
+          "hint": "billing country",
+          "form": 0,
+          "value": "US"
+        }
+      ]
+    },
+    {
+      "case": "sections-heuristics-first",
+      "path": "multiple_sections/section_heuristics.html",
+      "focus": 0,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 5,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        }
+      ]
+    },
+    {
+      "case": "sections-heuristics-second",
+      "path": "multiple_sections/section_heuristics.html",
+      "focus": 7,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 7,
+          "id": "",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 8,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 9,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 10,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 11,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        }
+      ]
+    },
+    {
+      "case": "select-card-number",
+      "path": "basic_cc_2.html",
+      "focus": 1,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "cc-csc",
+          "form": 0,
+          "value": "123"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 0,
+          "value": "8"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 0,
+          "value": "30"
+        }
+      ]
+    },
+    {
+      "case": "select-card",
+      "path": "basic_cc_2.html",
+      "focus": 0,
+      "role": "card",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "cc-name",
+          "form": 0,
+          "value": "Jane Quinn Doe"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "cc-csc",
+          "form": 0,
+          "value": "123"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "cc-number",
+          "form": 0,
+          "value": "4242424242424242"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "cc-exp-month",
+          "form": 0,
+          "value": "8"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "cc-exp-year",
+          "form": 0,
+          "value": "30"
+        }
+      ]
+    },
+    {
+      "case": "shipping",
+      "path": "billing_shipping.html",
+      "focus": 0,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "organization",
+          "hint": "shipping organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 1,
+          "id": "street-address",
+          "hint": "shipping street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 2,
+          "id": "address-level2",
+          "hint": "shipping address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 3,
+          "id": "address-level1",
+          "hint": "shipping address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 4,
+          "id": "postal-code",
+          "hint": "shipping postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 5,
+          "id": "country",
+          "hint": "shipping country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 6,
+          "id": "tel",
+          "hint": "shipping tel",
+          "form": 0,
+          "value": "+12025550142"
+        },
+        {
+          "index": 7,
+          "id": "email",
+          "hint": "shipping email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "textarea-address",
+      "path": "textarea_select.html",
+      "focus": 0,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "organization",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 1,
+          "id": "street-address",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street\nSuite 45\nBuilding 7"
+        },
+        {
+          "index": 2,
+          "id": "address-level2",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 3,
+          "id": "address-level1",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 4,
+          "id": "postal-code",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 5,
+          "id": "country",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 6,
+          "id": "tel",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        },
+        {
+          "index": 7,
+          "id": "email",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "textarea-city",
+      "path": "textarea_select.html",
+      "focus": 2,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "organization",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 1,
+          "id": "street-address",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street\nSuite 45\nBuilding 7"
+        },
+        {
+          "index": 2,
+          "id": "address-level2",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 3,
+          "id": "address-level1",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 4,
+          "id": "postal-code",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 5,
+          "id": "country",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 6,
+          "id": "tel",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        },
+        {
+          "index": 7,
+          "id": "email",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "textarea-street",
+      "path": "textarea_select.html",
+      "focus": 1,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "organization",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 1,
+          "id": "street-address",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street\nSuite 45\nBuilding 7"
+        },
+        {
+          "index": 2,
+          "id": "address-level2",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 3,
+          "id": "address-level1",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 4,
+          "id": "postal-code",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 5,
+          "id": "country",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 6,
+          "id": "tel",
+          "hint": "tel",
+          "form": 0,
+          "value": "+12025550142"
+        },
+        {
+          "index": 7,
+          "id": "email",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        }
+      ]
+    },
+    {
+      "case": "two-forms-first",
+      "path": "two_forms.html",
+      "focus": 0,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        }
+      ]
+    },
+    {
+      "case": "two-forms-second",
+      "path": "two_forms.html",
+      "focus": 5,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 4,
+          "id": "",
+          "hint": "street-address",
+          "form": 0,
+          "value": "123 Test Street, Suite 45, Building 7"
+        },
+        {
+          "index": 5,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 7,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 8,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        }
+      ]
+    },
+    {
+      "case": "us-address",
+      "path": "autocomplete-us-separate-fields.html",
+      "focus": 0,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "given-name",
+          "form": 0,
+          "value": "Independent"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "additional-name",
+          "form": 0,
+          "value": "Middle"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "family-name",
+          "form": 0,
+          "value": "Parts"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "address-line1",
+          "form": 0,
+          "value": "123 Test Street"
+        },
+        {
+          "index": 5,
+          "id": "",
+          "hint": "address-line2",
+          "form": 0,
+          "value": "Suite 45"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "address-line3",
+          "form": 0,
+          "value": "Building 7"
+        },
+        {
+          "index": 7,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 8,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 9,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 10,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 11,
+          "id": "",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 12,
+          "id": "",
+          "hint": "tel-country-code",
+          "form": 0,
+          "value": "1"
+        },
+        {
+          "index": 13,
+          "id": "",
+          "hint": "tel-area-code",
+          "form": 0,
+          "value": "202"
+        },
+        {
+          "index": 14,
+          "id": "",
+          "hint": "tel-local-prefix",
+          "form": 0,
+          "value": "555"
+        },
+        {
+          "index": 15,
+          "id": "",
+          "hint": "tel-local-suffix",
+          "form": 0,
+          "value": "0142"
+        }
+      ]
+    },
+    {
+      "case": "us-identity",
+      "path": "autocomplete-us-separate-fields.html",
+      "focus": 0,
+      "role": "identity",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 0,
+          "id": "",
+          "hint": "given-name",
+          "form": 0,
+          "value": "Independent"
+        },
+        {
+          "index": 1,
+          "id": "",
+          "hint": "additional-name",
+          "form": 0,
+          "value": "Middle"
+        },
+        {
+          "index": 2,
+          "id": "",
+          "hint": "family-name",
+          "form": 0,
+          "value": "Parts"
+        },
+        {
+          "index": 3,
+          "id": "",
+          "hint": "organization",
+          "form": 0,
+          "value": "Example Test Labs"
+        },
+        {
+          "index": 4,
+          "id": "",
+          "hint": "address-line1",
+          "form": 0,
+          "value": "123 Test Street"
+        },
+        {
+          "index": 5,
+          "id": "",
+          "hint": "address-line2",
+          "form": 0,
+          "value": "Suite 45"
+        },
+        {
+          "index": 6,
+          "id": "",
+          "hint": "address-line3",
+          "form": 0,
+          "value": "Building 7"
+        },
+        {
+          "index": 7,
+          "id": "",
+          "hint": "address-level2",
+          "form": 0,
+          "value": "Mountain View"
+        },
+        {
+          "index": 8,
+          "id": "",
+          "hint": "address-level1",
+          "form": 0,
+          "value": "CA"
+        },
+        {
+          "index": 9,
+          "id": "",
+          "hint": "postal-code",
+          "form": 0,
+          "value": "94043"
+        },
+        {
+          "index": 10,
+          "id": "",
+          "hint": "country",
+          "form": 0,
+          "value": "US"
+        },
+        {
+          "index": 11,
+          "id": "",
+          "hint": "email",
+          "form": 0,
+          "value": "address.audit@example.test"
+        },
+        {
+          "index": 12,
+          "id": "",
+          "hint": "tel-country-code",
+          "form": 0,
+          "value": "1"
+        },
+        {
+          "index": 13,
+          "id": "",
+          "hint": "tel-area-code",
+          "form": 0,
+          "value": "202"
+        },
+        {
+          "index": 14,
+          "id": "",
+          "hint": "tel-local-prefix",
+          "form": 0,
+          "value": "555"
+        },
+        {
+          "index": 15,
+          "id": "",
+          "hint": "tel-local-suffix",
+          "form": 0,
+          "value": "0142"
+        }
+      ]
+    },
+    {
+      "case": "work-final",
+      "path": "multiple_sections/section_autocomplete.html",
+      "focus": 18,
+      "role": "address",
+      "selection": "selected",
+      "observed_nonempty_changes": [
+        {
+          "index": 17,
+          "id": "tel-a",
+          "hint": "work tel",
+          "form": 0,
+          "value": "+12025550144"
+        },
+        {
+          "index": 18,
+          "id": "email-a",
+          "hint": "work email",
+          "form": 0,
+          "value": "work.audit@example.test"
+        }
+      ]
+    }
+  ]
+}

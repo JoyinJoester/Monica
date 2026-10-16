@@ -116,49 +116,6 @@ class AutofillSessionGrantStoreTest {
     }
 
     @Test
-    fun disabledAuthenticationAlwaysUsesExistingDirectFillMode() {
-        assertFalse(
-            AutofillAuthenticationPolicy.requiresResponseUnlock(
-                authenticationRequired = false,
-                vaultLocked = true,
-                grantActive = false,
-            )
-        )
-        assertFalse(
-            AutofillAuthenticationPolicy.requiresResponseUnlock(
-                authenticationRequired = false,
-                vaultLocked = false,
-                grantActive = false,
-            )
-        )
-    }
-
-    @Test
-    fun lockedVaultRequiresOneResponseUnlockUnlessGrantIsActive() {
-        assertTrue(
-            AutofillAuthenticationPolicy.requiresResponseUnlock(
-                authenticationRequired = true,
-                vaultLocked = true,
-                grantActive = false,
-            )
-        )
-        assertFalse(
-            AutofillAuthenticationPolicy.requiresResponseUnlock(
-                authenticationRequired = true,
-                vaultLocked = true,
-                grantActive = true,
-            )
-        )
-        assertFalse(
-            AutofillAuthenticationPolicy.requiresResponseUnlock(
-                authenticationRequired = true,
-                vaultLocked = false,
-                grantActive = false,
-            )
-        )
-    }
-
-    @Test
     fun requestUriFactoryDoesNotTreatAndroidAppPackageAsWebDomain() {
         val appContext = AutofillGrantContext.fromRequestUri(
             packageName = "com.example.app",

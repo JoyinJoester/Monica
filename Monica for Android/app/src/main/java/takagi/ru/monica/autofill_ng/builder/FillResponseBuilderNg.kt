@@ -16,12 +16,8 @@ import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2.FieldHint
 import takagi.ru.monica.autofill_ng.AutofillCipherCallbackActivity
 import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
-import takagi.ru.monica.autofill_ng.AutofillUnlockActivity
 import takagi.ru.monica.autofill_ng.PasswordSuggestionActivity
-import takagi.ru.monica.autofill_ng.auth.AutofillAuthenticationPolicy
 import takagi.ru.monica.autofill_ng.auth.AutofillGrantContext
-import takagi.ru.monica.autofill_ng.auth.AutofillUnlockRequests
-import takagi.ru.monica.autofill_ng.auth.PendingAutofillUnlockRequest
 import takagi.ru.monica.autofill_ng.builder.AutofillDatasetBuilder
 import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.autofill_ng.model.AutofillRequest
@@ -57,20 +53,8 @@ class FillResponseBuilderNg(
             return null
         }
 
-        if (AutofillAuthenticationPolicy.requiresResponseUnlock(
-                authenticationRequired = requireAuthentication,
-                vaultLocked = filledData.isVaultLocked,
-                grantActive = false,
-            )
-        ) {
-            return buildLockedResponse(
-                request = request,
-                filledData = filledData,
-                matchedPasswords = matchedPasswords,
-                passwordSuggestionEnabled = passwordSuggestionEnabled,
-            )
-        }
-
+        // Offer metadata-only authenticated datasets immediately. The chosen entry,
+        // or the full picker when there is no match, owns the single system prompt.
         val responseBuilder = FillResponse.Builder()
         var cipherDatasetCount = 0
         var failedCipherDatasetCount = 0
@@ -159,118 +143,6 @@ class FillResponseBuilderNg(
                 "authRequired" to requireAuthentication,
                 "sdk" to Build.VERSION.SDK_INT,
                 "callbackCipherDatasets" to callbackCipherDatasetCount,
-            )
-        )
-        return responseBuilder.build()
-    }
-
-    private fun buildLockedResponse(
-        request: AutofillRequest.Fillable,
-        filledData: FilledData,
-        matchedPasswords: List<PasswordEntry>,
-        passwordSuggestionEnabled: Boolean,
-    ): FillResponse {
-        val targetIds = filledData.fillableAutofillIds.distinct()
-        val grantContext = AutofillGrantContext.fromRequestUri(
-            packageName = request.packageName,
-            requestUri = request.uri,
-            interactionIdentifier = request.interactionIdentifier,
-            fieldSignatureKey = request.fieldSignatureKey,
-        )
-        val requestToken = AutofillUnlockRequests.put(
-            PendingAutofillUnlockRequest(
-                request = request,
-                passwordIds = matchedPasswords.map { it.id }.distinct(),
-                passwordSuggestionEnabled = passwordSuggestionEnabled,
-                grantContext = grantContext,
-            )
-        )
-        val unlockIntent = AutofillUnlockActivity.getIntent(context, requestToken)
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            Random.nextInt(),
-            unlockIntent,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_MUTABLE
-            } else {
-                PendingIntent.FLAG_CANCEL_CURRENT
-            }
-        )
-        val unlockTitle = strings.get(R.string.autofill_unlock_monica)
-        val menuPresentation = AutofillDatasetBuilder.RemoteViewsFactory.createUnlockPrompt(
-            context = context,
-            message = unlockTitle,
-        )
-        val inlinePresentation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val spec = filledData.vaultItemInlinePresentationSpec
-                ?: request.inlinePresentationSpecs?.firstOrNull()
-            spec?.let {
-                AutofillDatasetBuilder.InlinePresentationBuilder.tryCreate(
-                    context = context,
-                    spec = it,
-                    specs = request.inlinePresentationSpecs,
-                    index = request.inlinePresentationSpecs?.indexOf(it) ?: 0,
-                    pendingIntent = pendingIntent,
-                    title = unlockTitle,
-                    subtitle = grantContext.webDomain ?: request.packageName,
-                    icon = AutofillDatasetBuilder.InlinePresentationBuilder.createAppIcon(
-                        context = context,
-                        packageName = request.packageName,
-                    ),
-                    contentDescription = unlockTitle,
-                )
-            }
-        } else {
-            null
-        }
-
-        val responseBuilder = FillResponse.Builder()
-        when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
-                val presentations = Presentations.Builder()
-                    .setMenuPresentation(menuPresentation)
-                    .apply {
-                        if (inlinePresentation != null) {
-                            setInlinePresentation(inlinePresentation)
-                        }
-                    }
-                    .build()
-                responseBuilder.setAuthentication(
-                    targetIds.toTypedArray(),
-                    pendingIntent.intentSender,
-                    presentations,
-                )
-            }
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
-                @Suppress("DEPRECATION")
-                responseBuilder.setAuthentication(
-                    targetIds.toTypedArray(),
-                    pendingIntent.intentSender,
-                    menuPresentation,
-                    inlinePresentation,
-                )
-            }
-            else -> {
-                @Suppress("DEPRECATION")
-                responseBuilder.setAuthentication(
-                    targetIds.toTypedArray(),
-                    pendingIntent.intentSender,
-                    menuPresentation,
-                )
-            }
-        }
-        if (filledData.ignoreAutofillIds.isNotEmpty()) {
-            responseBuilder.setIgnoredIds(*filledData.ignoreAutofillIds.toTypedArray())
-        }
-        attachSaveInfoIfNeeded(responseBuilder, request)
-        AutofillLogger.i(
-            "AUTH",
-            "Locked vault response contains one response-level unlock action",
-            metadata = mapOf(
-                "packageName" to request.packageName,
-                "webDomain" to (grantContext.webDomain ?: "none"),
-                "targetCount" to targetIds.size,
-                "passwordCount" to matchedPasswords.size,
             )
         )
         return responseBuilder.build()
@@ -623,7 +495,9 @@ class FillResponseBuilderNg(
     private fun extractWebDomain(uri: String?): String? =
         uri
             ?.takeIf { it.isNotBlank() }
-            ?.let { runCatching { Uri.parse(it).host }.getOrNull() }
+            ?.let { runCatching { Uri.parse(it) }.getOrNull() }
+            ?.takeUnless { it.scheme.equals("androidapp", ignoreCase = true) }
+            ?.host
             ?.takeIf { it.isNotBlank() }
 
     private fun attachSaveInfoIfNeeded(
@@ -654,7 +528,7 @@ private fun buildLoginCallbackTargets(views: List<AutofillView>): List<AutofillC
     val seenIds = mutableSetOf<String>()
     return views.mapNotNull { view ->
         val target = when (view) {
-            is AutofillView.Login.Username -> AutofillCallbackTarget(view.data.autofillId, "USERNAME")
+            is AutofillView.Login.Username -> AutofillCallbackTarget(view.data.autofillId, view.data.semanticHint ?: view.data.hint.name)
             is AutofillView.Login.Password -> if (view.data.hint == FieldHint.NEW_PASSWORD) null
                 else AutofillCallbackTarget(view.data.autofillId, view.data.hint.name)
             is AutofillView.Field -> null
@@ -663,15 +537,8 @@ private fun buildLoginCallbackTargets(views: List<AutofillView>): List<AutofillC
     }
 }
 
-private fun buildAutofillHintNames(views: List<AutofillView>): List<String> {
-    return views.map { view ->
-        when (view) {
-            is AutofillView.Login.Username -> "USERNAME"
-            is AutofillView.Login.Password -> view.data.hint.name
-            is AutofillView.Field -> view.hint.name
-        }
-    }
-}
+private fun buildAutofillHintNames(views: List<AutofillView>): List<String> =
+    views.map { it.data.semanticHint ?: it.data.hint.name }
 
 private val FilledData.fillableAutofillIds: List<AutofillId>
     get() = originalPartition.views.map { it.data.autofillId }

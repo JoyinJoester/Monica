@@ -134,7 +134,7 @@ class AutofillPickerActivity : ComponentActivity() {
                 val hint = autofillHints?.getOrNull(index)
                 val value = when (hint) {
                     EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name -> accountValue
-                    EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name -> accountValue
+                    EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name -> AutofillAccountValues.resolve(hint, accountValue, false)
                     EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name ->
                         if (fillEmailWithAccount || accountValue.contains("@")) accountValue else null
                     EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name,

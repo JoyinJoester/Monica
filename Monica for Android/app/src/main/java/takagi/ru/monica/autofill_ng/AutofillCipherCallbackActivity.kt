@@ -35,8 +35,6 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.security.DeveloperVerificationPolicy
-import takagi.ru.monica.ui.components.MonicaPasswordDialogAuthScreen
-import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.utils.SettingsManager
 
 class AutofillCipherCallbackActivity : AppCompatActivity() {
@@ -94,8 +92,6 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
     private var callbackArgsToken: String? = null
     private lateinit var securityManager: SecurityManager
     private lateinit var settingsManager: SettingsManager
-    private lateinit var biometricAuthHelper: BiometricAuthHelper
-    private var biometricPromptShown = false
     private var resultPublished = false
 
     private fun grantContext() = AutofillGrantContext(
@@ -132,7 +128,6 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
             }
             securityManager = SecurityManager(applicationContext)
             settingsManager = SettingsManager(applicationContext)
-            biometricAuthHelper = BiometricAuthHelper(this@AutofillCipherCallbackActivity)
             if (args?.requireAuthentication == true) {
                 startAuthentication()
             } else {
@@ -143,8 +138,8 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
-        callbackArgs = resolveArgsFromIntent(intent)
+        // Do not apply an in-flight verification to a replacement credential/request.
+        cancelAndFinish("request_replaced")
     }
 
     private fun startAuthentication() {
@@ -159,87 +154,14 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
                 completeCipherAutofill()
                 return@launch
             }
-            val biometricEnabled = settings.biometricEnabled
-            val biometricAvailable = biometricAuthHelper.isBiometricAvailable()
-            AutofillLogger.i(
-                "CALLBACK",
-                "Starting autofill authentication",
-                metadata = mapOf(
-                    "biometricEnabled" to biometricEnabled,
-                    "biometricAvailable" to biometricAvailable,
-                )
-            )
-            if (biometricEnabled && biometricAvailable) {
-                showBiometricPrompt()
-            } else {
-                showPasswordAuthentication()
-            }
-        }
-    }
-
-    private fun showBiometricPrompt() {
-        if (biometricPromptShown || resultPublished || isFinishing || isDestroyed) {
-            return
-        }
-        biometricPromptShown = true
-        AutofillLogger.i("CALLBACK", "Showing biometric prompt for autofill")
-        runCatching {
-            biometricAuthHelper.authenticate(
-                activity = this@AutofillCipherCallbackActivity,
-                title = getString(R.string.autofill_auth_title),
-                subtitle = getString(R.string.autofill_auth_subtitle),
-                description = getString(R.string.autofill_auth_description),
-                negativeButtonText = getString(R.string.use_password),
-                onSuccess = {
-                    AutofillLogger.i("CALLBACK", "Biometric prompt succeeded")
-                    if (securityManager.unlockVaultWithBiometric()) {
+            setContent {
+                takagi.ru.monica.autofill_ng.auth.AutofillDeviceVerification(
+                    onSuccess = {
                         lifecycleScope.launch { completeCipherAutofill(authenticationVerified = true) }
-                    } else {
-                        AutofillLogger.w("CALLBACK", "Biometric unlock failed, falling back to password")
-                        showPasswordAuthentication()
-                    }
-                },
-                onError = { code, message ->
-                    AutofillLogger.w("CALLBACK", "Biometric prompt error: $code $message")
-                    showPasswordAuthentication()
-                },
-                onCancel = {
-                    AutofillLogger.w("CALLBACK", "Biometric prompt cancelled")
-                    cancelAndFinish("authentication_cancelled")
-                },
-            )
-        }.onFailure { error ->
-            biometricPromptShown = false
-            AutofillLogger.w(
-                "CALLBACK",
-                "Biometric prompt failed to show, falling back to password: ${error.message.orEmpty()}"
-            )
-            showPasswordAuthentication()
-        }
-    }
-
-    private fun showPasswordAuthentication() {
-        AutofillLogger.i("CALLBACK", "Showing password authentication for autofill")
-        setContent {
-            MonicaPasswordDialogAuthScreen(
-                settingsFlow = settingsManager.settingsFlow,
-                appName = getString(R.string.app_name),
-                title = getString(R.string.verify_identity),
-                subtitle = getString(R.string.autofill_auth_subtitle),
-                passwordLabel = getString(R.string.master_password),
-                description = getString(R.string.enter_master_password),
-                confirmText = getString(R.string.confirm),
-                cancelText = getString(R.string.cancel),
-                emptyError = getString(R.string.current_password_required),
-                unsupportedCharacterError = getString(R.string.error_password_contains_unsupported_characters),
-                minLengthError = getString(R.string.error_password_too_short),
-                incorrectError = getString(R.string.password_incorrect),
-                verifyPassword = { input -> securityManager.unlockVaultWithPassword(input) },
-                onSuccess = {
-                    lifecycleScope.launch { completeCipherAutofill(authenticationVerified = true) }
-                },
-                onCancel = { cancelAndFinish("authentication_cancelled") },
-            )
+                    },
+                    onCancel = { cancelAndFinish("authentication_cancelled") },
+                )
+            }
         }
     }
 
@@ -273,7 +195,7 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
             cancelAndFinish("credential_no_longer_available")
             return
         }
-        if (rejectBlockedRequest()) return
+        if (resultPublished || isFinishing || isDestroyed || rejectBlockedRequest()) return
         val accountValue = AccountFillPolicy.resolveAccountIdentifier(passwordEntry, securityManager)
         val decryptedPassword = AutofillSecretResolver.decryptPasswordOrNull(
             securityManager = securityManager,
@@ -331,7 +253,7 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
             }
             rememberLearnedFieldSignature(callbackArgs.fieldSignatureKey)
         }
-        if (rejectBlockedRequest()) return
+        if (resultPublished || isFinishing || isDestroyed || rejectBlockedRequest()) return
 
         if (authenticationVerified) {
             val settings = settingsManager.settingsFlow.first()
@@ -452,7 +374,7 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
             if (parsedTargets.isNotEmpty()) {
                 return ResolvedAutofillTargets(
                     ids = parsedTargets.map { it.id },
-                    hints = parsedTargets.map { it.hint.name },
+                    hints = parsedTargets.map { it.semanticHint ?: it.hint.name },
                     source = "assist_structure",
                 )
             }
@@ -542,19 +464,11 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
             val normalizedHint = autofillHints.getOrNull(index)?.trim()?.lowercase().orEmpty()
             val value = when {
                 AutofillPasswordRolePolicy.isNewPasswordHint(normalizedHint) -> null
-                normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name.lowercase() ||
-                    normalizedHint.contains("username") -> accountValue
-                normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name.lowercase() ||
-                    normalizedHint.contains("phone") ||
-                    normalizedHint.contains("mobile") ||
-                    normalizedHint.contains("tel") -> accountValue
-                normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name.lowercase() ||
-                    normalizedHint.contains("email") -> if (allowAccountInEmailField) accountValue else null
                 normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name.lowercase() ||
                     normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name.lowercase() ||
                     normalizedHint.contains("password") ||
                     normalizedHint.contains("pass") -> decryptedPassword
-                else -> null
+                else -> AutofillAccountValues.resolve(normalizedHint, accountValue, allowAccountInEmailField)
             }
             if (!value.isNullOrBlank()) {
                 filledValues[autofillId] = value
@@ -565,29 +479,8 @@ class AutofillCipherCallbackActivity : AppCompatActivity() {
             return filledValues
         }
 
-        Log.w(TAG, "No strict hint matched in callback, trying controlled fallback")
-        autofillIds.forEachIndexed { index, autofillId ->
-            val normalizedHint = autofillHints.getOrNull(index)?.lowercase().orEmpty()
-            val fallbackValue = when {
-                AutofillPasswordRolePolicy.isNewPasswordHint(normalizedHint) -> null
-                normalizedHint.contains("pass") -> decryptedPassword
-                normalizedHint.contains("user") ||
-                    normalizedHint.contains("email") ||
-                    normalizedHint.contains("phone") ||
-                    normalizedHint.contains("mobile") ||
-                    normalizedHint.contains("tel") ||
-                    normalizedHint.contains("号码") ||
-                    normalizedHint.contains("手机号") ||
-                    normalizedHint.contains("account") ||
-                    normalizedHint.contains("login") -> accountValue
-                autofillIds.size == 1 -> if (accountValue.isNotBlank()) accountValue else decryptedPassword
-                index == 0 -> accountValue
-                index == 1 -> decryptedPassword
-                else -> null
-            }
-            if (!fallbackValue.isNullOrBlank()) {
-                filledValues[autofillId] = fallbackValue
-            }
+        if (autofillIds.size == 1 && autofillHints.singleOrNull().isNullOrBlank() && accountValue.isNotBlank()) {
+            filledValues[autofillIds.first()] = accountValue
         }
         return filledValues
     }

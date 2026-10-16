@@ -252,6 +252,7 @@ class UnifiedWalletEditorsDeviceTest {
         val original = DocumentData(DocumentType.PASSPORT, "TEST-12345", "SYNTHETIC PERSON",
             address3 = "Third address line", passportNumber = "EXTRA-123", ssn = "SYNTHETIC-SSN",
             firstName = "Synthetic", middleName = "M", email = "synthetic@example.invalid",
+            district = "County", homeEmail = "home@example.test", workPhone = "+12025550144",
             additionalInfo = "Existing information")
         val id = runBlocking { fixture.db.secureItemDao().insertItem(SecureItem(itemType = ItemType.DOCUMENT,
             title = fixture.prefix, itemData = CardWalletDataCodec.encodeDocumentData(original))) }
@@ -274,7 +275,7 @@ class UnifiedWalletEditorsDeviceTest {
     }
 
     @Test fun billingContactAndCustomFieldSurviveSaveAtLargeFont() {
-        val original = BillingAddressData(fullName = "SYNTHETIC NAME", streetAddress = "Test street", apartment = "12B",
+        val original = BillingAddressData(fullName = "SYNTHETIC NAME", firstName = "Independent", middleName = "Middle", lastName = "Parts", district = "County", addressLine3 = "Line3", homeEmail = "home@example.test", workPhone = "+12025550144", streetAddress = "Test street", apartment = "12B",
             city = "Test city", stateProvince = "Test region", postalCode = "100000", country = "Test country")
         val id = runBlocking { fixture.db.secureItemDao().insertItem(SecureItem(itemType = ItemType.BILLING_ADDRESS,
             title = fixture.prefix, itemData = CardWalletDataCodec.encodeBillingAddressData(original))) }
@@ -287,6 +288,7 @@ class UnifiedWalletEditorsDeviceTest {
         } }
         compose.waitUntil(15000) { compose.onAllNodesWithText("SYNTHETIC NAME").fetchSemanticsNodes().isNotEmpty() }
         capture("billing-dark-large-font")
+        input(R.string.document_first_name_label, "Edited independent name")
         add("contact")
         compose.onNodeWithTag("entry_contact_email_0").performScrollTo().performTextInput("synthetic@example.invalid")
         add("custom_text")
@@ -296,7 +298,7 @@ class UnifiedWalletEditorsDeviceTest {
         compose.waitUntil(30000) { closed }
         val item = runBlocking { requireNotNull(fixture.secureItems.getItemById(id)) }
         val data = requireNotNull(CardWalletDataCodec.parseBillingAddressData(item.itemData, fixture.security::decryptDataIfMonicaCiphertext))
-        assertEquals(original.copy(email = "synthetic@example.invalid", customFields = data.customFields), data)
+        assertEquals(original.copy(firstName = "Edited independent name", email = "synthetic@example.invalid", customFields = data.customFields), data)
         assertEquals("At reception", data.customFields.single().value)
         assertFalse(data.customFields.single().isProtected())
     }

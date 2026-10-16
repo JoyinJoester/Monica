@@ -85,6 +85,16 @@ class AutofillStructureIntegrationTest {
         assertEquals(setOf(user.autofillId,pass.autofillId),parse(node(children=arrayOf(user,pass))).items.map { it.id }.toSet())
     }
 
+    @Test fun dynamicCardExpirySelectIdsKeepSeparateMonthAndYearRoles() {
+        val number = node(hints = arrayOf("cc-number"))
+        val month = node(html = mapOf("type" to "select-one", "id" to "cc-expiry-month"), focused = true)
+        val year = node(html = mapOf("type" to "select-one", "id" to "cc-expiry-year"))
+        for (field in listOf(month, year)) ReflectionHelpers.setField(field, "mAutofillType", View.AUTOFILL_TYPE_LIST)
+        val parsed = parse(node(domain = "shop.example.com", children = arrayOf(number, month, year)))
+        assertEquals(FieldHint.CREDIT_CARD_EXPIRATION_MONTH, parsed.items.single { it.id == month.autofillId }.hint)
+        assertEquals(FieldHint.CREDIT_CARD_EXPIRATION_YEAR, parsed.items.single { it.id == year.autofillId }.hint)
+    }
+
     @Test fun enterpriseIdentifiersAreRecognizedWithoutStandardHints() {
         listOf("请输入工号","学号","員工編號","账号","帳號").forEach { hint ->
             val field = node(hint=hint,focused=true)
@@ -431,6 +441,38 @@ class AutofillStructureIntegrationTest {
         assertEquals(AutofillFormPurpose.OTP,parse(node(html=mapOf("autocomplete" to "one-time-code"),focused=true)).formPurpose)
         assertEquals(AutofillFormPurpose.UNKNOWN,parse(node(html=mapOf("type" to "search"),focused=true)).formPurpose)
         assertEquals(AutofillFormPurpose.RESET_PASSWORD,parse(node(hint="New password",focused=true)).formPurpose)
+    }
+
+    @Test fun explicitProfileHintsKeepTheirMeaningAndBillingScope() {
+        val email = node(html=mapOf("autocomplete" to "shipping email"), focused=true)
+        val phone = node(html=mapOf("autocomplete" to "shipping tel-national"))
+        val name = node(html=mapOf("autocomplete" to "shipping additional-name"))
+        val other = node(html=mapOf("autocomplete" to "billing email"))
+        val result = parse(node(domain="example.test", children=arrayOf(email,phone,name,other)))
+        assertEquals(setOf(email.autofillId, phone.autofillId, name.autofillId), result.items.map { it.id }.toSet())
+        assertEquals("email", result.items.single { it.id == email.autofillId }.semanticHint)
+        assertEquals("tel-national", result.items.single { it.id == phone.autofillId }.semanticHint)
+        assertEquals(EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS, result.items.single { it.id == email.autofillId }.hint)
+    }
+
+    @Test fun repeatedUnmarkedCardBlocksStaySeparate() {
+        val first = node(html=mapOf("autocomplete" to "cc-name"))
+        val firstNumber = node(html=mapOf("autocomplete" to "cc-number"))
+        val second = node(html=mapOf("autocomplete" to "cc-name"),focused=true)
+        val secondNumber = node(html=mapOf("autocomplete" to "cc-number"))
+        val result = parse(node(domain="example.test",children=arrayOf(first,firstNumber,second,secondNumber)))
+        assertEquals(setOf(second.autofillId,secondNumber.autofillId),result.items.map { it.id }.toSet())
+    }
+
+    @Test fun chromeTokenArraysPreserveContactAndSectionQualifiers() {
+        val work = node(hints=arrayOf("work", "email"), focused=true)
+        val workPhone = node(hints=arrayOf("work", "tel"))
+        val home = node(hints=arrayOf("home", "email"))
+        val unrelated = node(hints=arrayOf("section-my", "street-address"))
+        val result = parse(node(domain="example.test", children=arrayOf(work,workPhone,home,unrelated)))
+        assertEquals(setOf(work.autofillId,workPhone.autofillId),result.items.map { it.id }.toSet())
+        assertEquals("work email",result.items.single { it.id==work.autofillId }.semanticHint)
+        assertEquals("work phone",result.items.single { it.id==workPhone.autofillId }.semanticHint)
     }
 
 }
