@@ -82,22 +82,35 @@ class NearbyAutomaticSyncTest {
         }
     }
 
-    @Test fun real_presence_gates_transfers_and_unchanged_reopening_does_not_resend() = runBlocking {
+    @Test fun real_presence_gates_transfers_and_unchanged_reopening_does_not_resend() = verifyRealPresence(receiverHosts = false)
+
+    @Test fun receive_only_listener_syncs_a_fresh_database_and_reconnects_without_resending() = verifyRealPresence(receiverHosts = true)
+
+    private fun verifyRealPresence(receiverHosts: Boolean) = runBlocking {
         SessionManager.markUnlocked()
         val id = UUID.randomUUID().toString().replace("-", "")
-        val sender = Fixture("z$id", "a$id", DeviceSyncMode.SEND_ONLY, realPresence = true)
-        val receiver = Fixture("a$id", "z$id", DeviceSyncMode.RECEIVE_ONLY, realPresence = true)
-        suspend fun awaitState(message: String, condition: () -> Boolean) {
+        val senderId = "${if (receiverHosts) "a" else "z"}$id"
+        val receiverId = "${if (receiverHosts) "z" else "a"}$id"
+        val sender = Fixture(senderId, receiverId, DeviceSyncMode.SEND_ONLY, realPresence = true)
+        val receiver = Fixture(receiverId, senderId, DeviceSyncMode.RECEIVE_ONLY, realPresence = true)
+        val connector = if (receiverHosts) sender else receiver
+        suspend fun awaitState(message: String, allowConnectionRetry: Boolean = false, condition: () -> Boolean) {
             val deadline = System.nanoTime() + 90_000_000_000L
             while (!condition() && System.nanoTime() < deadline) {
                 sender.tick(); receiver.tick(); delay(50)
-                assertNull(sender.coordinator.state.value.error); assertNull(receiver.coordinator.state.value.error)
+                for (state in listOf(sender.coordinator.state.value, receiver.coordinator.state.value)) {
+                    if (allowConnectionRetry && state.manualSync &&
+                        state.failureStage in setOf("connecting", "authenticating") &&
+                        state.error in setOf("connection_failed", "connection_closed", "transfer_timeout")) continue
+                    assertNull("$message: $state", state.error)
+                }
             }
             assertTrue(message, condition())
         }
         try {
             val source = sender.db.passwordEntryDao().insertPasswordEntry(takagi.ru.monica.data.PasswordEntry(
                 title = "Presence fixture", website = "example.test", username = "fixture", password = sender.security.encryptData("first")))
+            assertTrue(receiver.db.passwordEntryDao().getDeviceSyncLocalPasswords().isEmpty())
             repeat(5) { sender.tick(); delay(100) }
             assertEquals("waiting_for_app", sender.coordinator.state.value.phase)
             assertNull(sender.get("snapshot"))
@@ -107,6 +120,7 @@ class NearbyAutomaticSyncTest {
             }
             val senderSynced = sender.settings.peers.single().lastSyncedAt
             val receiverSynced = receiver.settings.peers.single().lastSyncedAt
+            assertEquals("first", receiver.security.decryptDataIfMonicaCiphertext(receiver.db.passwordEntryDao().getDeviceSyncLocalPasswords().single().password))
             receiver.coordinator.setAppVisible(false)
             awaitState("Background peer must stop its listener and disappear") {
                 sender.coordinator.state.value.phase == "waiting_for_app" && receiver.coordinator.state.value.phase == "background"
@@ -118,7 +132,7 @@ class NearbyAutomaticSyncTest {
             assertEquals(0, receiver.coordinator.state.value.activeConnections)
             receiver.coordinator.setAppVisible(true)
             awaitState("Unchanged reopened peer must be online without another transfer") {
-                receiver.coordinator.state.value.peers.single().status == "online"
+                connector.coordinator.state.value.peers.single().status == "online"
             }
             repeat(3) { sender.tick(); receiver.tick() }
             assertEquals(senderSynced, sender.settings.peers.single().lastSyncedAt)
@@ -129,6 +143,17 @@ class NearbyAutomaticSyncTest {
                 receiver.settings.peers.single().lastSyncedAt > receiverSynced
             }
             assertEquals("second", receiver.security.decryptDataIfMonicaCiphertext(receiver.db.passwordEntryDao().getDeviceSyncLocalPasswords().single().password))
+            sender.toggle(false); receiver.toggle(false)
+            val beforeManual = receiver.settings.peers.single().lastSyncedAt
+            val senderBeforeManual = sender.settings.peers.single().lastSyncedAt
+            sender.db.passwordEntryDao().updatePasswordEntry(entry.copy(password = sender.security.encryptData("manual")))
+            sender.manual(); receiver.manual()
+            awaitState("Manual synchronization must also work in either connection role", allowConnectionRetry = true) {
+                receiver.settings.peers.single().lastSyncedAt > beforeManual &&
+                    sender.settings.peers.single().lastSyncedAt > senderBeforeManual
+            }
+            assertEquals("manual", receiver.security.decryptDataIfMonicaCiphertext(receiver.db.passwordEntryDao().getDeviceSyncLocalPasswords().single().password))
+            assertEquals(1, sender.db.passwordEntryDao().getDeviceSyncLocalPasswords().size)
         } finally { sender.close(); receiver.close(); SessionManager.markLocked() }
     }
 

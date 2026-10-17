@@ -636,16 +636,21 @@ internal class DeviceSyncCoordinator private constructor(context: Context) {
             store.save(settings())
             error = null
         } else {
-            fail(id, transfer.enrollment)
             val code = progress.optString("error", "device_sync_failed")
+            // A peer may replace its advertised listener as manual/settings state changes.
+            // Keep the user's request through connection setup retries, within its original deadline.
+            val retryManualConnection = !transfer.enrollment &&
+                transfer.stage in setOf("connecting", "authenticating") &&
+                code in setOf("connection_failed", "connection_closed", "transfer_timeout")
+            fail(id, transfer.enrollment, retryManualConnection)
             recordFailure(LanSyncException(code, if (code == "peer_merge_failed") "peer_apply" else "transfer_$next"), transfer.stage, transfer.attempts)
         }
         if (transfer.enrollment) { pairing = false; code = ""; invitations = emptyList(); phase = next }
         stop(transfer); transfers.remove(id)
     }
 
-    private fun fail(id: String, enrollment: Boolean) {
-        manualPeers.remove(id)
+    private fun fail(id: String, enrollment: Boolean, retryManualConnection: Boolean = false) {
+        if (!retryManualConnection || SystemClock.elapsedRealtime() >= manualDeadline) manualPeers.remove(id)
         statuses[id] = "offline"; force += id
         val count = minOf(6, (retry[id]?.first ?: 0) + 1)
         retry[id] = count to (SystemClock.elapsedRealtime() + minOf(60, 1 shl count) * 1000L)

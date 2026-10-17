@@ -9,7 +9,11 @@ import java.util.UUID
 
 /** Exercises the packaged Android JNI over a real encrypted loopback connection. */
 class NearbySyncNativeInstrumentedTest {
-    @Test fun receiveOnlyDoesNotSendVaultArtifactsOrContentKey() {
+    @Test fun receiveOnlyDoesNotSendVaultArtifactsOrContentKey() = verifyReceiveOnly(receiverHosts = false)
+
+    @Test fun receiveOnlyListenerDoesNotRequireOrSendVaultArtifactsOrContentKey() = verifyReceiveOnly(receiverHosts = true)
+
+    private fun verifyReceiveOnly(receiverHosts: Boolean) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "nearby-native-test-${UUID.randomUUID()}")
         val outgoing = DevicePairingSnapshot.prepare(File(root, "out"), "sender")
@@ -19,16 +23,20 @@ class NearbySyncNativeInstrumentedTest {
         fun device(id: String, mode: String) = JSONObject().put("device_id", id).put("name", id)
             .put("content_type", "vault").put("vault_content_version", 2).put("sync_mode", mode)
         try {
-            val sender = RustLanSync.request(JSONObject().put("operation", "start").put("protocol", 2)
+            val senderRequest = JSONObject().put("protocol", 2)
                 .put("listen_address", "127.0.0.1").put("vault_id", "monica-passwords-v1")
                 .put("outgoing_directory", outgoing.directory.absolutePath).put("incoming_directory", senderIn.absolutePath)
-                .put("content_key", outgoing.contentKey).put("device", device("sender", "send_only")))
-            handles += sender.getLong("handle")
-            val receiver = RustLanSync.request(JSONObject().put("operation", "connect").put("protocol", 2)
-                .put("invitation", "monica-lan:2:127.0.0.1:${sender.getInt("port")}:${sender.getString("code")}")
+                .put("content_key", outgoing.contentKey).put("device", device("sender", "send_only"))
+            val receiverRequest = JSONObject().put("protocol", 2).put("listen_address", "127.0.0.1")
                 .put("vault_id", "monica-passwords-v1").put("incoming_directory", receiverIn.absolutePath)
-                .put("device", device("receiver", "receive_only")))
-            handles += receiver.getLong("handle")
+                .put("device", device("receiver", "receive_only"))
+            val listener = RustLanSync.request((if (receiverHosts) receiverRequest else senderRequest).put("operation", "start"))
+            handles += listener.getLong("handle")
+            val connector = RustLanSync.request((if (receiverHosts) senderRequest else receiverRequest).put("operation", "connect")
+                .put("invitation", "monica-lan:2:127.0.0.1:${listener.getInt("port")}:${listener.getString("code")}"))
+            handles += connector.getLong("handle")
+            val receiverIndex = if (receiverHosts) 0 else 1
+            val senderIndex = 1 - receiverIndex
             val acknowledged = mutableSetOf<Long>()
             val deadline = System.nanoTime() + 30_000_000_000L
             var final = emptyList<JSONObject>()
@@ -38,7 +46,7 @@ class NearbySyncNativeInstrumentedTest {
                     assertNotEquals(progress.optString("error"), "failed", progress.getString("phase"))
                     if (progress.getString("phase") == "received" && acknowledged.add(handles[index])) {
                         // Verify the actual received ciphertext before acknowledging its receipt.
-                        if (index == 1) assertArrayEquals(File(outgoing.directory, "changes.mdbxsync").readBytes(),
+                        if (index == receiverIndex) assertArrayEquals(File(outgoing.directory, "changes.mdbxsync").readBytes(),
                             File(receiverIn, "changes.mdbxsync").readBytes())
                         RustLanSync.request(JSONObject().put("operation", "acknowledge").put("handle", handles[index]).put("success", true))
                     }
@@ -48,10 +56,10 @@ class NearbySyncNativeInstrumentedTest {
             }
             assertTrue("Packaged JNI transfer timed out", final.all { it.getString("phase") == "completed" })
             assertTrue(requireNotNull(senderIn.listFiles()).isEmpty())
-            val senderPeer = final[0].getJSONObject("peer")
+            val senderPeer = final[senderIndex].getJSONObject("peer")
             assertFalse(senderPeer.getBoolean("receive_content"))
             assertEquals("", senderPeer.getJSONObject("pairing").getString("content_key"))
-            assertFalse(final[1].getJSONObject("peer").getBoolean("send_content"))
+            assertFalse(final[receiverIndex].getJSONObject("peer").getBoolean("send_content"))
         } finally {
             handles.forEach(::close)
             root.deleteRecursively()

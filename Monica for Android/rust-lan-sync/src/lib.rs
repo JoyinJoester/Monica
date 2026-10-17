@@ -326,7 +326,12 @@ fn complete(job: &Job, result: Result<()>, incoming: &Path) {
 
 fn start(value: &Value) -> Result<Value> {
     let mut prepared = prepare(value)?;
-    if prepared.outgoing.is_none() {
+    // Listening is a connection role, independent of the negotiated data direction.
+    // A receive-only v2 peer intentionally has no local export or content key.
+    if prepared.outgoing.is_none()
+        && prepared.device.as_ref().and_then(|device| device.sync_mode)
+            != Some(peering::SyncMode::ReceiveOnly)
+    {
         return Err("missing_sync_bundle");
     }
     let listen_address = value
