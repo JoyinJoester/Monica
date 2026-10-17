@@ -215,9 +215,15 @@ class CipherSyncProcessor(
         vault: BitwardenVault,
         cipher: CipherApiResponse,
         symmetricKey: SymmetricCryptoKey,
-        forensicsCollector: ((BitwardenSyncForensicsSummary) -> Unit)? = null
+        forensicsCollector: ((BitwardenSyncForensicsSummary) -> Unit)? = null,
+        organizationKeys: Map<String, SymmetricCryptoKey> = emptyMap()
     ): CipherSyncResult {
-        return BitwardenCipherKeyResolver.withCipherKey(cipher, symmetricKey, TAG) { effectiveKey ->
+        if (!cipher.organizationId.isNullOrBlank() && cipher.viewPassword == false) {
+            return CipherSyncResult.Skipped("Organization item restricts password visibility")
+        }
+        return BitwardenCipherKeyResolver.withCipherKey(cipher, symmetricKey, TAG, organizationKeys) { effectiveKey ->
+            // Authenticate the record before field-level compatibility fallbacks can produce empty values.
+            cipher.name?.let { BitwardenCrypto.decryptToString(it, effectiveKey) }
             val serverDeletedAt = parseBitwardenDeletedAt(cipher.deletedDate)
             val serverArchivedAt = parseBitwardenArchivedAt(cipher.archivedDate)
             val metrics = if (forensicsCollector != null) {

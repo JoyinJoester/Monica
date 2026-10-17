@@ -49,7 +49,7 @@ class BitwardenSyncSnapshotPreviewParser {
         }
 
         val effectiveKey = if (symmetricKey != null) {
-            BitwardenCipherKeyResolver.resolveCipherKey(cipher, symmetricKey, TAG)
+            runCatching { BitwardenCipherKeyResolver.resolveCipherKey(cipher, symmetricKey, TAG) }.getOrNull()
         } else {
             null
         }

@@ -122,6 +122,9 @@ interface BitwardenIdentityApi {
  *       或自托管服务的 /api 路径
  */
 interface BitwardenVaultApi {
+    @GET("accounts/profile")
+    suspend fun profile(@Header("Authorization") authorization: String): Response<ProfileResponse>
+
     @POST("two-factor/send-email-login")
     suspend fun sendTwoFactorEmailLogin(
         @Body request: SendEmailLoginRequest
@@ -514,11 +517,21 @@ data class ProfileResponse(
     val privateKey: String? = null,
     @JsonNames("securityStamp")
     @SerialName("SecurityStamp")
-    val securityStamp: String? = null
+    val securityStamp: String? = null,
+    @JsonNames("organizations")
+    @SerialName("Organizations")
+    val organizations: List<OrganizationResponse> = emptyList()
 ) {
     /** 与官方 Bitwarden 客户端一致：premium 或 premiumFromOrganization 任一为 true 即视为 Premium。 */
     val hasPremium: Boolean get() = premium || premiumFromOrganization
 }
+
+@Serializable
+data class OrganizationResponse(
+    @JsonNames("id") @SerialName("Id") val id: String = "",
+    @JsonNames("name") @SerialName("Name") val name: String? = null,
+    @JsonNames("key") @SerialName("Key") val key: String? = null
+)
 
 @Serializable
 data class FolderApiResponse(
@@ -548,6 +561,10 @@ data class CipherApiResponse(
     @JsonNames("organizationId")
     @SerialName("OrganizationId")
     val organizationId: String? = null,
+    @JsonNames("collectionIds") @SerialName("CollectionIds")
+    val collectionIds: List<String>? = null,
+    @JsonNames("edit") @SerialName("Edit") val edit: Boolean? = null,
+    @JsonNames("viewPassword") @SerialName("ViewPassword") val viewPassword: Boolean? = null,
     @JsonNames("folderId")
     @SerialName("FolderId")
     val folderId: String? = null,
@@ -1000,7 +1017,11 @@ data class CipherUpdateRequest(
     val reprompt: Int = 0,
     @JsonNames("ArchivedDate", "archivedDate")
     @SerialName("archivedDate")
-    val archivedDate: String? = null
+    val archivedDate: String? = null,
+    @SerialName("organizationId") val organizationId: String? = null,
+    @SerialName("collectionIds") val collectionIds: List<String>? = null,
+    @SerialName("key") val key: String? = null,
+    @SerialName("lastKnownRevisionDate") val lastKnownRevisionDate: String? = null
 )
 
 @Serializable

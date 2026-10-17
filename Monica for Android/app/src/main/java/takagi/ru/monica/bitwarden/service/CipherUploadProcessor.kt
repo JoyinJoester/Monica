@@ -260,6 +260,25 @@ class CipherUploadProcessor(
         symmetricKey: SymmetricCryptoKey
     ): UploadItemResult {
         return try {
+            val api = apiManager.getVaultApi(vault)
+            val baseline = fetchCipherForFieldMerge(api, accessToken, cipherId)
+                ?: return UploadItemResult.Error("Cannot read cipher before update; local changes retained")
+            BitwardenCipherOwnership.requireWritable(baseline, cipherId)
+            val key = BitwardenCipherKeyResolver.resolveRemoteCipherKey(api, accessToken, baseline, symmetricKey)
+            try {
+                updateSecureItemWithKey(vault, item, cipherId, accessToken, key, symmetricKey, baseline)
+            } finally { key.clear() }
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) {
+            UploadItemResult.Error("Cipher update deferred; local changes retained (${error.javaClass.simpleName})")
+        }
+    }
+
+    private suspend fun updateSecureItemWithKey(
+        vault: BitwardenVault, item: SecureItem, cipherId: String, accessToken: String,
+        symmetricKey: SymmetricCryptoKey, userKey: SymmetricCryptoKey, baselineCipher: CipherApiResponse
+    ): UploadItemResult {
+        return try {
             val request = when (item.itemType) {
                 ItemType.TOTP -> createTotpCipherRequest(item, symmetricKey)
                 ItemType.BANK_CARD -> createCardCipherRequest(item, symmetricKey)
@@ -269,9 +288,8 @@ class CipherUploadProcessor(
             }
 
             val vaultApi = apiManager.getVaultApi(vault)
-            val baselineCipher = fetchCipherForFieldMerge(vaultApi, accessToken, cipherId)
             val mergedRequest = mergeRequestWithCipherBaseline(request, baselineCipher, symmetricKey)
-            val updateRequest = mergedRequest.toUpdateRequest()
+            val updateRequest = BitwardenCipherOwnership.preserve(mergedRequest.toUpdateRequest(), baselineCipher)
             val requestPayload = runCatching { json.encodeToString(updateRequest) }.getOrNull()
             val response = vaultApi.updateCipher(
                 authorization = "Bearer $accessToken",
@@ -326,7 +344,7 @@ class CipherUploadProcessor(
                 item = item,
                 cipher = updatedCipher,
                 accessToken = accessToken,
-                vaultKey = symmetricKey
+                vaultKey = userKey
             )
             val updatedItem = item.copy(
                 bitwardenRevisionDate = updatedCipher.revisionDate,
@@ -413,11 +431,9 @@ class CipherUploadProcessor(
         }
 
         return runCatching {
-            BitwardenCipherKeyResolver.withCipherKey(
-                cipher = cipher,
-                vaultKey = vaultKey,
-                logTag = TAG
-            ) { effectiveKey ->
+            val effectiveKey = BitwardenCipherKeyResolver.resolveRemoteCipherKey(
+                apiManager.getVaultApi(vault), accessToken, cipher, vaultKey)
+            try {
                 val targetContext = AttachmentFacade.BitwardenContext(
                     vaultApi = apiManager.getVaultApi(vault),
                     httpClient = apiManager.getOkHttpClient(vault),
@@ -444,7 +460,7 @@ class CipherUploadProcessor(
                             bitwardenContext = targetContext
                         )
                     }
-            }
+            } finally { effectiveKey.clear() }
         }
     }
     
@@ -589,7 +605,13 @@ class CipherUploadProcessor(
             }
             val original = fetch()
             val folderChange = takagi.ru.monica.passkey.PasskeyCipherFolderIntent.pending(context, passkey)
-            val request = PasskeyCipherUpdate.build(original, normalizePasskeyForUpload(passkey), cipherId, symmetricKey, folderChange)
+            val source = json.decodeFromString<CipherApiResponse>(original.toString())
+            BitwardenCipherOwnership.requireWritable(source, cipherId)
+            val ownerKey = BitwardenCipherKeyResolver.resolveRemoteCipherKey(api, accessToken, source.copy(key = null), symmetricKey)
+            val request = try {
+                PasskeyCipherUpdate.build(original, normalizePasskeyForUpload(passkey), cipherId, symmetricKey, folderChange,
+                    source.organizationId?.let { mapOf(it to ownerKey) }.orEmpty())
+            } finally { ownerKey.clear() }
             if (passkeyDao.getPasskeyByRecordId(passkey.id) != passkey) {
                 return@withLock UploadItemResult.Error("Passkey changed during upload; retry with the latest version")
             }

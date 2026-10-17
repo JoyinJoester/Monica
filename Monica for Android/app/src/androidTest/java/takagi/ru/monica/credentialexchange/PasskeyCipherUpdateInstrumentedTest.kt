@@ -40,7 +40,25 @@ class PasskeyCipherUpdateInstrumentedTest {
                 f.passkeys.updatePasskey(first.copy(bitwardenFolderId = if (mode == "move-folder") "target-folder" else null))
                 first = f.db.passkeyDao().getPasskeyByRecordId(first.id)!!
             }
-            fun enc(value: String) = JsonPrimitive(BitwardenCrypto.encryptString(value, f.vaultKey))
+            val team = mode.startsWith("team")
+            val orgKey = BitwardenCrypto.SymmetricCryptoKey(ByteArray(32) { 11 }, ByteArray(32) { 12 })
+            val itemKey = BitwardenCrypto.SymmetricCryptoKey(ByteArray(32) { 21 }, ByteArray(32) { 22 })
+            val cipherKey = if (mode == "team-item-key") itemKey else if (team) orgKey else f.vaultKey
+            val profile = if (team) {
+                val rsa = java.security.KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+                val wrapped = javax.crypto.Cipher.getInstance("RSA/ECB/OAEPPadding").run {
+                    init(javax.crypto.Cipher.ENCRYPT_MODE, rsa.public, javax.crypto.spec.OAEPParameterSpec(
+                        "SHA-256", "MGF1", java.security.spec.MGF1ParameterSpec.SHA256, javax.crypto.spec.PSource.PSpecified.DEFAULT))
+                    doFinal(orgKey.encKey + orgKey.macKey)
+                }
+                buildJsonObject {
+                    put("privateKey", BitwardenCrypto.encrypt(rsa.private.encoded, f.vaultKey))
+                    put("organizations", buildJsonArray { add(buildJsonObject {
+                        put("id", "team"); put("key", "3.${Base64.getEncoder().encodeToString(wrapped)}")
+                    }) })
+                }
+            } else null
+            fun enc(value: String) = JsonPrimitive(BitwardenCrypto.encryptString(value, cipherKey))
             fun credential(row: PasskeyEntry) = buildJsonObject {
                 put("credentialId", enc(row.credentialId)); put("rpId", enc(row.rpId)); put("rpName", enc(row.rpName))
                 put("userHandle", enc(row.userId)); put("userName", enc("old")); put("userDisplayName", enc(row.userDisplayName))
@@ -48,6 +66,11 @@ class PasskeyCipherUpdateInstrumentedTest {
                 put("keyCurve", enc("P-256")); put("keyType", enc("public-key")); put("discoverable", enc("true"))
             }
             var remote = buildJsonObject {
+                if (team) {
+                    put("organizationId", "team"); put("edit", true)
+                    put("collectionIds", buildJsonArray { add("collection") })
+                    if (mode == "team-item-key") put("key", BitwardenCrypto.encrypt(itemKey.encKey + itemKey.macKey, orgKey))
+                }
                 put("id", cipherId); put("type", 1); put("revisionDate", "2026-10-10T00:00:00.000Z")
                 put("name", enc("Shared login")); put("notes", enc("original notes")); put("folderId", "keep-folder")
                 put("favorite", true); put("futureField", buildJsonObject { put("preserved", true) })
@@ -62,6 +85,9 @@ class PasskeyCipherUpdateInstrumentedTest {
             val reads = AtomicInteger(); val writes = AtomicInteger()
             f.server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.requestUrl!!.encodedPath == "/accounts/profile" && profile != null) {
+                        return MockResponse().setBody(profile.toString())
+                    }
                     if (request.requestUrl!!.encodedPath != "/ciphers/$cipherId") return MockResponse().setResponseCode(404)
                     if (request.method == "GET") {
                         reads.incrementAndGet()
@@ -101,7 +127,7 @@ class PasskeyCipherUpdateInstrumentedTest {
             if (mode != "drops-sibling") {
                 assertEquals(2, remote["login"]!!.jsonObject["fido2Credentials"]!!.jsonArray.size)
                 for ((name, value) in original["login"]!!.jsonObject) if (name != "fido2Credentials") assertEquals(value, remote["login"]!!.jsonObject[name])
-                for (name in listOf("name", "fields", "favorite", "futureField")) assertEquals(original[name], remote[name])
+                for (name in listOf("name", "fields", "favorite", "futureField", "organizationId", "collectionIds", "key")) assertEquals(original[name], remote[name])
                 when (mode) {
                     "move-folder" -> assertEquals(JsonPrimitive("target-folder"), remote["folderId"])
                     "move-root" -> assertEquals(JsonNull, remote["folderId"])
@@ -114,6 +140,8 @@ class PasskeyCipherUpdateInstrumentedTest {
             }
         } finally { f.close() }
     }
+    @Test fun updatesTeamPasskeyWithOrganizationKey(): Unit = runBlocking { scenario("team") }
+    @Test fun updatesTeamPasskeyWithIndependentItemKey(): Unit = runBlocking { scenario("team-item-key") }
     @Test fun editsOneKeyPreservingSharedLogin(): Unit = runBlocking { scenario("normal") }
     @Test fun explicitFolderMovePreservesSiblingCredentials(): Unit = runBlocking { scenario("move-folder") }
     @Test fun explicitMoveBackToRootIsNotIgnored(): Unit = runBlocking { scenario("move-root") }

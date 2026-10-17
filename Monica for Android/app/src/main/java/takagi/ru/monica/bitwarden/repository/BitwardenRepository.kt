@@ -331,7 +331,7 @@ class BitwardenRepository(private val context: Context) {
         }.getOrNull() ?: return@withContext null
         if (!response.isSuccessful) return@withContext null
         val cipher = response.body() ?: return@withContext null
-        val effectiveKey = takagi.ru.monica.bitwarden.service.BitwardenAttachmentKeyResolver.resolve(cipher, vaultKey)
+        val effectiveKey = BitwardenCipherKeyResolver.resolveRemoteCipherKey(vaultApi, accessToken, cipher, vaultKey)
         try {
             AttachmentCipherSnapshot(
                 context = takagi.ru.monica.attachments.facade.AttachmentFacade.BitwardenContext(

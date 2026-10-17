@@ -13,19 +13,22 @@ internal object PasskeyCipherUpdate {
     private val serverFields = setOf("id", "object", "creationdate", "revisiondate", "lastknownrevisiondate", "edit", "viewpassword")
 
     fun build(original: JsonObject, item: PasskeyEntry, cipherId: String, vaultKey: SymmetricCryptoKey,
-        folderChange: takagi.ru.monica.passkey.PasskeyCipherFolderIntent.Change? = null): JsonObject {
+        folderChange: takagi.ru.monica.passkey.PasskeyCipherFolderIntent.Change? = null,
+        organizationKeys: Map<String, SymmetricCryptoKey> = emptyMap()): JsonObject {
         require(original.text("id") == cipherId && original.value("type")?.jsonPrimitive?.intOrNull == 1) { "Passkey source changed" }
         require(original.value("deletedDate") == null || original.value("deletedDate") == JsonNull) { "Passkey source was deleted" }
-        // The caller currently has the account key only. Never encrypt organization data with it.
-        require(original.text("organizationId").isNullOrBlank()) { "Organization passkey updates require an organization key" }
+        val organizationId = original.text("organizationId")?.takeIf(String::isNotBlank)
+        require(organizationId == null || original.value("edit")?.jsonPrimitive?.booleanOrNull == true) {
+            "Team passkey is read-only or edit permission is unavailable"
+        }
         require(original.value("edit")?.jsonPrimitive?.booleanOrNull != false) { "Passkey source is read-only" }
         require(item.backupEligible != false) { "Bitwarden cannot preserve backup-ineligible credentials" }
         require(item.publicKeyAlgorithm == PasskeyEntry.ALGORITHM_ES256) { "Unsupported Bitwarden passkey algorithm" }
         val revision = original.text("revisionDate")?.takeIf(String::isNotBlank)
             ?: error("Passkey source revision is missing")
-        val key = original.text("key")?.takeIf(String::isNotBlank)?.let {
-            BitwardenCrypto.decryptSymmetricKey(it, vaultKey)
-        } ?: vaultKey
+        val key = BitwardenCipherKeyResolver.resolveCipherKey(
+            takagi.ru.monica.bitwarden.api.CipherApiResponse(id = cipherId,
+                organizationId = organizationId, key = original.text("key")), vaultKey, "PasskeyUpdate", organizationKeys)
         try {
             fun decrypt(value: String?): String = value?.takeIf(String::isNotEmpty)?.let {
                 BitwardenCrypto.decryptToString(it, key)

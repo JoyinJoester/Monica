@@ -11,4 +11,5 @@
     <string name="bitwarden_error_proxy">代理服务器拒绝连接或需要身份验证。请检查代理地址、端口和账号设置。</string>
     <string name="bitwarden_error_cleartext">服务器地址使用 HTTP，当前安全策略不允许明文连接。请使用 HTTPS 地址，并检查反向代理的 HTTPS 配置。</string>
     <string name="bitwarden_error_network_io">与服务器通信时发生网络错误。请检查网络、VPN 或代理设置后重试。</string>
+    <string name="bitwarden_organization_sync_incomplete">有 %1$d 个团队条目无法解密。可读取的条目已同步，受影响的已有条目仍保留。请检查组织成员状态后重新登录。</string>
 </resources>

@@ -24,20 +24,20 @@ internal object BitwardenAttachmentKeyResolver {
         if (!response.isSuccessful) throw AttachmentError.NetworkError(response.code())
         val cipher = response.body()?.takeIf { it.id == cipherId }
             ?: throw AttachmentError.InvalidRemoteData
-        return resolve(cipher, vaultKey)
+        return if (cipher.organizationId.isNullOrBlank()) resolve(cipher, vaultKey)
+        else BitwardenCipherKeyResolver.resolveRemoteCipherKey(vaultApi, accessToken, cipher, vaultKey)
     }
 
     /** Always return an owned key. A failed item-key unwrap must never fall back to the vault key. */
-    fun resolve(cipher: CipherApiResponse, vaultKey: SymmetricCryptoKey): SymmetricCryptoKey {
+    fun resolve(cipher: CipherApiResponse, vaultKey: SymmetricCryptoKey,
+        organizationKeys: Map<String, SymmetricCryptoKey> = emptyMap()): SymmetricCryptoKey {
         val encryptedKey = cipher.key?.takeIf(String::isNotBlank)
         return try {
-            if (encryptedKey == null) {
-                SymmetricCryptoKey(vaultKey.encKey.copyOf(), vaultKey.macKey.copyOf())
-            } else {
+            if (encryptedKey != null) {
                 val parsed = BitwardenCrypto.parseCipherString(encryptedKey)
                 if (parsed.type != 2) throw AttachmentError.UnsupportedEncryption(parsed.type)
-                BitwardenCrypto.decryptSymmetricKey(encryptedKey, vaultKey)
             }
+            BitwardenCipherKeyResolver.resolveCipherKey(cipher, vaultKey, "Attachment", organizationKeys)
         } catch (error: CancellationException) {
             throw error
         } catch (error: AttachmentError) {

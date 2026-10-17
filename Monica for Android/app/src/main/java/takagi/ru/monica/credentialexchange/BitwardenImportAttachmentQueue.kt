@@ -59,11 +59,13 @@ class BitwardenImportAttachmentQueue(private val context: Context) {
                 val response = api.getCipher("Bearer $accessToken", cipherId)
                 check(response.isSuccessful)
                 val cipher = checkNotNull(response.body())
-                BitwardenCipherKeyResolver.withCipherKey(cipher, vaultKey, "ImportedAttachment") { effectiveKey ->
+                takagi.ru.monica.bitwarden.service.BitwardenCipherOwnership.requireWritable(cipher, cipherId)
+                val effectiveKey = BitwardenCipherKeyResolver.resolveRemoteCipherKey(api, accessToken, cipher, vaultKey)
+                try {
                     facade.promoteLocalAttachmentsToBitwarden(owner,
                         AttachmentFacade.BitwardenContext(api, apiManager.getOkHttpClient(vault), accessToken,
                             cipherId, effectiveKey, true), setOf(attachment.fileName), setOf(attachment.id))
-                }
+                } finally { effectiveKey.clear() }
                 pending.remove(id)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { failures++ }
