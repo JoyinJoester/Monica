@@ -85,6 +85,28 @@ class AutofillStructureIntegrationTest {
         assertEquals(setOf(user.autofillId,pass.autofillId),parse(node(children=arrayOf(user,pass))).items.map { it.id }.toSet())
     }
 
+    @Test fun nestedWebViewKeepsItsReportedAncestorOriginForBoundSuggestions() {
+        val user = node(hints = arrayOf(View.AUTOFILL_HINT_USERNAME), focused = true)
+        val inner = node(children = arrayOf(user))
+        ReflectionHelpers.setField(inner, "mClassName", "android.webkit.WebView")
+        val parsed = parse(node(domain = "accounts.example.com", children = arrayOf(inner)))
+        assertEquals("accounts.example.com", parsed.webDomain)
+        val bound = takagi.ru.monica.data.PasswordEntry(id = 167, title = "Bound account",
+            website = "https://accounts.example.com/login", username = "synthetic", password = "synthetic")
+        assertEquals(listOf(167L), BitwardenLikeAutofillMatcherNg().match(listOf(bound),
+            parsed.applicationId.orEmpty(), parsed.webDomain).map { it.id })
+    }
+
+    @Test fun originlessSiblingWebViewCannotBorrowAnotherSitesOrigin() {
+        val user = node(hints = arrayOf(View.AUTOFILL_HINT_USERNAME), focused = true)
+        val unknown = node(children = arrayOf(user))
+        ReflectionHelpers.setField(unknown, "mClassName", "android.webkit.WebView")
+        val parsed = parse(node(children = arrayOf(
+            node(domain = "accounts.example.com", children = arrayOf(node(hint = "Password"))), unknown)))
+        assertNull(parsed.webDomain)
+        assertEquals(listOf(user.autofillId), parsed.items.map { it.id })
+    }
+
     @Test fun dynamicCardExpirySelectIdsKeepSeparateMonthAndYearRoles() {
         val number = node(hints = arrayOf("cc-number"))
         val month = node(html = mapOf("type" to "select-one", "id" to "cc-expiry-month"), focused = true)

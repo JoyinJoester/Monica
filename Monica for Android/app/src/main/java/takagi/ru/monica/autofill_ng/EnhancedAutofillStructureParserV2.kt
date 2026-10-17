@@ -1009,7 +1009,12 @@ class EnhancedAutofillStructureParserV2(
         // View ids are often NO_ID for multiple WebViews. Traversal identity
         // keeps their virtual fields (and cross-origin subtrees) separate.
         val webViewNodeId = if (webView || changesOrigin || (webDomain != null && parentWebViewNodeId == null)) {
-            context.totalNodesVisited.also { context.webScopes[it] = WebScope(webDomain, webScheme) }
+            context.totalNodesVisited.also {
+                // Some providers report the origin on an enclosing virtual node only.
+                // Inherit from this ancestor, never from an unrelated sibling WebView.
+                context.webScopes[it] = WebScope(webDomain ?: inheritedScope?.domain,
+                    webScheme ?: inheritedScope?.scheme)
+            }
         } else {
             if (inheritedScope != null && inheritedScope.domain == null && webDomain != null) {
                 inheritedScope.domain = webDomain

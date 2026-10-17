@@ -348,7 +348,16 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     }
     
     private val args by lazy {
-        readArgs(intent) ?: Args()
+        val supplied = readArgs(intent) ?: Args()
+        // Framework requests already carry a scoped result, even when it is empty.
+        if (supplied.suggestedPasswordIds != null) supplied else {
+            val targetPackage = supplied.applicationId
+                ?: intent.getStringExtra(EXTRA_MANUAL_TARGET_PACKAGE)?.trim()?.takeIf { it.isNotEmpty() }
+            supplied.copy(applicationId = targetPackage,
+                webDomain = supplied.webDomain ?: targetPackage?.let {
+                    takagi.ru.monica.service.BrowserAutofillContextStore.getRecentDomain(it)
+                })
+        }
     }
     
     private val explicitManualMode by lazy {
@@ -1956,16 +1965,11 @@ private fun AutofillPickerContent(
     LaunchedEffect(Unit) {
         val start = System.currentTimeMillis()
         try {
-            val suggestedIds = args.suggestedPasswordIds?.toList() ?: emptyList()
             val loadedData = withContext(Dispatchers.IO) {
                 val embeddedWallet = walletFillRepository.loadEmbeddedItems()
                 val entries = repository.getAllPasswordEntries().first().filterNot { it.isKeyCredential() }
                 AutofillPickerLoadedData(
-                    suggestedPasswords = if (suggestedIds.isNotEmpty()) {
-                        repository.getPasswordsByIds(suggestedIds)
-                    } else {
-                        emptyList()
-                    },
+                    suggestedPasswords = AutofillPickerSuggestions.load(entries, args, autofillPreferences, appName),
                     allPasswords = entries,
                     // Resolve legacy encrypted usernames once on IO. Presentation must never
                     // replace the original record passed to copy/fill/save actions.
@@ -1989,7 +1993,7 @@ private fun AutofillPickerContent(
                 "PICKER_UI",
                 "Picker data load complete",
                 metadata = mapOf(
-                    "suggestedRequested" to suggestedIds.size,
+                    "suggestedRequested" to (args.suggestedPasswordIds?.size ?: 0),
                     "suggestedLoaded" to suggestedPasswords.size,
                     "allLoaded" to allPasswords.size,
                     "bankCardsLoaded" to allBankCards.size,
