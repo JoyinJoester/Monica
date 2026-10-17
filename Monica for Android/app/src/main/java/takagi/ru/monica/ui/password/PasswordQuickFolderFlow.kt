@@ -10,7 +10,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import takagi.ru.monica.repository.ExternalFolderTarget
+import takagi.ru.monica.ui.category.ManagedExternalFolderActions
+import takagi.ru.monica.ui.category.externalFolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -25,7 +28,8 @@ internal data class PasswordQuickFolderFlowParams(
     val categoryEditMode: Boolean,
     val categories: List<Category>,
     val onRequestCategoryAction: (Category) -> Unit,
-    val onSelectFilter: (CategoryFilter) -> Unit
+    val onSelectFilter: (CategoryFilter) -> Unit,
+    val onExternalFolderChanged: (ExternalFolderTarget) -> Unit = {}
 )
 
 internal data class PasswordQuickFolderChipRowParams(
@@ -39,6 +43,14 @@ internal fun PasswordQuickFolderFlow(
     params: PasswordQuickFolderFlowParams,
     modifier: Modifier = Modifier
 ) {
+    var externalTarget by remember { mutableStateOf<ExternalFolderTarget?>(null) }
+    ManagedExternalFolderActions(externalTarget, { externalTarget = null }, params.onExternalFolderChanged,
+        onDeleted = { target ->
+            val selected = params.currentFilter as? CategoryFilter.BitwardenFolderFilter
+            if (target is ExternalFolderTarget.Bitwarden && selected?.vaultId == target.databaseId && selected.folderId == target.folderId) {
+                params.onSelectFilter(CategoryFilter.BitwardenVault(target.databaseId))
+            }
+        })
     FlowRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start),
@@ -54,7 +66,8 @@ internal fun PasswordQuickFolderFlow(
                         // category list can briefly lag behind the shortcut
                         // snapshot; navigating in that window made edit mode
                         // indistinguishable from normal browsing.
-                        editableCategory?.let(params.onRequestCategoryAction)
+                        if (editableCategory != null) params.onRequestCategoryAction(editableCategory)
+                        else externalTarget = shortcut.targetFilter.externalFolder(shortcut.title)
                     } else {
                         params.onSelectFilter(shortcut.targetFilter)
                     }

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.res.stringResource
 import takagi.ru.monica.R
+import takagi.ru.monica.repository.ExternalFolderTarget
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -82,6 +83,7 @@ internal fun PasswordListCategoryChipMenu(
     getMdbxFolders: (Long) -> Flow<List<MdbxStoredFolderEntry>> = { flowOf(emptyList()) },
     getKeePassGroups: (Long) -> Flow<List<KeePassGroupInfo>> = { flowOf(emptyList()) },
     onRenameCategory: ((Category, String) -> Unit)? = null,
+    onExternalFolderChanged: (ExternalFolderTarget) -> Unit = {},
     onDeleteCategory: ((Category) -> Unit)? = null
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -172,6 +174,7 @@ internal fun PasswordListCategoryChipMenu(
             quickFolderShortcuts = quickFolderShortcuts,
             categories = categories,
             onCategoryActionTargetChange = uiState.onCategoryActionTargetChange,
+            onExternalFolderChanged = onExternalFolderChanged,
             onSelectFilter = onSelectFilter,
             modulePlacementOffsets = moduleDragState.modulePlacementOffsets,
             draggingModule = moduleDragState.draggingModule,

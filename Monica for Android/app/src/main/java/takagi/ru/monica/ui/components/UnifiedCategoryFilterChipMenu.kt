@@ -43,6 +43,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import takagi.ru.monica.repository.ExternalFolderTarget
+import takagi.ru.monica.ui.category.ManagedExternalFolderActions
+import takagi.ru.monica.ui.category.externalFolder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -205,8 +208,18 @@ fun UnifiedCategoryFilterChipMenu(
     showQuickFilters: Boolean = true,
     quickFilterTitle: String? = null,
     showAllDatabases: Boolean = true,
+    onExternalFolderChanged: (ExternalFolderTarget) -> Unit = {},
+    refreshMdbxFolders: (Long) -> Unit = {},
 ) {
     if (!visible) return
+    var externalTarget by remember { mutableStateOf<ExternalFolderTarget?>(null) }
+    ManagedExternalFolderActions(externalTarget, { externalTarget = null }, onExternalFolderChanged,
+        onDeleted = { target ->
+            val current = selected as? UnifiedCategoryFilterSelection.BitwardenFolderFilter
+            if (target is ExternalFolderTarget.Bitwarden && current?.vaultId == target.databaseId && current.folderId == target.folderId) {
+                onSelect(UnifiedCategoryFilterSelection.BitwardenVaultFilter(target.databaseId))
+            }
+        })
 
     var showDeferredFolderSection by remember { mutableStateOf(false) }
     var quickFiltersExpanded by rememberSaveable { mutableStateOf(true) }
@@ -248,6 +261,7 @@ fun UnifiedCategoryFilterChipMenu(
         is UnifiedCategoryFilterSelection.MdbxFolderFilter -> selected.databaseId
         else -> null
     }
+    LaunchedEffect(selectedMdbxDatabaseId) { selectedMdbxDatabaseId?.let(refreshMdbxFolders) }
     val bitwardenFolders by remember(selectedVaultId) {
         selectedVaultId?.let(getBitwardenFolders) ?: flowOf(emptyList())
     }.collectAsState(initial = emptyList())
@@ -407,8 +421,9 @@ fun UnifiedCategoryFilterChipMenu(
                         MonicaExpressiveFilterChip(
                             selected = chip.selection == selected,
                             onClick = {
-                                if (editableCategory != null && onRequestCategoryAction != null) {
-                                    onRequestCategoryAction(editableCategory)
+                                if (categoryEditMode && !chip.isBack) {
+                                    if (editableCategory != null) onRequestCategoryAction?.invoke(editableCategory)
+                                    else externalTarget = chip.selection.externalFolder(chip.label)
                                 } else {
                                     onSelect(chip.selection)
                                 }
@@ -416,7 +431,7 @@ fun UnifiedCategoryFilterChipMenu(
                             label = chip.label,
                             leadingIcon = if (chip.isBack) {
                                 Icons.AutoMirrored.Filled.KeyboardArrowLeft
-                            } else if (categoryEditMode && editableCategory != null) {
+                            } else if (categoryEditMode && (editableCategory != null || chip.selection.externalFolder(chip.label) != null)) {
                                 Icons.Default.MoreVert
                             } else {
                                 Icons.Default.Folder

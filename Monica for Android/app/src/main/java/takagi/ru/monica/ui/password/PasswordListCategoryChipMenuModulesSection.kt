@@ -2,6 +2,7 @@ package takagi.ru.monica.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector2D
+import takagi.ru.monica.repository.ExternalFolderTarget
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -55,6 +56,7 @@ internal fun PasswordListCategoryChipMenuModulesSection(
     quickFolderShortcuts: List<PasswordQuickFolderShortcut>,
     categories: List<Category>,
     onCategoryActionTargetChange: (Category?) -> Unit,
+    onExternalFolderChanged: (ExternalFolderTarget) -> Unit = {},
     onSelectFilter: (CategoryFilter) -> Unit,
     modulePlacementOffsets: MutableMap<PasswordListTopModule, Animatable<Offset, AnimationVector2D>>,
     draggingModule: PasswordListTopModule?,
@@ -146,6 +148,7 @@ internal fun PasswordListCategoryChipMenuModulesSection(
             quickFolderShortcuts = quickFolderShortcuts,
             categories = categories,
             onRequestCategoryAction = { onCategoryActionTargetChange(it) },
+            onExternalFolderChanged = onExternalFolderChanged,
             onSelectFilter = onSelectFilter,
             moduleDisplayOffset = moduleDragCallbacks.moduleDisplayOffset,
             isActiveDragModule = moduleDragCallbacks.isActiveDragModule,

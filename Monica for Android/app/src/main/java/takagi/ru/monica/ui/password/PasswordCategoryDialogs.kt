@@ -63,69 +63,14 @@ private data class PasswordMoveTargetNode(
 
 @Composable
 internal fun PasswordCategoryDialogs(params: PasswordCategoryDialogsParams) {
-    if (params.categoryActionTarget != null) {
-        val target = params.categoryActionTarget
-        AlertDialog(
-            onDismissRequest = params.onDismissCategoryAction,
-            title = { Text(stringResource(R.string.edit_category)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = target.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (params.onStartRename != null) {
-                        FilledTonalButton(
-                            onClick = { params.onStartRename.invoke(target) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Edit, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.rename_category))
-                        }
-                    }
-                    if (params.onStartMove != null) {
-                        FilledTonalButton(
-                            onClick = { params.onStartMove.invoke(target) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.DriveFileMove, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.move))
-                        }
-                    }
-                    if (params.onStartCopy != null) {
-                        FilledTonalButton(
-                            onClick = { params.onStartCopy.invoke(target) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.copy))
-                        }
-                    }
-                    if (params.onDeleteCategory != null) {
-                        FilledTonalButton(
-                            onClick = { params.onDeleteCategory.invoke(target) },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.delete))
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = params.onDismissCategoryAction) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
+    params.categoryActionTarget?.let { target ->
+        FolderActionsDialog(
+            name = target.name,
+            onDismiss = params.onDismissCategoryAction,
+            onRename = params.onStartRename?.let { action -> { action(target) } },
+            onDelete = params.onDeleteCategory?.let { action -> { action(target) } },
+            onMove = params.onStartMove?.let { action -> { action(target) } },
+            onCopy = params.onStartCopy?.let { action -> { action(target) } }
         )
     }
 

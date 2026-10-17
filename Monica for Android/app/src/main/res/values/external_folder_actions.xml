@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="external_folder_delete_contents">Delete folder “%1$s” and its contents? Please confirm before continuing.</string>
+    <string name="external_folder_delete_keep_items">Delete folder “%1$s”? The items in it will be kept without this folder.</string>
+</resources>

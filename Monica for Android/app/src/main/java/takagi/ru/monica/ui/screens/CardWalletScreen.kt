@@ -920,8 +920,21 @@ fun CardWalletScreen(
                                 bitwardenVaults = bitwardenVaults,
                                 getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
                                 getKeePassGroups = getKeePassGroups,
+                                getMdbxFolders = passwordViewModel::getMdbxFolders,
+                                refreshMdbxFolders = { passwordViewModel.refreshMdbxFolders(it) },
                                 categoryEditMode = categoryMgmt.categoryEditMode,
                                 onRequestCategoryAction = { categoryMgmt.categoryActionTarget = it },
+                                onExternalFolderChanged = { target ->
+                                    when (target) {
+                                        is takagi.ru.monica.repository.ExternalFolderTarget.KeePass -> scope.launch {
+                                            keepassBridge.listLegacyGroups(target.databaseId).getOrNull()?.let { groups ->
+                                                keepassGroupFlows[target.databaseId]?.value = groups
+                                            }
+                                        }
+                                        is takagi.ru.monica.repository.ExternalFolderTarget.Mdbx -> passwordViewModel.refreshMdbxFolders(target.databaseId)
+                                        is takagi.ru.monica.repository.ExternalFolderTarget.Bitwarden -> Unit
+                                    }
+                                },
                                 typeQuickFilters = cardWalletTypeQuickFilters(
                                     currentTab = currentTab,
                                     onTabSelected = { tab ->

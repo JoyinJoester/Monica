@@ -377,6 +377,16 @@ internal fun PasswordListTopSection(
                                 getBitwardenFolders = viewModel::getBitwardenFolders,
                                 getMdbxFolders = viewModel::getMdbxFolders,
                                 getKeePassGroups = localKeePassViewModel::getGroups,
+                                onExternalFolderChanged = { target ->
+                                    when (target) {
+                                        is takagi.ru.monica.repository.ExternalFolderTarget.KeePass -> {
+                                            localKeePassViewModel.refreshGroups(target.databaseId)
+                                            viewModel.refreshKeePassFromSourceForCurrentContext()
+                                        }
+                                        is takagi.ru.monica.repository.ExternalFolderTarget.Mdbx -> viewModel.refreshMdbxFolders(target.databaseId)
+                                        is takagi.ru.monica.repository.ExternalFolderTarget.Bitwarden -> Unit
+                                    }
+                                },
                                 onRenameCategory = onRenameCategory,
                                 onDeleteCategory = onDeleteCategory
                             )

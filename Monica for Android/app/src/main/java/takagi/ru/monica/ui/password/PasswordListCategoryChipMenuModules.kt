@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui
 
+import takagi.ru.monica.repository.ExternalFolderTarget
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
@@ -26,6 +27,7 @@ internal data class PasswordQuickFoldersMenuModuleParams(
     val categoryEditMode: Boolean,
     val categories: List<Category>,
     val onRequestCategoryAction: (Category) -> Unit,
+    val onExternalFolderChanged: (ExternalFolderTarget) -> Unit = {},
     val onSelectFilter: (CategoryFilter) -> Unit
 )
 
@@ -54,6 +56,7 @@ internal fun PasswordQuickFoldersMenuModule(params: PasswordQuickFoldersMenuModu
                 categoryEditMode = params.categoryEditMode,
                 categories = params.categories,
                 onRequestCategoryAction = params.onRequestCategoryAction,
+                onExternalFolderChanged = params.onExternalFolderChanged,
                 onSelectFilter = params.onSelectFilter
             )
         )

@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui
 
+import takagi.ru.monica.repository.ExternalFolderTarget
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.geometry.Offset
@@ -31,6 +32,7 @@ internal data class PasswordListCategoryChipMenuReorderableModulesParams(
     val quickFolderShortcuts: List<PasswordQuickFolderShortcut>,
     val categories: List<Category>,
     val onRequestCategoryAction: (Category) -> Unit,
+    val onExternalFolderChanged: (ExternalFolderTarget) -> Unit = {},
     val onSelectFilter: (CategoryFilter) -> Unit,
     val moduleDisplayOffset: (PasswordListTopModule) -> Offset,
     val isActiveDragModule: (PasswordListTopModule) -> Boolean,
@@ -103,6 +105,7 @@ internal fun PasswordListCategoryChipMenuReorderableModules(
                             categoryEditMode = params.categoryEditMode,
                             categories = params.categories,
                             onRequestCategoryAction = params.onRequestCategoryAction,
+                onExternalFolderChanged = params.onExternalFolderChanged,
                             onSelectFilter = params.onSelectFilter
                         )
                     )
