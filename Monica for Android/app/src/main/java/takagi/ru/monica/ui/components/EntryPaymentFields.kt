@@ -27,7 +27,8 @@ fun EntryPaymentFields(
     Column(verticalArrangement = Arrangement.spacedBy(if (LocalTemplateFieldShape.current) 2.dp else 12.dp)) {
         PaymentField(number, { onNumber(EntryPaymentFormat.cardNumber(it)) }, R.string.field_card_number, "number", true, true)
         PaymentField(holder, onHolder, R.string.cardholder_name, "holder", false, false, onPickHolder)
-        PaymentField(expiry, { onExpiry(EntryPaymentFormat.expiry(it)) }, R.string.field_expiry, "expiry", false, false)
+        PaymentExpiryTextField(expiry, onExpiry,
+            modifier = Modifier.fillMaxWidth().testTag("entry_payment_expiry"), entryContentStyle = true)
         PaymentField(cvv, { onCvv(EntryPaymentFormat.cvv(it)) }, R.string.cvv, "cvv", true, true)
     }
 }

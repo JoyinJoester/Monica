@@ -4921,26 +4921,17 @@ if (!contentMode && hasExtraSection("PAYMENT")) {
                         )
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
+                            takagi.ru.monica.ui.components.PaymentExpiryTextField(
                                 value = credentialScopedCreditCardExpiry,
-                                onValueChange = {
-                                    val digits = it.filter { char -> char.isDigit() }
-                                    val formatted = when {
-                                        digits.length <= 2 -> digits
-                                        digits.length <= 4 -> "${digits.substring(0, 2)}/${digits.substring(2)}"
-                                        else -> "${digits.substring(0, 2)}/${digits.substring(2, 4)}"
-                                    }
+                                onValueChange = { formatted ->
                                     if (isMultiCredentialMode) {
                                         activeCredentialMetadata.creditCardExpiry = formatted
                                     } else {
                                         creditCardExpiry = formatted
                                     }
                                 },
-                                label = { Text(stringResource(R.string.field_expiry)) },
                                 modifier = Modifier.testTag("password_content_card_expiry").weight(1f),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                singleLine = true,
-                                shape = RoundedCornerShape(12.dp)
+                                maxYearDigits = 2,
                             )
                             OutlinedTextField(
                                 value = credentialScopedCreditCardCVV,
