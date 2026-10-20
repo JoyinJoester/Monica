@@ -2,7 +2,6 @@ package takagi.ru.monica.ui.screens
 
 import takagi.ru.monica.data.model.CredentialExchangeMetadata
 
-import takagi.ru.monica.ui.components.DetailCardSurface
 import takagi.ru.monica.ui.components.DetailSectionLayout
 import takagi.ru.monica.ui.components.DetailGroupItem
 import takagi.ru.monica.ui.components.entryGroupShape
@@ -2495,9 +2494,10 @@ internal fun ProjectCredentialDetailCard(
     }
     // Group rows come from sanitized list metadata; secret availability lives in values.
     val passwordRows = ordered.filter { !values[it.id].isNullOrBlank() || unavailable[it.id] != null }
-    val count = accounts.size + passwordRows.size + if (totp != null) 1 else 0
+    val note = info?.note.orEmpty()
+    val hasNote = note.isNotBlank()
+    val count = accounts.size + passwordRows.size + (if (totp != null) 1 else 0) + (if (hasNote) 1 else 0)
     CompositionLocalProvider(takagi.ru.monica.ui.components.LocalCompactCredentialFields provides true) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     DetailSectionLayout(info?.label?.ifBlank { stringResource(R.string.project_credential) }
         ?: stringResource(R.string.project_credential)) {
         accounts.forEachIndexed { index, (label, value) ->
@@ -2516,19 +2516,20 @@ internal fun ProjectCredentialDetailCard(
         } }
         totp?.let {
             takagi.ru.monica.ui.components.PasswordAuthenticatorCard(first, it, settings,
-                onEdit = { onEdit(first.id) }, connected = accounts.isNotEmpty() || passwordRows.isNotEmpty())
+                onEdit = { onEdit(first.id) }, connected = accounts.isNotEmpty() || passwordRows.isNotEmpty(),
+                hasFollowingContent = hasNote)
+        }
+        if (hasNote) DetailGroupItem(count - 1, count) {
+            CredentialDetailNoteContent(note, context,
+                Modifier.testTag("credential_note_card_${info?.groupId ?: first.id}"))
         }
     }
-    CredentialDetailNoteCard(info?.note.orEmpty(), context,
-        Modifier.testTag("credential_note_card_${info?.groupId ?: first.id}"))
-}
 }
 }
 
 @Composable
-internal fun CredentialDetailNoteCard(note: String, context: Context, modifier: Modifier = Modifier) {
-    DetailCardSurface(modifier) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+internal fun CredentialDetailNoteContent(note: String, context: Context, modifier: Modifier = Modifier) {
+        Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Notes, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(12.dp))
@@ -2541,12 +2542,10 @@ internal fun CredentialDetailNoteCard(note: String, context: Context, modifier: 
                 }
             }
             SelectionContainer {
-                Text(note.ifBlank { stringResource(R.string.credential_note_empty) },
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (note.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                Text(note, style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface)
             }
         }
-    }
 }
 
 @Composable

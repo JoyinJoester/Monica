@@ -19,7 +19,7 @@
 
 - 统一默认与新增账号密码凭据的编辑体验：添加密码时平滑展开，生成器与删除操作统一放入三点菜单，标签统一为“用户名”并复用星星生成器图标；每个凭据固定提供简单的多行备注，独立保存、编辑与展示，不覆盖页面已有笔记或备注。
 
-- 优化详情页凭据布局：每个凭据下固定显示独立备注卡片，支持空备注提示与复制；密码删除改为图标，与密码强度标签同一行，减少多密码卡片的纵向留白。
+- 优化凭据布局：新建与编辑页的备注紧接验证器密钥，连成一组卡片；详情页备注连接在验证码下方，空白备注不显示，支持复制；密码删除改为图标，与密码强度标签同一行。
 
 ## English
 
@@ -31,4 +31,4 @@
 - Fixed the expiry-date cursor jumping before the first year digit and reversing subsequent input in bank cards and password payment fields. Pasting, selection replacement and deletion now preserve the correct editing position.
 - Redesigned autofill account actions as a centered M3E dialog with grouped fill, copy and detail actions and scrolling for large text. Added independent Accessibility fill from the keyboard, system Autofill and quick tile, with a setup prompt when the service is disabled and correct return to the target app.
 - Unified primary and added credential editors with smooth password expansion, shared overflow menus for generation/deletion, consistent Username labels and star generator icons. Each credential now has a fixed multiline note field, saved and displayed independently of page-level notes.
-- Refined credential details with a separate note card below every credential, including empty-state text and copying. Password deletion now uses an icon on the strength-label row to reduce excess vertical space in multi-password cards.
+- Refined credential layouts: editor notes connect directly below the verification key; detail notes connect below the authenticator and stay hidden when blank, with copying supported. Password deletion uses an icon on the strength-label row.

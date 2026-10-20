@@ -53,6 +53,6 @@ fun CredentialNoteField(value: String, onValueChange: (String) -> Unit, modifier
             label = { Text(stringResource(R.string.credential_note)) },
             leadingIcon = { Icon(Icons.Default.Notes, null) },
             modifier = modifier.fillMaxWidth(), minLines = 2,
-            shape = RoundedCornerShape(24.dp))
+            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 24.dp, bottomEnd = 24.dp))
     }
 }

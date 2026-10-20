@@ -92,7 +92,11 @@ fun ProjectCredentialEditor(group: ProjectCredentialGroup.Group,
         }
         ProjectCredentialOtpField(group.otp, group.label, group.username, settings,
             onValueChange = { onChange(group.copy(otp = it)) },
-            modifier = Modifier.testTag("credential_otp_${group.id}"))
+            modifier = Modifier.testTag("credential_otp_${group.id}"),
+            followingContent = {
+                CredentialNoteField(group.note, { onChange(group.copy(note = it)) },
+                    Modifier.testTag("credential_note_${group.id}"))
+            })
         Spacer(Modifier.height(6.dp))
         Surface(onClick = { onChange(group.copy(passwords = group.passwords + ProjectCredentialGroup.Password())) },
             color = MaterialTheme.colorScheme.surfaceContainer,
@@ -103,9 +107,6 @@ fun ProjectCredentialEditor(group: ProjectCredentialGroup.Group,
                 Text(stringResource(R.string.add_password), Modifier.padding(start = 8.dp), color = MaterialTheme.colorScheme.primary)
             }
         }
-        Spacer(Modifier.height(8.dp))
-        CredentialNoteField(group.note, { onChange(group.copy(note = it)) },
-            Modifier.testTag("credential_note_${group.id}"))
     }
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(stringResource(R.string.delete)) },
         text = { Text(stringResource(R.string.project_credential_remove)) },

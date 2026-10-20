@@ -80,6 +80,7 @@ fun PasswordAuthenticatorCard(
     settings: AppSettings,
     onEdit: () -> Unit,
     connected: Boolean = false,
+    hasFollowingContent: Boolean = false,
 ) {
     val context = LocalContext.current
     // This item only supplies display identity to the existing renderer. It is never persisted.
@@ -103,7 +104,8 @@ fun PasswordAuthenticatorCard(
                 iconCardsEnabled = settings.iconCardsEnabled && !connected),
             modifier = Modifier.fillMaxWidth().testTag("password_authenticator_card"),
             cardVerticalPadding = 16.dp, showContentDetails = true, showIdentity = !connected, onEdit = onEdit,
-            cardShape = if (connected) entryGroupShape(1, 2) else androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            cardShape = entryGroupShape(if (connected) 1 else 0,
+                (if (connected) 2 else 1) + if (hasFollowingContent) 1 else 0),
             onCardClick = { menuOpen = true }, onLongClick = { menuOpen = true },
             onActionMenu = { menuOpen = true }, onCopyCode = { menuOpen = true },
         )

@@ -143,6 +143,7 @@ class ProjectCredentialEditorTest {
         scroll(hasTestTag("password_otp_secret")).performTextReplacement("JBSWY3DPEHPK3PXP")
         androidx.test.espresso.Espresso.closeSoftKeyboard()
         scroll(hasTestTag("password_otp_inline_preview")).assertIsDisplayed()
+        assertEditorNoteConnected("password_otp_secret", "password_editor_credential_note", "password_otp_inline_preview", "password_editor_add_password")
         scroll(hasTestTag("password_content_add"))
         compose.onNodeWithTag("password_content_editor").performTouchInput { swipeUp() }
         compose.onNodeWithTag("password_content_add").performClick()
@@ -164,6 +165,7 @@ class ProjectCredentialEditorTest {
         scroll(prefix("credential_add_password_")).performClick()
         scroll(hasTestTag("credential_note_$groupTag")).performTextReplacement("Work note")
         androidx.test.espresso.Espresso.closeSoftKeyboard()
+        assertEditorNoteConnected("credential_otp_$groupTag", "credential_note_$groupTag", "credential_otp_preview", "credential_add_password_$groupTag")
         val secondTag = compose.onAllNodes(prefix("credential_password_")).fetchSemanticsNodes().last().config[SemanticsProperties.TestTag]
         scroll(hasTestTag(secondTag)).performTextReplacement("work-secret-2")
         androidx.test.espresso.Espresso.closeSoftKeyboard()
@@ -222,6 +224,10 @@ class ProjectCredentialEditorTest {
         compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Work note"))
         compose.onNodeWithText("Work note").assertIsDisplayed()
         compose.onNodeWithTag("credential_note_card_${restored[1].id}").assertExists()
+        val noteBounds = compose.onNodeWithTag("credential_note_card_${restored[1].id}").fetchSemanticsNode().boundsInRoot
+        val otpBounds = compose.onAllNodesWithTag("password_authenticator_card").fetchSemanticsNodes().last().boundsInRoot
+        assertTrue("Note follows OTP with only group spacing and inner padding",
+            noteBounds.top - otpBounds.bottom <= with(compose.density) { 14.dp.toPx() })
         File(context.filesDir, "credential-detail-grouped.png").outputStream().use {
             compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
@@ -237,7 +243,7 @@ class ProjectCredentialEditorTest {
         compose.waitUntil(20000) { compose.onAllNodesWithTag("password_authenticator_card").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("HiddenIssuer").assertDoesNotExist()
         compose.onNodeWithText("personal").assertExists()
-        compose.onNodeWithTag("credential_note_card_$id").assertExists()
+        compose.onNodeWithTag("credential_note_card_$id").assertDoesNotExist()
         compose.onNodeWithTag("password_authenticator_card").performScrollTo().assertIsDisplayed()
         File(context.filesDir, "credential-detail-single.png").outputStream().use {
             compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
@@ -277,10 +283,10 @@ class ProjectCredentialEditorTest {
         compose.runOnIdle { assertTrue(deleted) }
     }
 
-    @Test fun credentialNoteCardsShowLongTextAndEmptyStateAtLargeFont() {
+    @Test fun credentialNotesConnectAndHideEmptyContentAtLargeFont() {
         val note = "Personal note\nSecond line\nIndependent of the work account"
         val groups = listOf(ProjectCredentialGroup.Group(username = "personal", note = note),
-            ProjectCredentialGroup.Group(username = "work"))
+            ProjectCredentialGroup.Group(username = "work", note = "  \n  "))
         val rows = ProjectCredentialGroup.rows(groups)
         val entries = rows.mapIndexed { index, row -> PasswordEntry(id = 801L + index,
             title = "Synthetic", username = row.username, password = "", website = "") }
@@ -300,11 +306,22 @@ class ProjectCredentialEditorTest {
         compose.onNodeWithText(note).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("credential_note_card_${groups[0].id}").assertExists()
         compose.onNodeWithTag("credential_note_copy").assertExists()
-        compose.onNodeWithText(context.getString(R.string.credential_note_empty)).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("credential_note_card_${groups[1].id}").assertExists()
+        compose.onNodeWithText("work").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("credential_note_card_${groups[1].id}").assertDoesNotExist()
         File(context.filesDir, "credential-detail-empty-note-large-font.png").outputStream().use {
             compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
+    }
+
+    private fun assertEditorNoteConnected(otpTag: String, noteTag: String, previewTag: String, addTag: String) {
+        scroll(hasTestTag(noteTag))
+        val otp = compose.onNodeWithTag(otpTag).getUnclippedBoundsInRoot()
+        val note = compose.onNodeWithTag(noteTag).getUnclippedBoundsInRoot()
+        assertEquals("Note immediately follows the verification key", 2f, (note.top - otp.bottom).value, 0.5f)
+        val preview = compose.onNodeWithTag(previewTag).getUnclippedBoundsInRoot()
+        val add = compose.onNodeWithTag(addTag).getUnclippedBoundsInRoot()
+        assertTrue("Preview follows the connected fields", preview.top >= note.bottom)
+        assertTrue("Add password follows the whole credential", add.top >= preview.bottom)
     }
 
     @Test fun sanitizedMetadataStillDisplaysEveryResolvedPassword() {

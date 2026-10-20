@@ -3294,6 +3294,15 @@ private fun PasswordEntryEditor(
             Icon(MonicaIcons.Navigation.back, contentDescription = stringResource(R.string.back))
         }
     }
+    val primaryCredentialNoteField: @Composable () -> Unit = {
+        val noteIndex = if (isMultiCredentialMode) selectedCredentialEditorIndex else 0
+        CredentialNoteField(
+            value = if (noteIndex == 0) primaryProjectGroup.note else activeCredentialMetadata.credentialNote,
+            onValueChange = {
+                if (noteIndex == 0) primaryProjectGroup = primaryProjectGroup.copy(note = it)
+                else activeCredentialMetadata.credentialNote = it
+            }, modifier = Modifier.testTag("password_editor_credential_note"))
+    }
     val primaryAuthenticatorField: @Composable () -> Unit = {
                     Column {
                         Column {
@@ -3320,8 +3329,13 @@ private fun PasswordEntryEditor(
                                     supportingText = if (selectedAuthenticatorOtpType == OtpType.STEAM) {
                                         { Text(stringResource(R.string.steam_uses_5_chars)) }
                                     } else null,
-                                    shape = if (contentMode && loginType.equals("PASSWORD", ignoreCase = true)) RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 24.dp, bottomEnd = 24.dp) else RoundedCornerShape(if (contentMode) 24.dp else 12.dp)
+                                    shape = if (contentMode && loginType.equals("PASSWORD", ignoreCase = true)) RoundedCornerShape(4.dp) else RoundedCornerShape(if (contentMode) 24.dp else 12.dp)
                                 )
+                            }
+
+                            if (contentMode && loginType.equals("PASSWORD", ignoreCase = true)) {
+                                Spacer(Modifier.height(2.dp))
+                                primaryCredentialNoteField()
                             }
 
                             if (showInlineOtpSettings) MonicaModalBottomSheet(
@@ -4268,6 +4282,10 @@ private fun PasswordEntryEditor(
                                     primaryAuthenticatorField()
                                 }
 
+                                if (contentMode && !shouldShowSecurityVerification()) {
+                                    primaryCredentialNoteField()
+                                }
+
                                 // 旧的“一个条目多个密码”编辑能力继续保留；批量凭据每页固定一个密码。
                                 if (!isMultiCredentialMode) {
                                     TextButton(
@@ -4279,16 +4297,6 @@ private fun PasswordEntryEditor(
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(stringResource(R.string.add_password))
                                     }
-                                }
-                                if (contentMode) {
-                                    Spacer(Modifier.height(8.dp))
-                                    val noteIndex = if (isMultiCredentialMode) selectedCredentialEditorIndex else 0
-                                    CredentialNoteField(
-                                        value = if (noteIndex == 0) primaryProjectGroup.note else activeCredentialMetadata.credentialNote,
-                                        onValueChange = {
-                                            if (noteIndex == 0) primaryProjectGroup = primaryProjectGroup.copy(note = it)
-                                            else activeCredentialMetadata.credentialNote = it
-                                        }, modifier = Modifier.testTag("password_editor_credential_note"))
                                 }
                             }
                         }
