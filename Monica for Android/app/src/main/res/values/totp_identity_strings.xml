@@ -1,0 +1,3 @@
+<resources>
+    <string name="totp_original_entry_unresolved">Could not uniquely identify the original KeePass authenticator entry. Refresh the database and try again.</string>
+</resources>

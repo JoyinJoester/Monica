@@ -4,6 +4,8 @@
 
 ## 中文
 
+- 修复旧版 KeePass 验证器条目编辑保存后、切换数据库时出现重复项目的问题；保存前恢复原条目身份，无法唯一确认时停止写入，保留独立条目。
+
 - 卡包新增会员卡、积分卡与旅行票证模板，可从新建页顶部菜单切换并保留各模板草稿；支持会员等级、积分余额／到期日、航班／车次、行程时间、航站楼、登机口、座位等字段，提供类型筛选、搜索、详情复制与重新编辑，沿用加密存储、附件及同步机制。#169
 
 - 支持同步 Bitwarden 团队／组织保险库中有权读取的条目及附件元数据，兼容组织密钥与独立条目密钥；编辑回传保留组织、集合和密钥归属，只读或解密失败时保留本地更改并提示。#168
@@ -26,6 +28,8 @@
 - 新增每条网站 URL 的独立自动填充匹配策略，可在右侧三点菜单设置默认、主域名、主机名、前缀、精确 URL、正则或从不匹配；移动 URL 时规则一同移动。新建与编辑页的三点操作统一为 M3E 分组菜单，匹配检测使用居中弹窗。浏览器只提供域名时，不推测路径或查询参数。#171
 
 ## English
+
+- Fix duplicate legacy KeePass authenticator entries after editing and switching databases. Resolve the original entry before saving and stop ambiguous writes while preserving distinct entries.
 
 - Added membership, rewards and travel-pass templates to the wallet create menu, retaining separate drafts while switching. Includes membership tiers, points/expiry, flight or service numbers, itinerary times, terminals, gates and seats, with type filters, search, copyable details and re-editing through existing encrypted storage, attachment and sync flows. #169
 

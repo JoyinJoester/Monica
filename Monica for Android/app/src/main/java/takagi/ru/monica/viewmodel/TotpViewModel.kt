@@ -1710,7 +1710,7 @@ class TotpViewModel internal constructor(
         return savedItemId
     }
 
-    private fun resolveKeePassMutationIdentity(
+    private suspend fun resolveKeePassMutationIdentity(
         existingItem: SecureItem?,
         targetDatabaseId: Long?,
         requestedGroupPath: String?
@@ -1726,10 +1726,31 @@ class TotpViewModel internal constructor(
         val sameDatabase = existingItem?.keepassDatabaseId == targetDatabaseId
         val resolvedGroupPath = requestedGroupPath ?: if (sameDatabase) existingItem?.keepassGroupPath else null
         val groupUnchanged = sameDatabase && resolvedGroupPath == existingItem?.keepassGroupPath
+        // Legacy Room projections may predate the native UUID column. Resolve the
+        // original entry before applying edits: inventing a move UUID here makes
+        // updateSecureItem append an entry, which reappears after a filter refresh.
+        val legacyNativeItem = if (sameDatabase && existingItem != null && existingItem.keepassEntryUuid.isNullOrBlank()) {
+            val snapshots = requireNotNull(keepassBridge)
+                .readLegacySecureItems(targetDatabaseId, setOf(ItemType.TOTP)).getOrThrow()
+                .filterNot { it.isInRecycleBin }
+            val sourceMatches = snapshots.filter { it.sourceMonicaId == existingItem.id }
+            val match = if (sourceMatches.isNotEmpty()) {
+                sourceMatches.singleOrNull()
+            } else {
+                val originalIdentity = parseStoredTotpData(existingItem)?.let(::buildTotpIdentityKey)
+                snapshots.singleOrNull { snapshot ->
+                    snapshot.item.title == existingItem.title &&
+                        snapshot.item.keepassGroupPath.orEmpty() == existingItem.keepassGroupPath.orEmpty() &&
+                        originalIdentity != null &&
+                        parseStoredTotpData(snapshot.item)?.let(::buildTotpIdentityKey) == originalIdentity
+                }
+            }
+            requireNotNull(match) { strings.get(R.string.totp_original_entry_unresolved) }.item
+        } else null
 
         return KeePassMutationIdentity(
             groupPath = resolvedGroupPath,
-            entryUuid = KeePassCrossDatabaseTransfer.secureItemTargetEntryUuid(
+            entryUuid = legacyNativeItem?.keepassEntryUuid ?: KeePassCrossDatabaseTransfer.secureItemTargetEntryUuid(
                 item = existingItem,
                 databaseId = targetDatabaseId,
                 groupPath = resolvedGroupPath
