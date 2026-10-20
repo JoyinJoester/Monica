@@ -2489,7 +2489,7 @@ internal fun ProjectCredentialDetailCard(
     }
     val totp = resolvedTotp ?: parsedTotp
     val accounts = buildList {
-        if (first.username.isNotEmpty()) add(stringResource(R.string.field_account) to first.username)
+        if (first.username.isNotEmpty()) add(stringResource(R.string.username) to first.username)
         if (separatedUsername.isNotEmpty()) add(stringResource(R.string.autofill_username) to separatedUsername)
     }
     // Group rows come from sanitized list metadata; secret availability lives in values.
@@ -2515,6 +2515,10 @@ internal fun ProjectCredentialDetailCard(
         totp?.let {
             takagi.ru.monica.ui.components.PasswordAuthenticatorCard(first, it, settings,
                 onEdit = { onEdit(first.id) }, connected = accounts.isNotEmpty() || passwordRows.isNotEmpty())
+        }
+        if (!info?.note.isNullOrBlank()) {
+            InfoFieldWithCopy(stringResource(R.string.credential_note), info!!.note,
+                context = context, onCreateSend = onCreateSend)
         }
     }
 }

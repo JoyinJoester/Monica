@@ -31,8 +31,8 @@ class ProjectCredentialStorageTest {
     @Test fun bitwardenFreshDownloadPreservesEachAccountPasswordAndGroup() = runBlocking {
         scenario { viewModel ->
             val destination = bitwarden()
-            val groups = listOf(ProjectCredentialGroup.Group(username = "personal", passwords = listOf(ProjectCredentialGroup.Password(value = "personal-secret"))),
-                ProjectCredentialGroup.Group(username = "work", passwords = listOf(ProjectCredentialGroup.Password(value = "work-secret-1"), ProjectCredentialGroup.Password(value = "work-secret-2"))))
+            val groups = listOf(ProjectCredentialGroup.Group(username = "personal", note = "Personal note", passwords = listOf(ProjectCredentialGroup.Password(value = "personal-secret"))),
+                ProjectCredentialGroup.Group(username = "work", note = "Work note\nSecond line", passwords = listOf(ProjectCredentialGroup.Password(value = "work-secret-1"), ProjectCredentialGroup.Password(value = "work-secret-2"))))
             val done = CompletableDeferred<Long?>()
             viewModel.savePasswordsAcrossTargets(emptyList(), PasswordEntry(title = "$prefix-bw", username = "", password = "", website = website),
                 emptyList(), listOf(StorageTarget.Bitwarden(destination.databaseId, null)), projectCredentials = groups, onComplete = { done.complete(it) })
@@ -56,6 +56,7 @@ class ProjectCredentialStorageTest {
             val restored = ProjectCredentialGroup.restore(received.map { it.copy(password = security.decryptData(it.password)) }, fields)
             assertEquals(groups.map { it.id }, restored.map { it.id })
             assertEquals(groups.map { it.username }, restored.map { it.username })
+            assertEquals(groups.map { it.note }, restored.map { it.note })
             assertEquals(groups.flatMap { it.passwords.map { pwd -> pwd.value } }, restored.flatMap { it.passwords.map { pwd -> pwd.value } })
         }
     }
@@ -180,9 +181,9 @@ class ProjectCredentialStorageTest {
         val title = "$prefix-project-accounts"
         val common = PasswordEntry(title = title, website = website, username = "", password = "", notes = "Shared notes")
         val groups = listOf(
-            ProjectCredentialGroup.Group(username = "personal@example.invalid", otp = "JBSWY3DPEHPK3PXP",
+            ProjectCredentialGroup.Group(username = "personal@example.invalid", otp = "JBSWY3DPEHPK3PXP", note = "Personal note",
                 passwords = listOf(ProjectCredentialGroup.Password(value = "  primary 1  "), ProjectCredentialGroup.Password(value = "primary 2"))),
-            ProjectCredentialGroup.Group(label = "Work", username = "work@example.invalid",
+            ProjectCredentialGroup.Group(label = "Work", username = "work@example.invalid", note = "Work note\nSecond line",
                 passwords = listOf(ProjectCredentialGroup.Password(value = "work 1"), ProjectCredentialGroup.Password(value = "work 2"))))
         suspend fun save(groups: List<ProjectCredentialGroup.Group>, ids: List<Long> = emptyList()): Long {
             val result = CompletableDeferred<Long?>()
@@ -252,21 +253,25 @@ class ProjectCredentialStorageTest {
         verifyAutofill(initial)
         var restored = restore()
         assertEquals(groups.map { it.username }, restored.map { it.username })
+        assertEquals(groups.map { it.note }, restored.map { it.note })
+        assertTrue(initial.all { it.notes == "Shared notes" })
         assertEquals(groups.flatMap { it.passwords.map { pwd -> pwd.value } }, restored.flatMap { it.passwords.map { pwd -> pwd.value } })
         assertEquals("", restored[1].otp)
         val workTwoId = restored[1].passwords[1].originalEntryId
-        val changed = restored[1].copy(passwords = restored[1].passwords.reversed().mapIndexed { index, password ->
+        val changed = restored[1].copy(note = "Edited work note", passwords = restored[1].passwords.reversed().mapIndexed { index, password ->
             if (index == 0) password.copy(value = "edited work 2") else password
         })
         save(listOf(restored[0], changed), initial.map { it.id })
         restored = restore()
         assertEquals(workTwoId, restored[1].passwords[0].originalEntryId)
+        assertEquals("Edited work note", restored[1].note)
         assertEquals("edited work 2", restored[1].passwords[0].value)
         assertEquals("  primary 1  ", restored[0].passwords[0].value)
         verifyNativeAndBackup(restored)
         save(listOf(restored[0], restored[1].copy(passwords = restored[1].passwords.take(1))), current().map { it.id })
         assertEquals(3, current().size)
         restored = restore()
+        assertEquals("Edited work note", restored[1].note)
         save(listOf(restored[0]), current().map { it.id })
         assertEquals(2, current().size)
     }

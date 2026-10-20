@@ -54,12 +54,12 @@ fun ProjectCredentialEditor(group: ProjectCredentialGroup.Group,
             OutlinedTextField(group.username, { onChange(group.copy(username = it)) }, saveTextState = false,
                 label = { Text(stringResource(R.string.username)) }, leadingIcon = { Icon(Icons.Default.Person, null) },
                 trailingIcon = { IconButton(onClick = { onGenerate(null) }) {
-                    Icon(Icons.Default.AutoFixHigh, stringResource(R.string.generator))
+                    Icon(Icons.Default.AutoAwesome, stringResource(R.string.cg_username_title),
+                        modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
                 } },
                 modifier = Modifier.fillMaxWidth().testTag("credential_username_${group.id}"), shape = RoundedCornerShape(4.dp), singleLine = true)
             group.passwords.forEachIndexed { index, password -> key(password.id) {
                 var visible by remember(password.id) { mutableStateOf(false) }
-                var passwordMenu by remember(password.id) { mutableStateOf(false) }
                 val interaction = remember(password.id) { MutableInteractionSource() }
                 val focused by interaction.collectIsFocusedAsState()
                 Surface(color = if (focused) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainer,
@@ -70,20 +70,12 @@ fun ProjectCredentialEditor(group: ProjectCredentialGroup.Group,
                 })) }, saveTextState = false,
                     label = { Text(if (group.passwords.size == 1) stringResource(R.string.password) else stringResource(R.string.project_credential_password_number, index + 1)) },
                     leadingIcon = { Icon(Icons.Default.Key, null) },
-                    trailingIcon = { Row {
-                        IconButton(onClick = { visible = !visible }) { Icon(if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            stringResource(if (visible) R.string.hide_password else R.string.show_password)) }
-                        Box {
-                            IconButton(onClick = { passwordMenu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_options)) }
-                            DropdownMenu(passwordMenu, onDismissRequest = { passwordMenu = false }) {
-                                DropdownMenuItem(text = { Text(stringResource(R.string.generator)) }, onClick = { passwordMenu = false; onGenerate(password.id) })
-                                if (group.passwords.size > 1) DropdownMenuItem(text = { Text(stringResource(R.string.delete)) }, onClick = {
-                                    passwordMenu = false
-                                    onChange(group.copy(passwords = group.passwords.filterNot { it.id == password.id }))
-                                })
-                            }
-                        }
-                    } },
+                    trailingIcon = {
+                        CredentialPasswordActions(visible, { visible = !visible }, { onGenerate(password.id) },
+                            onRemove = if (group.passwords.size > 1) ({
+                                onChange(group.copy(passwords = group.passwords.filterNot { it.id == password.id }))
+                            }) else null, tag = "credential_actions_${password.id}")
+                    },
                     interactionSource = interaction,
                     visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth().testTag("credential_password_${password.id}"),
@@ -111,7 +103,9 @@ fun ProjectCredentialEditor(group: ProjectCredentialGroup.Group,
                 Text(stringResource(R.string.add_password), Modifier.padding(start = 8.dp), color = MaterialTheme.colorScheme.primary)
             }
         }
-
+        Spacer(Modifier.height(8.dp))
+        CredentialNoteField(group.note, { onChange(group.copy(note = it)) },
+            Modifier.testTag("credential_note_${group.id}"))
     }
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(stringResource(R.string.delete)) },
         text = { Text(stringResource(R.string.project_credential_remove)) },

@@ -6,6 +6,27 @@ import org.junit.Test
 import takagi.ru.monica.data.PasswordEntry
 
 class ProjectCredentialGroupTest {
+    @Test fun notesBelongToTheAccountAndSurvivePasswordRemovalAndLegacyMetadata() {
+        val groups = listOf(ProjectCredentialGroup.Group(username = "personal", note = "Personal note\nSecond line"),
+            ProjectCredentialGroup.Group(username = "work", note = "Work note",
+                passwords = listOf(ProjectCredentialGroup.Password(value = "one"), ProjectCredentialGroup.Password(value = "two"))))
+        val rows = ProjectCredentialGroup.rows(groups)
+        val entries = rows.mapIndexed { index, row -> PasswordEntry(id = index + 1L, title = "Notes", website = "",
+            username = row.username, password = row.password.value) }
+        val fields = rows.mapIndexed { index, row -> index + 1L to ProjectCredentialGroup.put(emptyList(), row.metadata) }.toMap()
+        val restored = ProjectCredentialGroup.restore(entries.reversed(), fields)
+        assertEquals(groups.map { it.note }, restored.map { it.note })
+        val removed = ProjectCredentialGroup.restore(entries.filterNot { it.id == 2L }, fields)
+        assertEquals("Work note", removed.last().note)
+        val cleared = ProjectCredentialGroup.rows(restored.map { it.copy(note = "") })
+        assertTrue(cleared.all { it.metadata.note.isEmpty() })
+        val old = JsonObject(rows.first().metadata.raw - "note")
+        assertEquals("", ProjectCredentialGroup.parse(old.toString())?.note)
+        assertNull(ProjectCredentialGroup.parse(JsonObject(old + ("note" to JsonPrimitive(42))).toString()))
+        val conflict = fields + (3L to ProjectCredentialGroup.put(emptyList(), rows.last().metadata.copy(
+            raw = JsonObject(rows.last().metadata.raw + ("note" to JsonPrimitive("External edit"))))))
+        assertThrows(IllegalArgumentException::class.java) { ProjectCredentialGroup.restore(entries, conflict) }
+    }
     @Test fun metadataContainsNoSecretsAndRestoresIndependentAccounts() {
         val groups = listOf(ProjectCredentialGroup.Group(username = "alpha", passwords = listOf(ProjectCredentialGroup.Password(value = "alphaSecret")), otp = "ALPHA_OTP"),
             ProjectCredentialGroup.Group(label = "Work", username = "beta", passwords = listOf(ProjectCredentialGroup.Password(value = "betaSecret"), ProjectCredentialGroup.Password(value = "otherSecret"))))

@@ -6,6 +6,9 @@ import takagi.ru.monica.data.model.CredentialExchangeMetadata
 import takagi.ru.monica.data.passwordProjectKey
 import takagi.ru.monica.data.model.ProjectCredentialGroup
 import takagi.ru.monica.ui.components.ProjectCredentialEditor
+import takagi.ru.monica.ui.components.CredentialPasswordActions
+import takagi.ru.monica.ui.components.CredentialNoteField
+import androidx.compose.animation.animateContentSize
 import kotlinx.serialization.json.jsonObject
 import takagi.ru.monica.data.model.PasswordContentBlocks
 import takagi.ru.monica.ui.components.PasswordContentBlockCard
@@ -214,6 +217,7 @@ private enum class MultiCredentialEditorSection {
 
 @Stable
 private class CredentialMetadataDraft {
+    var credentialNote by mutableStateOf("")
     var notes by mutableStateOf("")
     var boundNoteId by mutableStateOf<Long?>(null)
     val emails = mutableStateListOf("")
@@ -662,6 +666,8 @@ private fun PasswordEntryEditor(
     val usesCredentialCards = isPasswordCredentialMode &&
         (!isEditing || (originalIds.size == 1 && credentialUsernames.size > 1))
     val isMultiCredentialMode = usesCredentialCards && credentialUsernames.size > 1
+    val usesProjectCredentialSave = hasProjectCredentialMetadata || extraCredentialGroups.isNotEmpty() ||
+        (!isMultiCredentialMode && primaryProjectGroup.note.isNotBlank())
     val multiCredentialEditorSection = remember(multiCredentialEditorSectionName) {
         runCatching { MultiCredentialEditorSection.valueOf(multiCredentialEditorSectionName) }
             .getOrDefault(MultiCredentialEditorSection.COMMON)
@@ -2852,7 +2858,7 @@ private fun PasswordEntryEditor(
 
             // A single account may still contain several legacy password rows.
             // Preserve all of them through the grouped save path.
-            val usesIndependentCredentialSave = !hasProjectCredentialMetadata && extraCredentialGroups.isEmpty() &&
+            val usesIndependentCredentialSave = !usesProjectCredentialSave &&
                 usesCredentialCards && (isMultiCredentialMode || passwords.size <= 1)
             if (usesIndependentCredentialSave) {
                 coroutineScope.launch {
@@ -2877,6 +2883,15 @@ private fun PasswordEntryEditor(
                     val credentialAuthKeys = credentialUsernames.indices.map(::credentialAuthenticatorKeyAt)
                     val credentialDrafts = credentialUsernames.indices.map { index ->
                         val metadata = credentialMetadataDrafts[index]
+                        val credentialNote = if (index == 0) primaryProjectGroup.note else metadata.credentialNote
+                        val ownFields = if (isMultiCredentialMode) {
+                            EntryContentFields.withOrder(metadata.credentialCustomFields.toList(), requestedContentSections.toList())
+                        } else emptyList()
+                        val credentialFields = if (credentialNote.isNotBlank()) {
+                            val noteMetadata = ProjectCredentialGroup.rows(listOf(ProjectCredentialGroup.Group(note = credentialNote)))
+                                .single().metadata
+                            ProjectCredentialGroup.put(ownFields, noteMetadata)
+                        } else ownFields
                         PasswordCredentialDraft(
                             username = credentialUsernames[index],
                             password = passwords.getOrNull(index).orEmpty(),
@@ -2918,11 +2933,7 @@ private fun PasswordEntryEditor(
                             creditCardCVV = if (isMultiCredentialMode) metadata.creditCardCVV else creditCardCVV,
                             passkeyBindings = if (!isMultiCredentialMode || index == 0) passkeyBindings else "",
                             sshKeyData = if (!isMultiCredentialMode || index == 0) existingSshKeyData else "",
-                            customFields = if (isMultiCredentialMode) {
-                                EntryContentFields.withOrder(metadata.credentialCustomFields.toList(), requestedContentSections.toList())
-                            } else {
-                                emptyList()
-                            }
+                            customFields = credentialFields
                         )
                     }
                     val editedCredentialSavePlan = if (isEditing) {
@@ -3126,8 +3137,8 @@ private fun PasswordEntryEditor(
             } else {
                 viewModel.savePasswordsAcrossTargets(
                             embeddedContentSave = deferredEmbeddedSave,
-                    originalIds = (if (hasProjectCredentialMetadata || extraCredentialGroups.isNotEmpty()) allProjectOriginalIds else originalIds).takeIf { isEditing }.orEmpty(),
-                    projectCredentials = if (hasProjectCredentialMetadata || extraCredentialGroups.isNotEmpty()) {
+                    originalIds = (if (hasProjectCredentialMetadata) allProjectOriginalIds else originalIds).takeIf { isEditing }.orEmpty(),
+                    projectCredentials = if (usesProjectCredentialSave) {
                         listOf(primaryProjectGroup.copy(username = currentUsername, otp = currentAuthKey,
                             passwords = passwords.mapIndexed { index, value ->
                                 (primaryProjectGroup.passwords.getOrNull(index) ?: ProjectCredentialGroup.Password()).copy(value = value)
@@ -3956,7 +3967,7 @@ private fun PasswordEntryEditor(
                                             username = value
                                         }
                                     },
-                                    label = { Text(stringResource(R.string.field_account)) },
+                                    label = { Text(stringResource(R.string.username)) },
                                     leadingIcon = { Icon(Icons.Default.Person, null) },
                                     trailingIcon = {
                                         Row {
@@ -4112,7 +4123,8 @@ private fun PasswordEntryEditor(
                                 loginType.equals("PASSWORD", ignoreCase = true) &&
                                 !isBarcodeMode
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(if (contentMode) 2.dp else 12.dp)) {
+                            Column(modifier = Modifier.testTag("password_editor_credentials").animateContentSize(),
+                                verticalArrangement = Arrangement.spacedBy(if (contentMode) 2.dp else 12.dp)) {
                                 val visiblePasswordIndices = if (passwords.isEmpty()) emptyList() else if (isMultiCredentialMode) {
                                     listOf(selectedCredentialEditorIndex.coerceIn(0, passwords.lastIndex))
                                 } else {
@@ -4163,29 +4175,16 @@ private fun PasswordEntryEditor(
                                                 leadingIcon = { Icon(Icons.Default.Lock, null) },
                                                 visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                                 trailingIcon = {
-                                                    Row {
-                                                        IconButton(onClick = { 
-                                                            showPasswordGenerator = true 
+                                                    CredentialPasswordActions(isPasswordVisible,
+                                                        onToggleVisibility = { togglePasswordFieldVisibility(index) },
+                                                        onGenerate = {
                                                             currentPasswordIndexForGenerator = index
-                                                        }) {
-                                                            Icon(
-                                                                Icons.Default.Key,
-                                                                contentDescription = stringResource(R.string.password_fill_title)
-                                                            )
-                                                        }
-                                                        IconButton(onClick = { togglePasswordFieldVisibility(index) }) {
-                                                            Icon(
-                                                                imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                                                contentDescription = null
-                                                            )
-                                                        }
-                                                        // Allow removing only if more than 1
-                                                        if (!isMultiCredentialMode && passwords.size > 1) {
-                                                            IconButton(onClick = { removePasswordFieldAt(index) }, modifier = Modifier.testTag("password_editor_remove_$index")) {
-                                                                Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                                                            }
-                                                        }
-                                                    }
+                                                            showPasswordGenerator = true
+                                                        },
+                                                        onRemove = if (!isMultiCredentialMode && passwords.size > 1) ({
+                                                            removePasswordFieldAt(index)
+                                                        }) else null,
+                                                        tag = "password_editor_$index", removeTag = "password_editor_remove_$index")
                                                 },
                                                 modifier = Modifier
                                                     .weight(1f)
@@ -4280,6 +4279,16 @@ private fun PasswordEntryEditor(
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(stringResource(R.string.add_password))
                                     }
+                                }
+                                if (contentMode) {
+                                    Spacer(Modifier.height(8.dp))
+                                    val noteIndex = if (isMultiCredentialMode) selectedCredentialEditorIndex else 0
+                                    CredentialNoteField(
+                                        value = if (noteIndex == 0) primaryProjectGroup.note else activeCredentialMetadata.credentialNote,
+                                        onValueChange = {
+                                            if (noteIndex == 0) primaryProjectGroup = primaryProjectGroup.copy(note = it)
+                                            else activeCredentialMetadata.credentialNote = it
+                                        }, modifier = Modifier.testTag("password_editor_credential_note"))
                                 }
                             }
                         }

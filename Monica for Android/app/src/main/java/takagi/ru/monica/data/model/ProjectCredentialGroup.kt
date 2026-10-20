@@ -18,11 +18,13 @@ object ProjectCredentialGroup {
         val primary get() = raw.getValue("primary").jsonPrimitive.boolean
         val groupOrder get() = raw.getValue("groupOrder").jsonPrimitive.int
         val passwordOrder get() = raw.getValue("passwordOrder").jsonPrimitive.int
+        val note get() = raw["note"]?.jsonPrimitive?.contentOrNull.orEmpty()
     }
     data class Password(val id: String = UUID.randomUUID().toString(), val value: String = "",
         val originalEntryId: Long? = null, val metadata: Metadata? = null)
     data class Group(val id: String = UUID.randomUUID().toString(), val label: String = "",
-        val username: String = "", val passwords: List<Password> = listOf(Password()), val otp: String = "")
+        val username: String = "", val passwords: List<Password> = listOf(Password()), val otp: String = "",
+        val note: String = "")
     data class Row(val username: String, val password: Password, val otp: String, val metadata: Metadata)
 
     fun read(fields: List<CustomFieldDraft>): Metadata? = fields.singleOrNull { it.title == FIELD }?.value?.let(::parse)
@@ -34,6 +36,7 @@ object ProjectCredentialGroup {
         require(UUID.fromString(metadata.groupId).toString() == metadata.groupId)
         require(UUID.fromString(metadata.passwordId).toString() == metadata.passwordId)
         require(raw["label"]?.jsonPrimitive?.isString == true)
+        require(raw["note"] == null || raw["note"]?.jsonPrimitive?.isString == true)
         require(metadata.groupOrder >= 0 && metadata.passwordOrder >= 0)
         metadata.primary
         metadata
@@ -49,6 +52,7 @@ object ProjectCredentialGroup {
                 val raw = JsonObject(password.metadata?.raw.orEmpty() + buildJsonObject {
                     put("version", 1); put("groupId", group.id); put("passwordId", password.id)
                     put("label", group.label); put("primary", groupIndex == 0)
+                    put("note", group.note)
                     put("groupOrder", groupIndex); put("passwordOrder", passwordIndex)
                 })
                 Row(group.username, password, group.otp, requireNotNull(parse(raw.toString())))
@@ -82,9 +86,12 @@ object ProjectCredentialGroup {
                 require(ordered.all { it.username == first.username && it.authenticatorKey == first.authenticatorKey }) {
                     "Conflicting account fields must not be overwritten"
                 }
+                require(ordered.all { metadata[it.id]?.note.orEmpty() == meta?.note.orEmpty() }) {
+                    "Conflicting credential notes must not be overwritten"
+                }
                 Group(meta?.groupId ?: legacyGroup, meta?.label.orEmpty(), first.username,
                     ordered.map { row -> Password(metadata[row.id]?.passwordId ?: UUID.randomUUID().toString(), row.password, row.id, metadata[row.id]) },
-                    first.authenticatorKey)
+                    first.authenticatorKey, meta?.note.orEmpty())
             }
     }
 }

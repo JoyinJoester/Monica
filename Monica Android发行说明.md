@@ -17,6 +17,8 @@
 
 - 优化自动填充账号操作为 M3E 居中弹窗，分组展示填充、复制和详情操作，支持大字体滚动；新增独立“无障碍填充”，从输入法、系统 Autofill 或磁贴进入均可使用，服务未启用时提供设置入口，并正确返回目标应用填写。
 
+- 统一默认与新增账号密码凭据的编辑体验：添加密码时平滑展开，生成器与删除操作统一放入三点菜单，标签统一为“用户名”并复用星星生成器图标；每个凭据固定提供简单的多行备注，独立保存、编辑与展示，不覆盖页面已有笔记或备注。
+
 ## English
 
 - Added sync for readable Bitwarden team/organization items and attachment metadata, including organization and per-item keys. Updates retain organization, collections and key ownership; read-only or failed operations preserve pending local changes.
@@ -26,3 +28,4 @@
 - Fixed missing autofill suggestions when an Android package name was entered directly in the website field. Bare package names and `androidapp://` bindings now match while ordinary website matching remains unchanged. #167
 - Fixed the expiry-date cursor jumping before the first year digit and reversing subsequent input in bank cards and password payment fields. Pasting, selection replacement and deletion now preserve the correct editing position.
 - Redesigned autofill account actions as a centered M3E dialog with grouped fill, copy and detail actions and scrolling for large text. Added independent Accessibility fill from the keyboard, system Autofill and quick tile, with a setup prompt when the service is disabled and correct return to the target app.
+- Unified primary and added credential editors with smooth password expansion, shared overflow menus for generation/deletion, consistent Username labels and star generator icons. Each credential now has a fixed multiline note field, saved and displayed independently of page-level notes.

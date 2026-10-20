@@ -61,6 +61,50 @@ class ProjectCredentialEditorTest {
         compose.onNodeWithTag("password_editor_save").performClick()
         compose.waitUntil(30000) { savedId != null }
     }
+    private fun showSimpleEditor() {
+        compose.setContent {
+            CompositionLocalProvider(LocalUiSecurityManager provides security) {
+                MaterialTheme { key(editId) {
+                    AddEditPasswordScreen(model, passwordId = editId, initialStorageExplicit = true,
+                        initialDraft = if (editId == null) AddEditPasswordInitialDraft(title = "Credential note",
+                            username = "demo", password = "synthetic-password") else null,
+                        onSaveCompleted = { savedId = it }, onNavigateBack = {})
+                } }
+            }
+        }
+    }
+    @Test fun singleCredentialNoteSavesReopensAndClearsWithoutPageNotes() {
+        showSimpleEditor()
+        scroll(hasTestTag("password_editor_credential_note")).performTextReplacement("Only this credential\nSecond line")
+        save()
+        val id = requireNotNull(savedId)
+        val row = runBlocking { requireNotNull(db.passwordEntryDao().getPasswordEntryById(id)) }
+        val fields = runBlocking { model.getCustomFieldsByEntryIdSync(id) }.map(CustomFieldDraft::fromCustomField)
+        assertEquals("", row.notes)
+        assertEquals("Only this credential\nSecond line", ProjectCredentialGroup.read(fields)?.note)
+        compose.runOnIdle { editId = id; savedId = null }
+        scroll(hasTestTag("password_editor_credential_note")).assertTextContains("Only this credential\nSecond line")
+            .performTextClearance()
+        save()
+        val updated = runBlocking { model.getCustomFieldsByEntryIdSync(id) }.map(CustomFieldDraft::fromCustomField)
+        assertEquals("", ProjectCredentialGroup.read(updated)?.note)
+    }
+    @Test fun primaryAddPasswordExpandsOverAnimationFrames() {
+        showSimpleEditor()
+        scroll(hasTestTag("password_editor_add_password"))
+        fun height() = compose.onNodeWithTag("password_editor_credentials").fetchSemanticsNode().size.height
+        val before = height()
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.onNodeWithTag("password_editor_add_password").performClick()
+            compose.mainClock.advanceTimeBy(80)
+            val during = height()
+            compose.mainClock.advanceTimeBy(1200)
+            val after = height()
+            assertTrue("New row expands instead of appearing instantly: $before < $during < $after",
+                before < during && during < after)
+        } finally { compose.mainClock.autoAdvance = true }
+    }
     @Test fun addAccountWithTwoPasswordsAndEditFromItsOwnRowKeepsPrimaryAccount() {
         compose.setContent {
             CompositionLocalProvider(LocalUiSecurityManager provides security) {
@@ -74,12 +118,17 @@ class ProjectCredentialEditorTest {
             }
         }
         scroll(hasTestTag("password_editor_add_password")).performClick()
+        compose.onNodeWithTag("password_editor_remove_1").assertDoesNotExist()
         scroll(hasTestTag("password_editor_value_1")).assertExists()
         scroll(hasTestTag("password_otp_secret"))
         assertTrue(compose.onNodeWithTag("password_editor_value_1").fetchSemanticsNode().boundsInRoot.top <
             compose.onNodeWithTag("password_otp_secret").fetchSemanticsNode().boundsInRoot.top)
-        scroll(hasTestTag("password_editor_remove_1")).performClick()
+        scroll(hasTestTag("password_editor_1_menu")).performClick()
+        compose.onNodeWithTag("password_editor_1_generate").assertExists()
+        compose.onNodeWithTag("password_editor_remove_1").performClick()
         compose.onNodeWithTag("password_editor_value_1").assertDoesNotExist()
+        scroll(hasTestTag("password_editor_credential_note")).performTextReplacement("Personal note\nSecond line")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
         scroll(hasTestTag("password_otp_secret")).performTextReplacement("JBSWY3DPEHPK3PXP")
         androidx.test.espresso.Espresso.closeSoftKeyboard()
         scroll(hasTestTag("password_otp_inline_preview")).assertIsDisplayed()
@@ -102,6 +151,8 @@ class ProjectCredentialEditorTest {
         scroll(prefix("credential_password_")).performTextReplacement("work-secret-1")
         androidx.test.espresso.Espresso.closeSoftKeyboard()
         scroll(prefix("credential_add_password_")).performClick()
+        scroll(hasTestTag("credential_note_$groupTag")).performTextReplacement("Work note")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
         val secondTag = compose.onAllNodes(prefix("credential_password_")).fetchSemanticsNodes().last().config[SemanticsProperties.TestTag]
         scroll(hasTestTag(secondTag)).performTextReplacement("work-secret-2")
         androidx.test.espresso.Espresso.closeSoftKeyboard()
@@ -119,6 +170,12 @@ class ProjectCredentialEditorTest {
         val rows = runBlocking { db.passwordEntryDao().getAllPasswordEntriesSync() }
         assertEquals(3, rows.size)
         assertEquals(setOf("personal", "work"), rows.map { it.username }.toSet())
+        val savedFields = runBlocking { model.getCustomFieldsByEntryIds(rows.map { it.id }) }
+            .mapValues { (_, fields) -> fields.map(CustomFieldDraft::fromCustomField) }
+        val restored = ProjectCredentialGroup.restore(rows.map { it.copy(
+            password = security.decryptData(it.password),
+            authenticatorKey = security.decryptDataIfMonicaCiphertext(it.authenticatorKey)) }, savedFields)
+        assertEquals(listOf("Personal note\nSecond line", "Work note"), restored.map { it.note })
         fun secret(row: PasswordEntry) = takagi.ru.monica.util.TotpDataResolver.fromAuthenticatorKey(
             security.decryptDataIfMonicaCiphertext(row.authenticatorKey))?.secret
         assertEquals("JBSWY3DPEHPK3PXP", secret(rows.single { it.username == "personal" }))
@@ -127,6 +184,8 @@ class ProjectCredentialEditorTest {
         compose.runOnIdle { editId = additionalId; savedId = null }
         compose.waitUntil(20000) { compose.onAllNodesWithText("Account groups").fetchSemanticsNodes().isNotEmpty() }
         scroll(prefix("credential_username_")).assertTextContains("work")
+        scroll(hasTestTag("password_editor_credential_note")).assertTextContains("Personal note\nSecond line")
+        scroll(hasTestTag("credential_note_$groupTag")).assertTextContains("Work note")
         scroll(hasTestTag("credential_otp_$groupTag")).assertTextContains("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")
         scroll(prefix("credential_username_")).performTextReplacement("work-edited")
         save()
@@ -139,6 +198,8 @@ class ProjectCredentialEditorTest {
         compose.runOnIdle { detail = true }
         compose.waitUntil(20000) { compose.onAllNodesWithText("personal").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("personal").assertExists()
+        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Personal note\nSecond line"))
+        compose.onNodeWithText("Personal note\nSecond line").assertIsDisplayed()
         // Both accounts have independent detail sections; the second can be scrolled into view.
         compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("work-edited"))
         compose.onNodeWithText("work-edited").assertIsDisplayed()
@@ -146,6 +207,8 @@ class ProjectCredentialEditorTest {
             compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasTestTag("detail_password_${row.id}"))
             compose.onNodeWithTag("detail_password_${row.id}").performScrollTo().assertIsDisplayed()
         }
+        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Work note"))
+        compose.onNodeWithText("Work note").assertIsDisplayed()
         File(context.filesDir, "credential-detail-grouped.png").outputStream().use {
             compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
