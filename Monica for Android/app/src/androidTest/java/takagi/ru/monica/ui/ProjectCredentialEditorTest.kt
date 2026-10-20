@@ -1,6 +1,17 @@
 package takagi.ru.monica.ui
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import takagi.ru.monica.ui.components.DetailGroupItem
+import takagi.ru.monica.ui.components.LocalCompactCredentialFields
+import takagi.ru.monica.R
+import kotlin.math.abs
 import androidx.compose.runtime.*
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
@@ -200,6 +211,7 @@ class ProjectCredentialEditorTest {
         compose.onNodeWithText("personal").assertExists()
         compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Personal note\nSecond line"))
         compose.onNodeWithText("Personal note\nSecond line").assertIsDisplayed()
+        compose.onNodeWithTag("credential_note_card_${restored[0].id}").assertExists()
         // Both accounts have independent detail sections; the second can be scrolled into view.
         compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("work-edited"))
         compose.onNodeWithText("work-edited").assertIsDisplayed()
@@ -209,6 +221,7 @@ class ProjectCredentialEditorTest {
         }
         compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Work note"))
         compose.onNodeWithText("Work note").assertIsDisplayed()
+        compose.onNodeWithTag("credential_note_card_${restored[1].id}").assertExists()
         File(context.filesDir, "credential-detail-grouped.png").outputStream().use {
             compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
@@ -224,6 +237,7 @@ class ProjectCredentialEditorTest {
         compose.waitUntil(20000) { compose.onAllNodesWithTag("password_authenticator_card").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("HiddenIssuer").assertDoesNotExist()
         compose.onNodeWithText("personal").assertExists()
+        compose.onNodeWithTag("credential_note_card_$id").assertExists()
         compose.onNodeWithTag("password_authenticator_card").performScrollTo().assertIsDisplayed()
         File(context.filesDir, "credential-detail-single.png").outputStream().use {
             compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
@@ -232,6 +246,65 @@ class ProjectCredentialEditorTest {
         compose.onNodeWithTag("auth_copy_current").assertIsDisplayed()
         compose.onNodeWithTag("auth_copy_next").assertIsDisplayed()
         compose.onNodeWithTag("auth_qr_migrate").assertIsDisplayed()
+    }
+
+    @Test fun passwordDeleteSharesStrengthRowAndSurvivesDisabledAnalysis() {
+        var analysis by mutableStateOf(true)
+        var deleted = false
+        compose.setContent { MaterialTheme {
+            CompositionLocalProvider(LocalCompactCredentialFields provides true) {
+                DetailGroupItem(0, 1) {
+                    PasswordItemRow(PasswordEntry(id = 701, title = "Synthetic", username = "demo", password = "", website = ""),
+                        displayPassword = "synthetic-password", unavailableSource = null,
+                        onResyncUnreadable = {}, isResyncingUnreadable = false,
+                        showSecurityAnalysis = analysis, index = 1, showIndex = true,
+                        onDelete = { deleted = true }, context = context, canDelete = true, onCreateSend = null)
+                }
+            }
+        } }
+        val strength = compose.onNodeWithTag("detail_password_strength_701").fetchSemanticsNode().boundsInRoot
+        val delete = compose.onNodeWithTag("detail_password_delete_701").fetchSemanticsNode().boundsInRoot
+        assertTrue("Delete and strength occupy the same row", abs(strength.center.y - delete.center.y) <= 1f)
+        assertTrue("Delete keeps a 48dp touch target", delete.width >= with(compose.density) { 48.dp.toPx() })
+        compose.onNodeWithTag("detail_password_delete_701").assertContentDescriptionEquals(context.getString(R.string.delete))
+        compose.onNodeWithText(context.getString(R.string.delete)).assertDoesNotExist()
+        File(context.filesDir, "credential-detail-compact-password.png").outputStream().use {
+            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        }
+        compose.runOnIdle { analysis = false }
+        compose.onNodeWithTag("detail_password_strength_701").assertDoesNotExist()
+        compose.onNodeWithTag("detail_password_delete_701").performClick()
+        compose.runOnIdle { assertTrue(deleted) }
+    }
+
+    @Test fun credentialNoteCardsShowLongTextAndEmptyStateAtLargeFont() {
+        val note = "Personal note\nSecond line\nIndependent of the work account"
+        val groups = listOf(ProjectCredentialGroup.Group(username = "personal", note = note),
+            ProjectCredentialGroup.Group(username = "work"))
+        val rows = ProjectCredentialGroup.rows(groups)
+        val entries = rows.mapIndexed { index, row -> PasswordEntry(id = 801L + index,
+            title = "Synthetic", username = row.username, password = "", website = "") }
+        val metadata = entries.mapIndexed { index, row -> row.id to rows[index].metadata }.toMap()
+        compose.setContent { MaterialTheme {
+            val density = LocalDensity.current.density
+            CompositionLocalProvider(LocalDensity provides Density(density, 2f)) {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    entries.forEach { entry ->
+                        ProjectCredentialDetailCard(listOf(entry), metadata, mapOf(entry.id to "synthetic-password"),
+                            emptyMap(), context, AppSettings(), null, {}, {},
+                            onResyncUnreadable = {}, isResyncingUnreadable = false)
+                    }
+                }
+            }
+        } }
+        compose.onNodeWithText(note).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("credential_note_card_${groups[0].id}").assertExists()
+        compose.onNodeWithTag("credential_note_copy").assertExists()
+        compose.onNodeWithText(context.getString(R.string.credential_note_empty)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("credential_note_card_${groups[1].id}").assertExists()
+        File(context.filesDir, "credential-detail-empty-note-large-font.png").outputStream().use {
+            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        }
     }
 
     @Test fun sanitizedMetadataStillDisplaysEveryResolvedPassword() {

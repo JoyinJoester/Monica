@@ -2,6 +2,7 @@ package takagi.ru.monica.ui.screens
 
 import takagi.ru.monica.data.model.CredentialExchangeMetadata
 
+import takagi.ru.monica.ui.components.DetailCardSurface
 import takagi.ru.monica.ui.components.DetailSectionLayout
 import takagi.ru.monica.ui.components.DetailGroupItem
 import takagi.ru.monica.ui.components.entryGroupShape
@@ -2496,6 +2497,7 @@ internal fun ProjectCredentialDetailCard(
     val passwordRows = ordered.filter { !values[it.id].isNullOrBlank() || unavailable[it.id] != null }
     val count = accounts.size + passwordRows.size + if (totp != null) 1 else 0
     CompositionLocalProvider(takagi.ru.monica.ui.components.LocalCompactCredentialFields provides true) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     DetailSectionLayout(info?.label?.ifBlank { stringResource(R.string.project_credential) }
         ?: stringResource(R.string.project_credential)) {
         accounts.forEachIndexed { index, (label, value) ->
@@ -2516,12 +2518,35 @@ internal fun ProjectCredentialDetailCard(
             takagi.ru.monica.ui.components.PasswordAuthenticatorCard(first, it, settings,
                 onEdit = { onEdit(first.id) }, connected = accounts.isNotEmpty() || passwordRows.isNotEmpty())
         }
-        if (!info?.note.isNullOrBlank()) {
-            InfoFieldWithCopy(stringResource(R.string.credential_note), info!!.note,
-                context = context, onCreateSend = onCreateSend)
+    }
+    CredentialDetailNoteCard(info?.note.orEmpty(), context,
+        Modifier.testTag("credential_note_card_${info?.groupId ?: first.id}"))
+}
+}
+}
+
+@Composable
+internal fun CredentialDetailNoteCard(note: String, context: Context, modifier: Modifier = Modifier) {
+    DetailCardSurface(modifier) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Notes, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.credential_note), Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall)
+                if (note.isNotBlank()) IconButton(onClick = {
+                    ClipboardUtils.copyToClipboard(context, note, context.getString(R.string.credential_note), sensitive = true)
+                }, modifier = Modifier.testTag("credential_note_copy")) {
+                    Icon(MonicaIcons.Action.copy, stringResource(R.string.copy), Modifier.size(20.dp))
+                }
+            }
+            SelectionContainer {
+                Text(note.ifBlank { stringResource(R.string.credential_note_empty) },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (note.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+            }
         }
     }
-}
 }
 
 @Composable
@@ -2617,11 +2642,6 @@ internal fun PasswordItemRow(
                 context = context, onCreateSend = onCreateSend,
             )
             }
-            if (canDelete) {
-                TextButton(onClick = onDelete, modifier = Modifier.align(Alignment.End)) {
-                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
-                }
-            }
         } else {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -2665,16 +2685,6 @@ internal fun PasswordItemRow(
                     Icon(MonicaIcons.Action.copy, contentDescription = null, modifier = Modifier.size(20.dp))
                 }
                 
-                if (canDelete) {
-                    IconButton(onClick = onDelete) {
-                        Icon(
-                            MonicaIcons.Action.delete, 
-                            contentDescription = null, 
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
             }
         }
         
@@ -2714,19 +2724,26 @@ internal fun PasswordItemRow(
 
         }
 
-        if (showSecurityAnalysis && hasPasswordValue && !isUnavailable) {
-            Surface(
-                modifier = if (takagi.ru.monica.ui.components.LocalCompactCredentialFields.current) Modifier.padding(start = 36.dp) else Modifier,
-                shape = RoundedCornerShape(8.dp),
-                color = strengthColor.copy(alpha = 0.16f),
-                contentColor = strengthColor
-            ) {
-                Text(
-                    text = strengthText,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
+        val showStrength = showSecurityAnalysis && hasPasswordValue && !isUnavailable
+        if (showStrength || canDelete) {
+            Row(Modifier.fillMaxWidth()
+                .padding(start = if (takagi.ru.monica.ui.components.LocalCompactCredentialFields.current) 36.dp else 0.dp)
+                .testTag("detail_password_footer_${entry.id}"), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    if (showStrength) Surface(
+                        modifier = Modifier.testTag("detail_password_strength_${entry.id}"),
+                        shape = RoundedCornerShape(8.dp),
+                        color = strengthColor.copy(alpha = 0.16f), contentColor = strengthColor
+                    ) {
+                        Text(strengthText, Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                if (canDelete) IconButton(onClick = onDelete,
+                    modifier = Modifier.size(48.dp).testTag("detail_password_delete_${entry.id}")) {
+                    Icon(MonicaIcons.Action.delete, stringResource(R.string.delete),
+                        Modifier.size(20.dp), tint = MaterialTheme.colorScheme.error)
+                }
             }
         }
 

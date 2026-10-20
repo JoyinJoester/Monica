@@ -4732,4 +4732,5 @@
     <string name="autofill_action_password_next">Copy the password next from the notification</string>
     <string name="autofill_action_username_next">Copy the account next from the notification</string>
     <string name="credential_note">Note</string>
+    <string name="credential_note_empty">No note yet</string>
 </resources>

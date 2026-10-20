@@ -28,4 +28,5 @@
     <string name="autofill_action_password_next">随后从通知复制密码</string>
     <string name="autofill_action_username_next">随后从通知复制账号</string>
     <string name="credential_note">备注</string>
+    <string name="credential_note_empty">暂无备注</string>
 </resources>
