@@ -4739,4 +4739,27 @@
     <string name="url_match_limited_context">Host excludes other subdomains. When the browser supplies only a hostname, protocol, path and query are not inferred. Exact URLs and URL prefixes require a complete URL. Regex uses RE2 syntax.</string>
     <string name="url_match_regex_error">Edit the URL to a valid RE2 regular expression first.</string>
     <string name="url_match_unreadable">URL matching metadata cannot be read. Existing data is preserved and saving is disabled.</string>
+
+    <!-- Wallet membership, rewards and travel templates (#169). -->
+    <string name="wallet_membership_card">Membership card</string>
+    <string name="wallet_rewards_card">Rewards card</string>
+    <string name="wallet_travel_pass">Travel pass</string>
+    <string name="wallet_pass_issuer">Brand / issuer / carrier</string>
+    <string name="wallet_pass_number">Membership number</string>
+    <string name="wallet_pass_booking">Ticket / booking reference</string>
+    <string name="wallet_pass_holder">Cardholder</string>
+    <string name="wallet_pass_passenger">Passenger name</string>
+    <string name="wallet_pass_tier">Membership tier</string>
+    <string name="wallet_pass_points">Points balance</string>
+    <string name="wallet_pass_points_expiry">Points expiry date</string>
+    <string name="wallet_pass_website">Website</string>
+    <string name="wallet_pass_service">Flight / service number</string>
+    <string name="wallet_pass_origin">Origin</string>
+    <string name="wallet_pass_destination">Destination</string>
+    <string name="wallet_pass_departure">Departure time (with time zone)</string>
+    <string name="wallet_pass_arrival">Arrival time (with time zone)</string>
+    <string name="wallet_pass_terminal">Terminal / platform</string>
+    <string name="wallet_pass_gate">Gate</string>
+    <string name="wallet_pass_seat">Seat</string>
+    <string name="wallet_pass_class">Travel class</string>
 </resources>

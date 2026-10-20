@@ -362,7 +362,10 @@ data class DocumentData(
     val homeEmail: String = "",
     val homePhone: String = "",
     val workEmail: String = "",
-    val workPhone: String = ""
+    val workPhone: String = "",
+    /** Empty on identity documents; strings preserve future template identifiers. */
+    val walletTemplate: String = "",
+    val walletFields: Map<String, String> = emptyMap()
 )
 
 enum class DocumentType {

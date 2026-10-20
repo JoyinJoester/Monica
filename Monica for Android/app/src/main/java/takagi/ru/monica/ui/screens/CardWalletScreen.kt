@@ -22,6 +22,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.FlightTakeoff
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CreditCard
@@ -181,7 +184,8 @@ enum class CardWalletTab {
     ALL,
     BANK_CARDS,
     DOCUMENTS,
-    BILLING_ADDRESSES
+    BILLING_ADDRESSES,
+    MEMBERSHIP_CARDS, REWARDS_CARDS, TRAVEL_PASSES
 }
 
 private data class CardWalletListFilterKey(
@@ -218,7 +222,11 @@ private fun cardWalletTypeQuickFilters(
         isSelected = currentTab == CardWalletTab.BILLING_ADDRESSES,
         onSelect = { onTabSelected(CardWalletTab.BILLING_ADDRESSES) }
     )
-)
+) + listOf(
+    Triple(CardWalletTab.MEMBERSHIP_CARDS, R.string.wallet_membership_card, Icons.Default.Badge),
+    Triple(CardWalletTab.REWARDS_CARDS, R.string.wallet_rewards_card, Icons.Default.Star),
+    Triple(CardWalletTab.TRAVEL_PASSES, R.string.wallet_travel_pass, Icons.Default.FlightTakeoff)
+).map { (tab, label, icon) -> UnifiedTypeQuickFilter(labelRes = label, icon = icon, isSelected = currentTab == tab, onSelect = { onTabSelected(tab) }) }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1027,6 +1035,13 @@ fun CardWalletScreen(
                                     onTabSelected(CardWalletTab.BILLING_ADDRESSES)
                                 }
                             )
+                            listOf(CardWalletTab.MEMBERSHIP_CARDS to R.string.wallet_membership_card,
+                                CardWalletTab.REWARDS_CARDS to R.string.wallet_rewards_card,
+                                CardWalletTab.TRAVEL_PASSES to R.string.wallet_travel_pass).forEach { (tab, label) ->
+                                DropdownMenuItem(text = { Text(stringResource(label)) },
+                                    trailingIcon = { if (currentTab == tab) Icon(Icons.Default.Check, null) },
+                                    onClick = { showTopActionsMenu = false; onTabSelected(tab) })
+                            }
                             }
                             if (selectedBitwardenVaultId != null) {
                                 DropdownMenuItem(
@@ -1123,6 +1138,13 @@ fun CardWalletScreen(
                                     description = stringResource(R.string.billing_address_empty)
                                 )
 
+                                CardWalletTab.MEMBERSHIP_CARDS, CardWalletTab.REWARDS_CARDS, CardWalletTab.TRAVEL_PASSES -> EmptyState(
+                                    icon = Icons.Default.Badge,
+                                    title = stringResource(when (currentTab) {
+                                        CardWalletTab.MEMBERSHIP_CARDS -> R.string.wallet_membership_card
+                                        CardWalletTab.REWARDS_CARDS -> R.string.wallet_rewards_card
+                                        else -> R.string.wallet_travel_pass
+                                    }), description = stringResource(R.string.no_documents_description))
                                 CardWalletTab.ALL -> EmptyState(
                                     icon = Icons.Default.CreditCard,
                                     title = stringResource(R.string.nav_card_wallet),

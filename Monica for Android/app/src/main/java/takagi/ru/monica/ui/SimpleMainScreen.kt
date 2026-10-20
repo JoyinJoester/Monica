@@ -137,11 +137,14 @@ fun UnifiedWalletAddScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var isFavorite by remember { mutableStateOf(false) }
-    var canSave by remember { mutableStateOf(false) }
-    var onSaveAction by remember { mutableStateOf<(() -> Unit)?>(null) }
-    var onToggleFavoriteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var isFavorite by remember(selectedType) { mutableStateOf(false) }
+    var canSave by remember(selectedType) { mutableStateOf(false) }
+    var onSaveAction by remember(selectedType) { mutableStateOf<(() -> Unit)?>(null) }
+    var onToggleFavoriteAction by remember(selectedType) { mutableStateOf<(() -> Unit)?>(null) }
     val titleRes = when (selectedType) {
+        CardWalletTab.MEMBERSHIP_CARDS -> R.string.wallet_membership_card
+        CardWalletTab.REWARDS_CARDS -> R.string.wallet_rewards_card
+        CardWalletTab.TRAVEL_PASSES -> R.string.wallet_travel_pass
         CardWalletTab.DOCUMENTS -> R.string.item_type_document
         CardWalletTab.BILLING_ADDRESSES -> R.string.billing_address
         else -> R.string.item_type_bank_card
@@ -232,10 +235,17 @@ fun UnifiedWalletAddScreen(
                             modifier = Modifier.fillMaxSize()
                         )
                     }
-                } else if (selectedType == CardWalletTab.DOCUMENTS) {
-                    stateHolder.SaveableStateProvider("wallet_add_document") {
+                } else if (selectedType in setOf(CardWalletTab.DOCUMENTS, CardWalletTab.MEMBERSHIP_CARDS, CardWalletTab.REWARDS_CARDS, CardWalletTab.TRAVEL_PASSES)) {
+                    key(selectedType) {
+                    stateHolder.SaveableStateProvider("wallet_add_document_$selectedType") {
                         AddEditDocumentScreen(
                             viewModel = documentViewModel,
+                            initialWalletTemplate = when (selectedType) {
+                                CardWalletTab.MEMBERSHIP_CARDS -> "MEMBERSHIP"
+                                CardWalletTab.REWARDS_CARDS -> "REWARDS"
+                                CardWalletTab.TRAVEL_PASSES -> "TRAVEL"
+                                else -> ""
+                            },
                             documentId = null,
                             onNavigateBack = onNavigateBack,
                             initialCategoryId = initialCategoryId,
@@ -255,6 +265,7 @@ fun UnifiedWalletAddScreen(
                             modifier = Modifier.fillMaxSize()
                         )
                     }
+                }
                 } else {
                     stateHolder.SaveableStateProvider("wallet_add_bank") {
                         AddEditBankCardScreen(
@@ -1367,19 +1378,9 @@ fun SimpleMainScreen(
             closeInlineBillingAddressEditor()
         }
         val handleWalletAddOpen: () -> Unit = {
-            when (cardWalletSubTab) {
-                CardWalletTab.BANK_CARDS -> handleBankCardAddOpen()
-                CardWalletTab.DOCUMENTS -> handleDocumentAddOpen()
-                CardWalletTab.BILLING_ADDRESSES -> handleBillingAddressAddOpen()
-                CardWalletTab.ALL -> {
-                    if (isCompactWidth) {
-                        onNavigateToWalletAdd(walletUnifiedAddType)
-                    } else {
-                        openInlineBankCardAdd()
-                    }
-                }
-            }
+            onNavigateToWalletAdd(if (cardWalletSubTab == CardWalletTab.ALL) walletUnifiedAddType else cardWalletSubTab)
         }
+
         val handleNoteOpen: (Long?) -> Unit = { noteId ->
             if (noteId != null) recordOverviewOpen { noteViewModel.allNotes.value.firstOrNull { it.id == noteId }?.vaultOverviewKey() }
             if (isCompactWidth) {
@@ -3180,6 +3181,7 @@ private fun MainScreenTabResetEffects(
                         onResetCardWalletDocumentPane()
                         onResetCardWalletBillingAddressPane()
                     }
+                    CardWalletTab.MEMBERSHIP_CARDS, CardWalletTab.REWARDS_CARDS, CardWalletTab.TRAVEL_PASSES,
                     CardWalletTab.DOCUMENTS -> {
                         onResetCardWalletBankCardPane()
                         onResetCardWalletBillingAddressPane()
@@ -3217,7 +3219,8 @@ private fun MainScreenTabResetEffects(
         if (
             cardWalletSubTab == CardWalletTab.BANK_CARDS ||
             cardWalletSubTab == CardWalletTab.DOCUMENTS ||
-            cardWalletSubTab == CardWalletTab.BILLING_ADDRESSES
+            cardWalletSubTab == CardWalletTab.BILLING_ADDRESSES ||
+            cardWalletSubTab in setOf(CardWalletTab.MEMBERSHIP_CARDS, CardWalletTab.REWARDS_CARDS, CardWalletTab.TRAVEL_PASSES)
         ) {
             onSyncWalletUnifiedAddType(cardWalletSubTab)
         }

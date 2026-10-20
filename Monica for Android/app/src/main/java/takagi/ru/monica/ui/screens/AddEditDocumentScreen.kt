@@ -93,6 +93,7 @@ import takagi.ru.monica.data.CommonSuggestionField
 fun AddEditDocumentScreen(
     viewModel: DocumentViewModel,
     documentId: Long? = null,
+    initialWalletTemplate: String = "",
     onNavigateBack: () -> Unit,
     initialCategoryId: Long? = null,
     initialStorageExplicit: Boolean = false,
@@ -136,6 +137,7 @@ fun AddEditDocumentScreen(
     val commonAccountPreferences = remember(context, securityManager) { CommonAccountPreferences(context, securityManager) }
     val embeddedEditor = remember(embeddedDraft?.id) { embeddedDraft?.let(::EmbeddedDocumentEditorData) }
 
+    var newDraftInitialized by rememberSaveable { mutableStateOf(false) }
     var title by rememberSaveable { mutableStateOf("") }
     var documentNumber by rememberSaveable { mutableStateOf("") }
     var fullName by rememberSaveable { mutableStateOf("") }
@@ -167,6 +169,9 @@ fun AddEditDocumentScreen(
     var passportNumber by rememberSaveable { mutableStateOf("") }
     var licenseNumber by rememberSaveable { mutableStateOf("") }
     var additionalInfo by rememberSaveable { mutableStateOf("") }
+    var walletTemplate by rememberSaveable { mutableStateOf(initialWalletTemplate) }
+    var walletFields by rememberSaveable { mutableStateOf(hashMapOf<String, String>()) }
+    val passTemplate = takagi.ru.monica.data.model.WalletPassTemplate.fromStored(walletTemplate)
     var documentType by rememberSaveable { mutableStateOf(DocumentType.ID_CARD) }
     var notes by rememberSaveable { mutableStateOf("") }
     val editorSections = rememberItemEditorSections()
@@ -426,13 +431,16 @@ fun AddEditDocumentScreen(
                     additionalInfo = data.additionalInfo
                     if (editorSectionOrder.isEmpty()) editorSectionOrder = data.editorSectionOrder
                     customFields = embeddedEditor?.customFields ?: CardWalletDataCodec.customFieldsToDrafts(data.customFields)
+                    walletTemplate = data.walletTemplate
+                    walletFields = HashMap(data.walletFields)
                     documentType = data.documentType
                 }
 
                 if (embeddedDraft == null) setSelectedStorageTargets(listOf(item.toStorageTarget()))
                 hasLoadedExistingDocumentFields = true
             }
-        } else {
+        } else if (!newDraftInitialized) {
+            newDraftInitialized = true
             existingDocumentItem = null
             hasLoadedExistingDocumentFields = false
             currentReplicaGroupId = null
@@ -469,7 +477,9 @@ fun AddEditDocumentScreen(
             passportNumber = ""
             licenseNumber = ""
             additionalInfo = ""
-            documentType = DocumentType.ID_CARD
+            walletTemplate = initialWalletTemplate
+            walletFields = hashMapOf()
+            documentType = if (initialWalletTemplate.isBlank()) DocumentType.ID_CARD else DocumentType.OTHER
             notes = ""
             isFavorite = false
             customFields = emptyList()
@@ -531,6 +541,8 @@ fun AddEditDocumentScreen(
         // Full name and structured name parts may intentionally differ (for example,
         // a local-script legal name and a transliteration). Editing notes must keep both.
         return DocumentData(
+            walletTemplate = walletTemplate,
+            walletFields = walletFields,
             documentNumber = documentNumber,
             fullName = fullName,
             issuedDate = issuedDate,
@@ -568,9 +580,10 @@ fun AddEditDocumentScreen(
         )
 
     }
-    val canSave = isExistingDocumentReady && (documentNumber.isNotBlank() || embeddedDraft != null) && !isSaving
+    val hasRequiredContent = documentNumber.isNotBlank() || (passTemplate != null && title.isNotBlank()) || embeddedDraft != null
+    val canSave = isExistingDocumentReady && hasRequiredContent && !isSaving
     val save: () -> Unit = saveAction@{
-        if (!isExistingDocumentReady || isSaving || (documentNumber.isBlank() && embeddedDraft == null)) return@saveAction
+        if (!isExistingDocumentReady || isSaving || !hasRequiredContent) return@saveAction
         if (embeddedEditor != null) {
             val publish = onEmbeddedSave ?: return@saveAction
             isSaving = true
@@ -632,7 +645,7 @@ fun AddEditDocumentScreen(
         viewModel.saveDocumentAcrossTargets(
             id = workingDocumentId,
             title = title.ifBlank {
-                when (documentType) {
+                passTemplate?.let { context.getString(it.labelRes()) } ?: when (documentType) {
                     DocumentType.ID_CARD -> context.getString(R.string.id_card)
                     DocumentType.PASSPORT -> context.getString(R.string.passport)
                     DocumentType.DRIVER_LICENSE -> context.getString(R.string.drivers_license)
@@ -873,7 +886,7 @@ fun AddEditDocumentScreen(
                         Text(stringResource(R.string.embedded_copy_document))
                     }
                 }
-                ItemEditorIdentity(title, { title = it }, stringResource(R.string.document_name), Icons.Default.Badge)
+                ItemEditorIdentity(title, { title = it }, stringResource(if (passTemplate != null) R.string.title else R.string.document_name), Icons.Default.Badge)
 
             CardFaceEditSection(
                     compact = true,
@@ -895,6 +908,12 @@ fun AddEditDocumentScreen(
                         stringResource(R.string.card_face_bitwarden_premium_required) else null
                 )
 
+                // Template fields are a single connected M3E group.
+                if (passTemplate != null) {
+                    WalletPassFields(passTemplate, documentNumber, { documentNumber = it }, fullName, { fullName = it },
+                        issuedBy, { issuedBy = it }, expiryDate, { expiryDate = it }, walletFields,
+                        { key, value -> walletFields = HashMap(walletFields + (key to value)) })
+                } else {
                 // Basic Info
                 InfoCard(title = stringResource(R.string.section_basic_info)) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1051,6 +1070,7 @@ fun AddEditDocumentScreen(
             }
 
 
+                }
                 },
                 addContent = { ItemEditorAddContent(editorSections, options = listOf(
                     ItemEditorContentOption("home_contact", R.string.wallet_home_contact, Icons.Default.Person, editorSections.visible("home_contact", listOf(homeEmail, homePhone).any { it.isNotBlank() })),
@@ -1072,7 +1092,7 @@ fun AddEditDocumentScreen(
                 if (showTopBar) {
                     Column {
                         TopAppBar(
-                            title = { Text(stringResource(if (documentId == null && embeddedDraft == null) R.string.add_document_title else R.string.edit_document_title)) },
+                            title = { Text(stringResource(passTemplate?.labelRes() ?: if (documentId == null && embeddedDraft == null) R.string.add_document_title else R.string.edit_document_title)) },
                             navigationIcon = {
                                 IconButton(onClick = onNavigateBack) {
                                     Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))

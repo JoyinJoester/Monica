@@ -752,6 +752,7 @@ internal fun MainScreenAddFab(
         CardWalletTab.DOCUMENTS -> CardWalletTab.DOCUMENTS
         CardWalletTab.BANK_CARDS -> CardWalletTab.BANK_CARDS
         CardWalletTab.BILLING_ADDRESSES -> CardWalletTab.BILLING_ADDRESSES
+        CardWalletTab.MEMBERSHIP_CARDS, CardWalletTab.REWARDS_CARDS, CardWalletTab.TRAVEL_PASSES -> cardWalletSubTab
         CardWalletTab.ALL -> walletUnifiedAddType
     }
     val shouldApplyPasswordAggregateDefaults =

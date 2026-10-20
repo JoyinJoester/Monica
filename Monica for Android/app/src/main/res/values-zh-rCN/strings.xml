@@ -35,4 +35,27 @@
     <string name="url_match_limited_context">主机名不匹配其他子域名。浏览器仅提供域名时，不推测协议、路径或查询参数；精确 URL 和含路径的前缀规则需有完整 URL 才能匹配。正则使用 RE2 语法。</string>
     <string name="url_match_regex_error">当前 URL 不是有效的 RE2 正则表达式，请先修改 URL。</string>
     <string name="url_match_unreadable">此条目的 URL 匹配规则无法读取，已保留原数据并暂停保存。</string>
+
+    <!-- Wallet membership, rewards and travel templates (#169). -->
+    <string name="wallet_membership_card">会员卡</string>
+    <string name="wallet_rewards_card">积分卡</string>
+    <string name="wallet_travel_pass">旅行票证</string>
+    <string name="wallet_pass_issuer">品牌／发行方／承运方</string>
+    <string name="wallet_pass_number">会员号</string>
+    <string name="wallet_pass_booking">票号／预订号</string>
+    <string name="wallet_pass_holder">持卡人</string>
+    <string name="wallet_pass_passenger">旅客姓名</string>
+    <string name="wallet_pass_tier">会员等级</string>
+    <string name="wallet_pass_points">积分余额</string>
+    <string name="wallet_pass_points_expiry">积分到期日</string>
+    <string name="wallet_pass_website">网站</string>
+    <string name="wallet_pass_service">航班／车次</string>
+    <string name="wallet_pass_origin">出发地</string>
+    <string name="wallet_pass_destination">目的地</string>
+    <string name="wallet_pass_departure">出发时间（含时区）</string>
+    <string name="wallet_pass_arrival">到达时间（含时区）</string>
+    <string name="wallet_pass_terminal">航站楼／站台</string>
+    <string name="wallet_pass_gate">登机口</string>
+    <string name="wallet_pass_seat">座位</string>
+    <string name="wallet_pass_class">舱位／席别</string>
 </resources>

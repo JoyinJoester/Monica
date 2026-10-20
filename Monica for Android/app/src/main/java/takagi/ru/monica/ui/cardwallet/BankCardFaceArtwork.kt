@@ -90,8 +90,8 @@ fun documentCardFacePreviewData(title: String, data: DocumentData) = CardFacePre
     subtitle = data.issuedBy,
     identifier = data.documentNumber,
     footerStart = data.fullName,
-    footerEnd = data.expiryDate,
-    identifierLabel = stringResource(R.string.card_face_identifier_document),
+    footerEnd = data.walletFields["serviceNumber"].orEmpty().ifBlank { data.expiryDate },
+    identifierLabel = stringResource(if (data.walletTemplate == "TRAVEL") R.string.wallet_pass_booking else if (data.walletTemplate.isNotBlank()) R.string.wallet_pass_number else R.string.card_face_identifier_document),
     icon = Icons.Default.Badge
 )
 

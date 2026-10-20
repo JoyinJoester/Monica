@@ -106,7 +106,7 @@ fun DocumentCard(
                         color = contentColor
                     )
                     Text(
-                        text = resolvedDocumentData.displayFullName().ifBlank { getDocumentTypeName(resolvedDocumentData.documentType) },
+                        text = resolvedDocumentData.displayFullName().ifBlank { takagi.ru.monica.data.model.WalletPassTemplate.fromStored(resolvedDocumentData.walletTemplate)?.let { stringResource(it.labelRes()) } ?: getDocumentTypeName(resolvedDocumentData.documentType) },
                         style = MaterialTheme.typography.bodySmall,
                         color = contentColor.copy(alpha = 0.7f)
                     )
@@ -130,7 +130,9 @@ fun DocumentCard(
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                     
-                    DocumentTypeIcon(
+                    val passTemplate = takagi.ru.monica.data.model.WalletPassTemplate.fromStored(resolvedDocumentData.walletTemplate)
+                    if (passTemplate != null) Icon(passTemplate.icon(), null, Modifier.size(24.dp), tint = contentColor.copy(alpha = 0.6f))
+                    else DocumentTypeIcon(
                         documentType = resolvedDocumentData.documentType,
                         modifier = Modifier.size(24.dp),
                         tint = contentColor.copy(alpha = 0.6f)

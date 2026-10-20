@@ -22,6 +22,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.ui.components.WalletPassDetails
+import takagi.ru.monica.ui.components.labelRes
+import takagi.ru.monica.ui.components.icon
 import takagi.ru.monica.R
 import takagi.ru.monica.ui.cardwallet.CardFaceDetailHeader
 import takagi.ru.monica.ui.cardwallet.documentCardFacePreviewData
@@ -270,7 +273,7 @@ fun DocumentDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(
-                                imageVector = when (data.documentType) {
+                                imageVector = takagi.ru.monica.data.model.WalletPassTemplate.fromStored(data.walletTemplate)?.icon() ?: when (data.documentType) {
                                     DocumentType.ID_CARD -> Icons.Default.Badge
                                     DocumentType.PASSPORT -> Icons.Default.FlightTakeoff
                                     DocumentType.DRIVER_LICENSE -> Icons.Default.DirectionsCar
@@ -279,7 +282,7 @@ fun DocumentDetailScreen(
                                 contentDescription = null
                             )
                             Text(
-                                text = getDocumentTypeName(data.documentType),
+                                text = takagi.ru.monica.data.model.WalletPassTemplate.fromStored(data.walletTemplate)?.let { stringResource(it.labelRes()) } ?: getDocumentTypeName(data.documentType),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
@@ -287,15 +290,15 @@ fun DocumentDetailScreen(
                         
                         Divider(color = LocalContentColor.current.copy(alpha = 0.2f))
                         
-                        InfoFieldWithCopy(
-                            label = stringResource(R.string.document_number),
+                        if (data.documentNumber.isNotBlank()) InfoFieldWithCopy(
+                            label = stringResource(if (data.walletTemplate == "TRAVEL") R.string.wallet_pass_booking else if (data.walletTemplate.isNotBlank()) R.string.wallet_pass_number else R.string.document_number),
                             value = data.documentNumber,
                             context = context
                         )
                         
                          if (data.fullName.isNotBlank()) {
                             InfoFieldWithCopy(
-                                label = stringResource(R.string.full_name),
+                                label = stringResource(if (data.walletTemplate == "TRAVEL") R.string.wallet_pass_passenger else if (data.walletTemplate.isNotBlank()) R.string.wallet_pass_holder else R.string.full_name),
                                 value = data.fullName,
                                 context = context
                             )
@@ -303,7 +306,11 @@ fun DocumentDetailScreen(
                     }
                 }
                 
+                takagi.ru.monica.data.model.WalletPassTemplate.fromStored(data.walletTemplate)?.let { template ->
+                    WalletPassDetails(template, data)
+                }
                 // Details Card
+                if (data.walletTemplate.isBlank()) {
                 takagi.ru.monica.ui.components.DetailCardSurface() {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -338,7 +345,7 @@ fun DocumentDetailScreen(
                         
                         if (data.issuedBy.isNotBlank()) {
                              InfoField(
-                                label = stringResource(R.string.issued_by),
+                                label = stringResource(if (data.walletTemplate.isNotBlank()) R.string.wallet_pass_issuer else R.string.issued_by),
                                 value = data.issuedBy
                             )
                         }
@@ -353,6 +360,7 @@ fun DocumentDetailScreen(
                     }
                 }
 
+                }
                 if (
                     data.title.isNotBlank() ||
                     data.firstName.isNotBlank() ||

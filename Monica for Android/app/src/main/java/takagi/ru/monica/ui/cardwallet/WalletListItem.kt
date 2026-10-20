@@ -122,6 +122,7 @@ private fun BankCardData.matchesBankCardSearch(query: String): Boolean =
         brand.contains(query, ignoreCase = true)
 
 private fun DocumentData.matchesDocumentSearch(query: String): Boolean =
+    walletFields.values.any { it.contains(query, ignoreCase = true) } ||
     firstName.contains(query, ignoreCase = true) ||
     middleName.contains(query, ignoreCase = true) ||
     lastName.contains(query, ignoreCase = true) ||

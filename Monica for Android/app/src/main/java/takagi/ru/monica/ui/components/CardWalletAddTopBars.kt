@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
@@ -16,8 +17,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.FlightTakeoff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -57,7 +58,8 @@ fun CardWalletAddTypeChip(
         listOf(
             CardWalletTab.BANK_CARDS,
             CardWalletTab.DOCUMENTS,
-            CardWalletTab.BILLING_ADDRESSES
+            CardWalletTab.BILLING_ADDRESSES,
+            CardWalletTab.MEMBERSHIP_CARDS, CardWalletTab.REWARDS_CARDS, CardWalletTab.TRAVEL_PASSES
         )
     }
 
@@ -76,6 +78,7 @@ fun CardWalletAddTypeChip(
         Color.Transparent
     }
 
+    Box {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -115,62 +118,20 @@ fun CardWalletAddTypeChip(
         )
     }
 
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = { expanded = false },
-        shape = RoundedCornerShape(16.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        shadowElevation = 0.dp,
-        tonalElevation = 0.dp
-    ) {
-        options.forEach { option ->
-            val isCurrent = option == current
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        text = cardWalletAddTypeLabel(option),
-                        color = if (isCurrent) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = cardWalletAddTypeIcon(option),
-                        contentDescription = null,
-                        tint = if (isCurrent) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                },
-                trailingIcon = if (isCurrent) {
-                    {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                } else {
-                    null
-                },
-                onClick = {
-                    expanded = false
-                    if (!isCurrent) onSelect(option)
-                }
-            )
-        }
+    EditorActionMenu(expanded, { expanded = false }, options.map { option ->
+        EditorMenuAction(cardWalletAddTypeLabel(option),
+            if (option == current) Icons.Default.Check else cardWalletAddTypeIcon(option),
+            onClick = { if (option != current) onSelect(option) }, tag = "wallet_template_${option.name}")
+    })
     }
 }
 
 @Composable
 private fun cardWalletAddTypeLabel(type: CardWalletTab): String = stringResource(
     when (type) {
+        CardWalletTab.MEMBERSHIP_CARDS -> R.string.wallet_membership_card
+        CardWalletTab.REWARDS_CARDS -> R.string.wallet_rewards_card
+        CardWalletTab.TRAVEL_PASSES -> R.string.wallet_travel_pass
         CardWalletTab.DOCUMENTS -> R.string.item_type_document
         CardWalletTab.BILLING_ADDRESSES -> R.string.billing_address
         else -> R.string.item_type_bank_card
@@ -178,6 +139,9 @@ private fun cardWalletAddTypeLabel(type: CardWalletTab): String = stringResource
 )
 
 private fun cardWalletAddTypeIcon(type: CardWalletTab): ImageVector = when (type) {
+    CardWalletTab.MEMBERSHIP_CARDS -> Icons.Default.Badge
+    CardWalletTab.REWARDS_CARDS -> Icons.Default.Star
+    CardWalletTab.TRAVEL_PASSES -> Icons.Default.FlightTakeoff
     CardWalletTab.DOCUMENTS -> Icons.Default.Badge
     CardWalletTab.BILLING_ADDRESSES -> Icons.Default.Home
     else -> Icons.Default.CreditCard

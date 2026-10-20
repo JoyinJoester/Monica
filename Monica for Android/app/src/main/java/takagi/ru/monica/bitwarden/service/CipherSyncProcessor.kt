@@ -100,6 +100,9 @@ class CipherSyncProcessor(
         private val DOCUMENT_RESERVED_FIELD_NAMES = setOf(
             "monica_document_type",
             "monica_full_name",
+            "monica_wallet_template",
+            "monica_wallet_fields",
+            "monica_wallet_number",
             "monica_district",
             "monica_home_email",
             "monica_home_phone",
@@ -1257,8 +1260,10 @@ class CipherSyncProcessor(
             CardWalletDataCodec.parseDocumentData(it.itemData, securityManager::decryptData)
         }
         val docData = DocumentData(
+            walletTemplate = customFieldMap["monica_wallet_template"] ?: existingDocument?.walletTemplate.orEmpty(),
+            walletFields = customFieldMap["monica_wallet_fields"]?.let(takagi.ru.monica.data.model.WalletPassFieldsCodec::decode) ?: existingDocument?.walletFields.orEmpty(),
             documentType = resolvedDocumentType,
-            documentNumber = idNumber,
+            documentNumber = customFieldMap["monica_wallet_number"] ?: idNumber,
             // Older remote identities have no full-name field; keep an existing local value.
             // A present empty field is an explicit clear, never rebuilt from the name parts.
             fullName = customFieldMap["monica_full_name"] ?: existingDocument?.fullName.orEmpty(),

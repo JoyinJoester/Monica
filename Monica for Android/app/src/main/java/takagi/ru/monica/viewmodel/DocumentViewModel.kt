@@ -511,6 +511,8 @@ class DocumentViewModel internal constructor(
             addChange("护照号", oldDocData.passportNumber, documentData.passportNumber)
             addChange("驾照号", oldDocData.licenseNumber, documentData.licenseNumber)
             addChange("自定义字段", oldDocData.customFields, documentData.customFields)
+            addChange("Wallet template", oldDocData.walletTemplate, documentData.walletTemplate)
+            addChange("Wallet fields", oldDocData.walletFields, documentData.walletFields)
 
             val updatedItem = existingItem.copy(
                 title = title,

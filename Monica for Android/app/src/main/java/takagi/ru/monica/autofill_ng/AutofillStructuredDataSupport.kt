@@ -105,6 +105,7 @@ internal fun parseDocumentCandidate(
         raw = item.itemData,
         decryptIfNeeded = decryptIfNeeded
     ) ?: return null
+    if (data.walletTemplate.isNotBlank()) return null
     return item to data.copy(
         district = readableAutofillText(data.district, decryptIfNeeded),
         homeEmail = readableAutofillText(data.homeEmail, decryptIfNeeded),

@@ -112,6 +112,9 @@ class CipherUploadProcessor(
         private val DOCUMENT_RESERVED_FIELD_NAMES = setOf(
             "monica_document_type",
             "monica_full_name",
+            "monica_wallet_template",
+            "monica_wallet_fields",
+            "monica_wallet_number",
             "monica_district",
             "monica_home_email",
             "monica_home_phone",
@@ -1247,7 +1250,7 @@ class CipherUploadProcessor(
         }
         val identityNumberForSsn = docData.ssn.ifBlank {
             docData.documentNumber.takeIf {
-                it.isNotBlank() && (
+                it.isNotBlank() && docData.walletTemplate.isBlank() && (
                     docData.documentType == DocumentType.ID_CARD ||
                         docData.documentType == DocumentType.SOCIAL_SECURITY ||
                         docData.documentType == DocumentType.OTHER
@@ -1507,6 +1510,9 @@ class CipherUploadProcessor(
         val reserved = buildList {
             add("monica_document_type" to docData.documentType.name)
             add("monica_full_name" to docData.fullName)
+            add("monica_wallet_template" to docData.walletTemplate)
+            if (docData.walletTemplate.isNotBlank()) add("monica_wallet_number" to docData.documentNumber)
+            add("monica_wallet_fields" to kotlinx.serialization.json.JsonObject(docData.walletFields.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) }).toString())
             add("monica_district" to docData.district)
             add("monica_home_email" to docData.homeEmail)
             add("monica_home_phone" to docData.homePhone)
@@ -1528,7 +1534,7 @@ class CipherUploadProcessor(
             customFields = docData.customFields
                 .filterNot { field -> field.label.trim().lowercase() in DOCUMENT_RESERVED_FIELD_NAMES },
             // An explicit empty value distinguishes clearing from pre-extension records.
-            includeEmptyReservedFields = setOf("monica_full_name")
+            includeEmptyReservedFields = setOf("monica_full_name", "monica_wallet_template")
         )
     }
 

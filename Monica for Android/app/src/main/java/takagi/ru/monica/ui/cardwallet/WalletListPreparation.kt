@@ -53,7 +53,10 @@ internal fun rememberFilteredWallet(
                 val matchesTab = when (tab) {
                     CardWalletTab.ALL -> true
                     CardWalletTab.BANK_CARDS -> item.type == WalletListItemType.BANK_CARD
-                    CardWalletTab.DOCUMENTS -> item.type == WalletListItemType.DOCUMENT
+                    CardWalletTab.MEMBERSHIP_CARDS -> item.documentData?.walletTemplate == "MEMBERSHIP"
+                    CardWalletTab.REWARDS_CARDS -> item.documentData?.walletTemplate == "REWARDS"
+                    CardWalletTab.TRAVEL_PASSES -> item.documentData?.walletTemplate == "TRAVEL"
+                    CardWalletTab.DOCUMENTS -> item.type == WalletListItemType.DOCUMENT && item.documentData?.walletTemplate.isNullOrBlank()
                     CardWalletTab.BILLING_ADDRESSES -> item.type == WalletListItemType.BILLING_ADDRESS
                 }
                 matchesTab && item.matchesCategoryFilter(category) && item.matchesSearchQuery(trimmedQuery)
