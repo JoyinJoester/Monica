@@ -115,6 +115,7 @@ class MonicaAutofillServiceNg : AutofillService() {
         }
     }
 
+    private lateinit var urlRulesDao: takagi.ru.monica.data.CustomFieldDao
     private lateinit var passwordRepository: PasswordRepository
     private lateinit var autofillPreferences: AutofillPreferences
     private lateinit var settingsManager: SettingsManager
@@ -152,6 +153,7 @@ class MonicaAutofillServiceNg : AutofillService() {
         val database = PasswordDatabase.getDatabase(applicationContext)
         database.invalidationTracker.addObserver(otpBindingObserver)
         passwordRepository = PasswordRepository(database.passwordEntryDao())
+        urlRulesDao = database.customFieldDao()
         autofillPreferences = AutofillPreferences(applicationContext)
         settingsManager = SettingsManager(applicationContext)
         diagnostics = AutofillDiagnostics(applicationContext)
@@ -623,9 +625,7 @@ class MonicaAutofillServiceNg : AutofillService() {
             val allowSubdomainToggle = autofillPreferences.isBitwardenSubdomainMatchEnabled.first()
             val uriStrategy = autofillPreferences.domainMatchStrategy.first()
             val uriConfig = AutofillSuggestionPolicy.resolveUriStrategyConfig(uriStrategy, allowSubdomainToggle)
-            if (uriConfig.disableMatch) {
-                emptyList()
-            } else {
+            run {
                 val rankedMatches = matcher.match(
                     entries = scopedPasswords,
                     packageName = packageName,
@@ -638,7 +638,9 @@ class MonicaAutofillServiceNg : AutofillService() {
                         exactDomainOnly = uriConfig.exactDomainOnly,
                         allowPackageMatch = allowPackageMatch,
                         maxSuggestions = Int.MAX_VALUE,
+                        defaultUriMatchDisabled = uriConfig.disableMatch,
                     ),
+                    urlRules = PasswordUrlRuleStore.load(urlRulesDao, scopedPasswords.map { it.id }),
                 )
                 val passwordOnlyLastFilledEntry = if (isPasswordOnlyLogin) {
                     resolveLastFilledEntry(

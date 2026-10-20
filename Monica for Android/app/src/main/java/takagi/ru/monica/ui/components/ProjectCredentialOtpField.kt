@@ -39,7 +39,7 @@ internal fun ProjectCredentialOtpField(
                 label = { Text(stringResource(R.string.authenticator_key_optional)) },
                 placeholder = { Text(stringResource(R.string.authenticator_key_hint)) },
                 leadingIcon = { Icon(Icons.Default.VpnKey, null) },
-                trailingIcon = { IconButton(onClick = { advanced = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.advanced_options)) } },
+                trailingIcon = { EditorAdvancedMenuButton(onOpen = { advanced = true }) },
                 shape = RoundedCornerShape(4.dp), singleLine = true, modifier = modifier.fillMaxWidth())
         }
         followingContent()
@@ -58,9 +58,9 @@ internal fun ProjectCredentialOtpField(
     if (advanced) {
         var type by remember { mutableStateOf(draft.otpType) }
         var parameters by remember { mutableStateOf(draft.parameters) }
-        MonicaModalBottomSheet(onDismissRequest = { advanced = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(16.dp),
+        androidx.compose.ui.window.Dialog(onDismissRequest = { advanced = false }) {
+          Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()).imePadding().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.authenticator_key_optional), style = MaterialTheme.typography.titleLarge)
                 OtpTypeSelector(type, onChange = { type = it; parameters = parameters.selectType(it) })
@@ -70,6 +70,7 @@ internal fun ProjectCredentialOtpField(
                     advanced = false
                 }, enabled = parameters.isValid(type), modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.save)) }
             }
+          }
         }
     }
 }

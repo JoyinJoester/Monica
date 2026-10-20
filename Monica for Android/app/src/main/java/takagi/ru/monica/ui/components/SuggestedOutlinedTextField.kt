@@ -67,6 +67,7 @@ fun SuggestedOutlinedTextField(
     placeholder: (@Composable () -> Unit)? = null,
     leadingIcon: (@Composable () -> Unit)? = null,
     trailingIcon: (@Composable () -> Unit)? = null,
+    supportingText: (@Composable () -> Unit)? = null,
     singleLine: Boolean = false,
     shape: Shape = OutlinedTextFieldDefaults.shape,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
@@ -93,6 +94,7 @@ fun SuggestedOutlinedTextField(
             if (changed) { accepted = null; onValueChange(next.text) }
         }, modifier = modifier,
             label = label, placeholder = placeholder, leadingIcon = leadingIcon, trailingIcon = trailingIcon,
+            supportingText = supportingText,
             singleLine = singleLine, shape = shape, keyboardOptions = keyboardOptions,
             enabled = enabled, interactionSource = interaction,
             visualTransformation = visualTransformation, entryContentStyle = entryContentStyle)

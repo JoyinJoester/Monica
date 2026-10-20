@@ -91,10 +91,9 @@ fun PasswordContentBlockCard(stored: PasswordContentBlocks.Stored, actions: Entr
             }
             if (actions?.remove != null) Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_options)) }
-                DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.edit)) }, onClick = { menu = false; onClick() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.delete)) }, onClick = { menu = false; confirm = true })
-                }
+                EditorActionMenu(menu, { menu = false }, listOf(
+                    EditorMenuAction(stringResource(R.string.edit), Icons.Default.Edit, onClick = onClick),
+                    EditorMenuAction(stringResource(R.string.delete), Icons.Default.Delete, onClick = { confirm = true }, destructive = true)))
             }
         }
     }

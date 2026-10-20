@@ -4675,4 +4675,11 @@
     <string name="custom_icon_installed_load_failed">No se pudieron cargar los iconos. Inténtalo de nuevo.</string>
     <string name="custom_icon_installed_save_failed">No se pudo usar este icono. Inténtalo de nuevo o elige otro.</string>
     <string name="field_barcode_linear_too_wide">Este código de barras necesita más ancho de pantalla. Gira el dispositivo o usa un código QR.</string>
+    <string name="url_match_title">Coincidencia de URI</string>
+    <string name="url_match_default">Predeterminado (ajuste global)</string>
+    <string name="url_match_host">Host (solo este nombre)</string>
+    <string name="url_match_explanation">Se aplica a esta URL. Basta con que coincida una URL para sugerir la credencial.</string>
+    <string name="url_match_limited_context">Host excluye otros subdominios. Si solo hay un nombre de host, no se deducen protocolo, ruta ni consulta. URL exacta y prefijo requieren la URL completa. Las expresiones regulares usan RE2.</string>
+    <string name="url_match_regex_error">Primero cambia la URL por una expresión regular RE2 válida.</string>
+    <string name="url_match_unreadable">No se pueden leer los datos de coincidencia de URL. Se conservan los datos y se desactiva el guardado.</string>
 </resources>

@@ -4567,4 +4567,11 @@
     <string name="custom_icon_installed_load_failed">Không thể tải biểu tượng. Vui lòng thử lại.</string>
     <string name="custom_icon_installed_save_failed">Không thể dùng biểu tượng này. Hãy thử lại hoặc chọn biểu tượng khác.</string>
     <string name="field_barcode_linear_too_wide">Mã vạch này cần màn hình rộng hơn. Hãy xoay thiết bị hoặc dùng mã QR.</string>
+    <string name="url_match_title">Đối chiếu URI</string>
+    <string name="url_match_default">Mặc định (cài đặt chung)</string>
+    <string name="url_match_host">Máy chủ (chỉ tên này)</string>
+    <string name="url_match_explanation">Áp dụng cho URL này. Chỉ cần một URL khớp để đề xuất thông tin đăng nhập.</string>
+    <string name="url_match_limited_context">Máy chủ không bao gồm tên miền phụ khác. Khi chỉ có tên máy chủ, không suy đoán giao thức, đường dẫn hay truy vấn. URL chính xác và tiền tố cần URL đầy đủ. Biểu thức chính quy dùng cú pháp RE2.</string>
+    <string name="url_match_regex_error">Trước tiên hãy sửa URL thành biểu thức chính quy RE2 hợp lệ.</string>
+    <string name="url_match_unreadable">Không đọc được quy tắc URL. Dữ liệu hiện có được giữ lại và việc lưu bị tắt.</string>
 </resources>

@@ -4350,4 +4350,11 @@
     <string name="custom_icon_installed_load_failed">Impossible de charger les icônes. Réessayez.</string>
     <string name="custom_icon_installed_save_failed">Impossible d’utiliser cette icône. Réessayez ou choisissez-en une autre.</string>
     <string name="field_barcode_linear_too_wide">Ce code-barres nécessite un écran plus large. Tournez votre appareil ou utilisez un code QR.</string>
+    <string name="url_match_title">Correspondance URI</string>
+    <string name="url_match_default">Par défaut (réglage global)</string>
+    <string name="url_match_host">Hôte (ce nom uniquement)</string>
+    <string name="url_match_explanation">Ce réglage concerne cette URL. Une URL correspondante suffit pour suggérer cet identifiant.</string>
+    <string name="url_match_limited_context">Le mode Hôte exclut les autres sous-domaines. Avec le seul nom d’hôte, le protocole, le chemin et la requête ne sont pas déduits. URL exacte et préfixe exigent une URL complète. La syntaxe des expressions régulières est RE2.</string>
+    <string name="url_match_regex_error">Modifiez d’abord l’URL en une expression régulière RE2 valide.</string>
+    <string name="url_match_unreadable">Les règles URL sont illisibles. Les données sont conservées et l’enregistrement est désactivé.</string>
 </resources>

@@ -815,10 +815,9 @@ fun AddEditTotpScreen(
                             placeholder = { Text(stringResource(R.string.secret_key_example)) },
                             leadingIcon = { Icon(Icons.Default.VpnKey, contentDescription = null) },
                             trailingIcon = {
-                                IconButton(onClick = { editorSections.reveal("advanced") },
-                                    modifier = Modifier.testTag("item_editor_otp_settings")) {
-                                    Icon(Icons.Default.MoreVert, stringResource(R.string.advanced_options))
-                                }
+                                takagi.ru.monica.ui.components.EditorAdvancedMenuButton(
+                                    onOpen = { editorSections.reveal("advanced") },
+                                    modifier = Modifier.testTag("item_editor_otp_settings"))
                             },
                             modifier = Modifier.fillMaxWidth().testTag("item_editor_secret"),
                         )

@@ -1,6 +1,7 @@
 package takagi.ru.monica.autofill_ng
 
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.model.PasswordUrlRules
 import takagi.ru.monica.rustcore.RustAutofillCore
 import java.net.URL
 import java.util.Locale
@@ -96,6 +97,7 @@ class BitwardenLikeAutofillMatcherNg internal constructor(
         val exactDomainOnly: Boolean = false,
         val allowPackageMatch: Boolean = true,
         val maxSuggestions: Int = 20,
+        val defaultUriMatchDisabled: Boolean = false,
     )
 
     private enum class Reason {
@@ -132,6 +134,7 @@ class BitwardenLikeAutofillMatcherNg internal constructor(
         webDomain: String?,
         appDisplayName: String? = null,
         config: Config = Config(),
+        urlRules: Map<Long, List<PasswordUrlRules.Rule>> = emptyMap(),
     ): List<PasswordEntry> {
         if (entries.isEmpty()) {
             clear()
@@ -163,10 +166,24 @@ class BitwardenLikeAutofillMatcherNg internal constructor(
             var last = -1
             indices.all { index -> (index in entries.indices && index > last).also { last = index } }
         }
-        val candidateIndices: Iterable<Int> = validIndices?.asIterable() ?: entries.indices
+        val candidateIndices: Iterable<Int> = if (validIndices == null) entries.indices else
+            (validIndices.asIterable() + entries.indices.filter { entries[it].id in urlRules }).distinct().sorted()
         val candidates = candidateIndices.mapNotNull { index ->
             val entry = entries[index]
             if (entry.isKeyCredential()) return@mapNotNull null
+            val rules = urlRules[entry.id]
+            if (preferDomainSignals && rules != null) {
+                val score = rules.maxOfOrNull { rule ->
+                    if (rule.mode == PasswordUrlRules.Mode.DEFAULT) {
+                        if (config.defaultUriMatchDisabled) 0 else scoreEntry(
+                            entry.copy(website = rule.url), null, targetPackage, targetPackageTokens,
+                            targetHost, true, targetRoot, targetAppDisplayName, config.copy(strictOnly = true))?.score ?: 0
+                    } else PasswordUrlRuleMatcher.score(rule, webDomain.orEmpty())
+                } ?: 0
+                // No label, package or heuristic fallback may bypass an explicit URL rule.
+                return@mapNotNull if (score > 0) ScoredMatch(entry, score, setOf(Reason.EXACT_DOMAIN)) else null
+            }
+            if (config.defaultUriMatchDisabled) return@mapNotNull null
             scoreEntry(
                 entry = entry,
                 prepared = prepared?.metadata?.get(index)?.row,

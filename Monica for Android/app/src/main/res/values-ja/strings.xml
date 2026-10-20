@@ -4554,4 +4554,11 @@
     <string name="custom_icon_installed_load_failed">アイコンを読み込めませんでした。再試行してください。</string>
     <string name="custom_icon_installed_save_failed">このアイコンを使用できませんでした。再試行するか、別のアイコンを選んでください。</string>
     <string name="field_barcode_linear_too_wide">このバーコードの表示には画面の幅が足りません。端末を横向きにするか、QR コードを使用してください。</string>
+    <string name="url_match_title">URI の一致判定</string>
+    <string name="url_match_default">既定（全体設定）</string>
+    <string name="url_match_host">ホスト（このホスト名のみ）</string>
+    <string name="url_match_explanation">この URL に適用します。いずれかの URL が一致すると候補になります。</string>
+    <string name="url_match_limited_context">ホストは他のサブドメインを含みません。ホスト名のみの場合、プロトコル・パス・クエリを推測しません。完全一致と URL の前方一致には完全な URL が必要です。正規表現は RE2 構文です。</string>
+    <string name="url_match_regex_error">先に URL を有効な RE2 正規表現に変更してください。</string>
+    <string name="url_match_unreadable">URL の一致設定を読み取れません。既存データを保持し、保存を無効にしました。</string>
 </resources>

@@ -38,10 +38,9 @@ fun ProjectCredentialEditor(group: ProjectCredentialGroup.Group,
                     style = MaterialTheme.typography.titleSmall)
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_options)) }
-                    DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text(stringResource(R.string.advanced_options)) }, onClick = { menu = false; options = !options })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.delete)) }, onClick = { menu = false; confirm = true })
-                    }
+                    EditorActionMenu(menu, { menu = false }, listOf(
+                        EditorMenuAction(stringResource(R.string.advanced_options), Icons.Default.Tune, onClick = { options = !options }),
+                        EditorMenuAction(stringResource(R.string.delete), Icons.Default.Delete, onClick = { confirm = true }, destructive = true)))
                 }
             }
         }

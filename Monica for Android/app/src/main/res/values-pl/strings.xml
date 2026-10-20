@@ -4351,4 +4351,11 @@
     <string name="custom_icon_installed_load_failed">Nie można wczytać ikon. Spróbuj ponownie.</string>
     <string name="custom_icon_installed_save_failed">Nie można użyć tej ikony. Spróbuj ponownie lub wybierz inną.</string>
     <string name="field_barcode_linear_too_wide">Ten kod kreskowy wymaga szerszego ekranu. Obróć urządzenie lub użyj kodu QR.</string>
+    <string name="url_match_title">Dopasowanie URI</string>
+    <string name="url_match_default">Domyślne (ustawienie globalne)</string>
+    <string name="url_match_host">Host (tylko ta nazwa)</string>
+    <string name="url_match_explanation">Dotyczy tego URL. Zgodność dowolnego URL wystarczy do zasugerowania poświadczenia.</string>
+    <string name="url_match_limited_context">Host wyklucza inne subdomeny. Sama nazwa hosta nie określa protokołu, ścieżki ani zapytania. Dokładny URL i prefiks wymagają pełnego URL. Wyrażenia regularne używają RE2.</string>
+    <string name="url_match_regex_error">Najpierw zmień URL na poprawne wyrażenie regularne RE2.</string>
+    <string name="url_match_unreadable">Nie można odczytać reguł URL. Zachowano dane i wyłączono zapisywanie.</string>
 </resources>

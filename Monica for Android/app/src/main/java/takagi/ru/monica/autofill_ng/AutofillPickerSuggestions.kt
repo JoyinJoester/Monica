@@ -10,6 +10,7 @@ internal object AutofillPickerSuggestions {
         args: AutofillPickerActivityV2.Args,
         preferences: AutofillPreferences,
         appName: String?,
+        urlRules: Map<Long, List<takagi.ru.monica.data.model.PasswordUrlRules.Rule>> = emptyMap(),
     ): List<PasswordEntry> {
         args.suggestedPasswordIds?.let { ids ->
             val byId = entries.associateBy { it.id }
@@ -19,7 +20,6 @@ internal object AutofillPickerSuggestions {
         if (packageName.isBlank() && args.webDomain.isNullOrBlank()) return emptyList()
         val uri = AutofillSuggestionPolicy.resolveUriStrategyConfig(
             preferences.domainMatchStrategy.first(), preferences.isBitwardenSubdomainMatchEnabled.first())
-        if (uri.disableMatch) return emptyList()
         val scoped = AutofillSuggestionPolicy.applyDefaultSourceFilter(entries,
             preferences.v2DefaultSourceFilter.first(), preferences.v2DefaultKeepassDatabaseId.first(),
             preferences.v2DefaultBitwardenVaultId.first())
@@ -34,7 +34,8 @@ internal object AutofillPickerSuggestions {
                     allowPackageMatch = AutofillRequestContextPolicy.allowPackageMatching(
                         packageName, args.webDomain, isWebView = false),
                     maxSuggestions = Int.MAX_VALUE,
-                ))
+                    defaultUriMatchDisabled = uri.disableMatch,
+                ), urlRules = urlRules)
         } finally { matcher.clear() }
     }
 }

@@ -4732,4 +4732,11 @@
     <string name="autofill_action_password_next">Copy the password next from the notification</string>
     <string name="autofill_action_username_next">Copy the account next from the notification</string>
     <string name="credential_note">Note</string>
+    <string name="url_match_title">URI match detection</string>
+    <string name="url_match_default">Default (global setting)</string>
+    <string name="url_match_host">Host (this hostname only)</string>
+    <string name="url_match_explanation">Applies to this URL. A match on any URL can suggest this credential.</string>
+    <string name="url_match_limited_context">Host excludes other subdomains. When the browser supplies only a hostname, protocol, path and query are not inferred. Exact URLs and URL prefixes require a complete URL. Regex uses RE2 syntax.</string>
+    <string name="url_match_regex_error">Edit the URL to a valid RE2 regular expression first.</string>
+    <string name="url_match_unreadable">URL matching metadata cannot be read. Existing data is preserved and saving is disabled.</string>
 </resources>

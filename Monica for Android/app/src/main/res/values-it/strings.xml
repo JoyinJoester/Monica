@@ -4351,4 +4351,11 @@
     <string name="custom_icon_installed_save_failed">Impossibile usare questa icona. Riprova o scegline un’altra.</string>
     <string name="field_barcode_linear_too_wide">Questo codice a barre richiede uno schermo più largo. Ruota il dispositivo o usa un codice QR.</string>
     <string name="qr_image_read_failed">Impossibile leggere l’immagine. Scegli un’altra immagine e riprova.</string>
+    <string name="url_match_title">Corrispondenza URI</string>
+    <string name="url_match_default">Predefinito (impostazione globale)</string>
+    <string name="url_match_host">Host (solo questo nome)</string>
+    <string name="url_match_explanation">Si applica a questo URL. Basta un URL corrispondente per suggerire la credenziale.</string>
+    <string name="url_match_limited_context">Host esclude altri sottodomini. Con il solo nome host non si deducono protocollo, percorso o query. URL esatto e prefisso richiedono un URL completo. Le espressioni regolari usano RE2.</string>
+    <string name="url_match_regex_error">Modifica prima l’URL in un’espressione regolare RE2 valida.</string>
+    <string name="url_match_unreadable">Impossibile leggere le regole URL. I dati sono conservati e il salvataggio è disabilitato.</string>
 </resources>

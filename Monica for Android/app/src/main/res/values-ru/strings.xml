@@ -4661,4 +4661,11 @@
     <string name="custom_icon_installed_load_failed">Не удалось загрузить значки. Повторите попытку.</string>
     <string name="custom_icon_installed_save_failed">Не удалось использовать этот значок. Повторите попытку или выберите другой.</string>
     <string name="field_barcode_linear_too_wide">Для этого штрихкода нужен более широкий экран. Поверните устройство или используйте QR-код.</string>
+    <string name="url_match_title">Сопоставление URI</string>
+    <string name="url_match_default">По умолчанию (общая настройка)</string>
+    <string name="url_match_host">Хост (только это имя)</string>
+    <string name="url_match_explanation">Применяется к этому URL. Совпадения одного URL достаточно для рекомендации учётных данных.</string>
+    <string name="url_match_limited_context">Хост исключает другие поддомены. По одному имени хоста протокол, путь и запрос не определяются. Точный URL и префикс требуют полного URL. Регулярные выражения используют RE2.</string>
+    <string name="url_match_regex_error">Сначала замените URL корректным регулярным выражением RE2.</string>
+    <string name="url_match_unreadable">Правила URL не читаются. Данные сохранены, сохранение изменений отключено.</string>
 </resources>

@@ -32,15 +32,12 @@ fun CredentialPasswordActions(
             IconButton(onClick = { menu = true }, modifier = Modifier.testTag("${tag}_menu")) {
                 Icon(Icons.Default.MoreVert, stringResource(R.string.more_options))
             }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text(stringResource(R.string.generator)) },
-                    leadingIcon = { Icon(Icons.Default.AutoAwesome, null) },
-                    modifier = Modifier.testTag("${tag}_generate"),
-                    onClick = { menu = false; onGenerate() })
-                if (onRemove != null) DropdownMenuItem(text = { Text(stringResource(R.string.delete)) },
-                    leadingIcon = { Icon(Icons.Default.Delete, null) }, modifier = Modifier.testTag(removeTag),
-                    onClick = { menu = false; onRemove() })
-            }
+            EditorActionMenu(menu, { menu = false }, buildList {
+                add(EditorMenuAction(stringResource(R.string.generator), Icons.Default.AutoAwesome,
+                    onClick = onGenerate, tag = "${tag}_generate"))
+                if (onRemove != null) add(EditorMenuAction(stringResource(R.string.delete), Icons.Default.Delete,
+                    onClick = onRemove, destructive = true, tag = removeTag))
+            })
         }
     }
 }

@@ -4675,4 +4675,11 @@
     <string name="custom_icon_installed_load_failed">Symbole konnten nicht geladen werden. Bitte versuche es erneut.</string>
     <string name="custom_icon_installed_save_failed">Dieses Symbol konnte nicht verwendet werden. Versuche es erneut oder wähle ein anderes Symbol.</string>
     <string name="field_barcode_linear_too_wide">Dieser Barcode benötigt mehr Bildschirmbreite. Drehe dein Gerät oder verwende einen QR-Code.</string>
+    <string name="url_match_title">URI-Abgleich</string>
+    <string name="url_match_default">Standard (globale Einstellung)</string>
+    <string name="url_match_host">Host (nur dieser Hostname)</string>
+    <string name="url_match_explanation">Gilt für diese URL. Eine passende URL genügt für einen Vorschlag.</string>
+    <string name="url_match_limited_context">Host schließt andere Subdomains aus. Liegt nur der Hostname vor, werden Protokoll, Pfad und Abfrage nicht abgeleitet. Exakte URLs und URL-Präfixe benötigen die vollständige URL. Regex verwendet RE2.</string>
+    <string name="url_match_regex_error">Zuerst die URL in einen gültigen regulären RE2-Ausdruck ändern.</string>
+    <string name="url_match_unreadable">URL-Abgleichdaten sind nicht lesbar. Bestehende Daten bleiben erhalten; Speichern ist deaktiviert.</string>
 </resources>

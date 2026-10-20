@@ -84,6 +84,53 @@ class ProjectCredentialEditorTest {
             }
         }
     }
+    @Test fun urlRulesMoveWithRowsAndReopenAfterSaving() {
+        showSimpleEditor()
+        scroll(hasTestTag("url_row_0")).performTextReplacement("https://prod.example.com")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        fun choose(index: Int, mode: String) {
+            scroll(hasTestTag("url_actions_$index")).performClick()
+            compose.onNodeWithTag("url_match_action_$index").performClick()
+            compose.onNodeWithTag("url_match_$mode").performScrollTo().performClick()
+            compose.onNodeWithTag("url_match_$mode").assertIsSelected()
+            // Compose can be idle before the separate dialog window finishes its platform fade.
+            compose.waitForIdle()
+            Thread.sleep(350)
+            if (mode == "HOST") File(context.filesDir, "url-match-dialog.png").outputStream().use {
+                requireNotNull(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()).compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+            compose.onNodeWithTag("url_match_confirm").performClick()
+        }
+        choose(0, "HOST")
+        scroll(hasTestTag("url_add")).performClick()
+        scroll(hasTestTag("url_row_1")).performTextReplacement("https://accounts.example.com")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        choose(1, "BASE_DOMAIN")
+        scroll(hasTestTag("url_actions_1")).performClick()
+        compose.waitForIdle()
+        Thread.sleep(350)
+        File(context.filesDir, "url-action-menu.png").outputStream().use {
+            requireNotNull(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()).compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        }
+        compose.onNodeWithTag("url_up_1").performClick()
+        scroll(hasTestTag("url_row_0")).assertTextContains("https://accounts.example.com")
+        save()
+        val id = requireNotNull(savedId)
+        fun rules() = takagi.ru.monica.data.model.PasswordUrlRules.read(runBlocking {
+            model.getCustomFieldsByEntryIdSync(id)
+        }.map(CustomFieldDraft::fromCustomField))
+        assertEquals(listOf("BASE_DOMAIN", "HOST"), rules()!!.map { it.mode.name })
+        compose.runOnIdle { editId = id; savedId = null }
+        scroll(hasTestTag("url_actions_0")).performClick()
+        compose.onNodeWithTag("url_match_action_0").performClick()
+        compose.onNodeWithTag("url_match_BASE_DOMAIN").assertIsSelected()
+        compose.onNodeWithTag("url_match_DEFAULT").performClick()
+        compose.onNodeWithTag("url_match_confirm").performClick()
+        choose(1, "DEFAULT")
+        save()
+        assertNull(rules())
+    }
+
     @Test fun singleCredentialNoteSavesReopensAndClearsWithoutPageNotes() {
         showSimpleEditor()
         scroll(hasTestTag("password_editor_credential_note")).performTextReplacement("Only this credential\nSecond line")
@@ -150,7 +197,7 @@ class ProjectCredentialEditorTest {
         try { compose.waitUntil(10000) { compose.onAllNodesWithTag("add_project_credential").fetchSemanticsNodes().isNotEmpty() } }
         catch (error: Throwable) {
             File(context.filesDir, "project-credential-failure.png").outputStream().use {
-                compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
             }
             throw error
         }
@@ -170,12 +217,12 @@ class ProjectCredentialEditorTest {
         scroll(hasTestTag(secondTag)).performTextReplacement("work-secret-2")
         androidx.test.espresso.Espresso.closeSoftKeyboard()
         File(context.filesDir, "project-credential-editor.png").outputStream().use {
-            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
         scroll(hasTestTag("credential_otp_$groupTag"))
         androidx.test.espresso.Espresso.closeSoftKeyboard()
         File(context.filesDir, "project-credential-extra-otp.png").outputStream().use {
-            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
         assertTrue(compose.onNodeWithTag(secondTag).fetchSemanticsNode().boundsInRoot.top <
             compose.onNodeWithTag("credential_otp_$groupTag").fetchSemanticsNode().boundsInRoot.top)
@@ -229,7 +276,7 @@ class ProjectCredentialEditorTest {
         assertTrue("Note follows OTP with only group spacing and inner padding",
             noteBounds.top - otpBounds.bottom <= with(compose.density) { 14.dp.toPx() })
         File(context.filesDir, "credential-detail-grouped.png").outputStream().use {
-            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
     }
     @Test fun legacySingleAccountUsesConnectedAuthenticatorWithoutRepeatingIdentity() {
@@ -246,7 +293,7 @@ class ProjectCredentialEditorTest {
         compose.onNodeWithTag("credential_note_card_$id").assertDoesNotExist()
         compose.onNodeWithTag("password_authenticator_card").performScrollTo().assertIsDisplayed()
         File(context.filesDir, "credential-detail-single.png").outputStream().use {
-            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
         compose.onNodeWithTag("password_authenticator_card").performClick()
         compose.onNodeWithTag("auth_copy_current").assertIsDisplayed()
@@ -275,7 +322,7 @@ class ProjectCredentialEditorTest {
         compose.onNodeWithTag("detail_password_delete_701").assertContentDescriptionEquals(context.getString(R.string.delete))
         compose.onNodeWithText(context.getString(R.string.delete)).assertDoesNotExist()
         File(context.filesDir, "credential-detail-compact-password.png").outputStream().use {
-            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
         compose.runOnIdle { analysis = false }
         compose.onNodeWithTag("detail_password_strength_701").assertDoesNotExist()
@@ -309,7 +356,7 @@ class ProjectCredentialEditorTest {
         compose.onNodeWithText("work").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("credential_note_card_${groups[1].id}").assertDoesNotExist()
         File(context.filesDir, "credential-detail-empty-note-large-font.png").outputStream().use {
-            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
     }
 

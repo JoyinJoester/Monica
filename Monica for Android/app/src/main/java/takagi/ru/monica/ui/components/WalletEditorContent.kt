@@ -131,11 +131,11 @@ internal fun WalletEditorContent(
                             IconButton(onClick = { menu = true }, enabled = enabled, modifier = Modifier.testTag("wallet_actions_$key")) {
                                 Icon(Icons.Default.MoreVert, stringResource(R.string.more_options))
                             }
-                            DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(text = { Text(stringResource(R.string.edit)) }, onClick = { menu = false; editing = key })
-                                if (index > 0) DropdownMenuItem(text = { Text(up) }, onClick = { menu = false; move(key, keys[index - 1]) })
-                                if (index < keys.lastIndex) DropdownMenuItem(text = { Text(down) }, onClick = { menu = false; move(key, keys[index + 1]) })
-                            }
+                            EditorActionMenu(menu, { menu = false }, buildList {
+                                add(EditorMenuAction(stringResource(R.string.edit), Icons.Default.Edit, onClick = { editing = key }))
+                                if (index > 0) add(EditorMenuAction(up, Icons.Default.KeyboardArrowUp, onClick = { move(key, keys[index - 1]) }))
+                                if (index < keys.lastIndex) add(EditorMenuAction(down, Icons.Default.KeyboardArrowDown, onClick = { move(key, keys[index + 1]) }))
+                            })
                         }
                     }
                 }

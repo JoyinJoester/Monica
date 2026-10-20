@@ -2034,7 +2034,8 @@ private fun AutofillPickerContent(
                 val embeddedWallet = walletFillRepository.loadEmbeddedItems()
                 val entries = repository.getAllPasswordEntries().first().filterNot { it.isKeyCredential() }
                 AutofillPickerLoadedData(
-                    suggestedPasswords = AutofillPickerSuggestions.load(entries, args, autofillPreferences, appName),
+                    suggestedPasswords = AutofillPickerSuggestions.load(entries, args, autofillPreferences, appName,
+                        PasswordUrlRuleStore.load(appDb.customFieldDao(), entries.map { it.id })),
                     allPasswords = entries,
                     // Resolve legacy encrypted usernames once on IO. Presentation must never
                     // replace the original record passed to copy/fill/save actions.

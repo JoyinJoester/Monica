@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface CustomFieldDao {
+    @Query("SELECT * FROM custom_fields WHERE entry_id IN (:entryIds) AND title = 'monica.autofill.url_rules' ORDER BY entry_id, id")
+    suspend fun getUrlMatchRules(entryIds: List<Long>): List<CustomField>
+
     @Query("SELECT * FROM custom_fields WHERE title IN (:titles) ORDER BY entry_id, sort_order, id")
     fun observeCommonSuggestionFields(titles: List<String>): Flow<List<CustomField>>
 

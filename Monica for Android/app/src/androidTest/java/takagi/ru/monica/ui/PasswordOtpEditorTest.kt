@@ -482,6 +482,7 @@ class PasswordOtpEditorTest {
         if (section == "AUTHENTICATOR") {
             closeContent()
             scroll("password_otp_settings").performClick()
+            compose.onNodeWithTag("editor_advanced_open").performClick()
             return
         }
         closeContent()
@@ -563,6 +564,7 @@ class PasswordOtpEditorTest {
         else if ((tag.startsWith("otp_") || tag == "password_otp_advanced") &&
             compose.onAllNodesWithTag("content_detail_scroll").fetchSemanticsNodes().isEmpty()) {
             scroll("password_otp_settings").performClick()
+            compose.onNodeWithTag("editor_advanced_open").performClick()
         }
         if (compose.onAllNodesWithTag("embedded_bank_editor").fetchSemanticsNodes().isNotEmpty()) {
             val node = compose.onNodeWithTag(tag).performScrollTo()
@@ -682,7 +684,7 @@ class PasswordOtpEditorTest {
     }
 
     private fun capture(name: String) {
-        val dir = File(context.getExternalFilesDir(null), "password-otp-ui").apply { mkdirs() }
+        val dir = File(context.filesDir, "password-otp-ui").apply { mkdirs() }
         File(dir, "$name.png").outputStream().use {
             compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
         }

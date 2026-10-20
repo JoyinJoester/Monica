@@ -293,7 +293,7 @@ fun PasswordDetailScreen(
                 it.title == MONICA_MANUAL_STACK_GROUP_FIELD_TITLE ||
                     it.title == MONICA_NO_STACK_FIELD_TITLE
             }
-            .filterNot { CredentialExchangeMetadata.ownsField(it.title) || it.title == ProjectCredentialGroup.FIELD || it.title == MONICA_USERNAME_ALIAS_META_FIELD_TITLE || EmbeddedWalletContent.isMetadata(it.title) || PasswordContentBlocks.owns(it.title) || takagi.ru.monica.data.model.TemplateCredentialDraft.ownsField(it.title) }
+            .filterNot { it.title == takagi.ru.monica.data.model.PasswordUrlRules.FIELD || CredentialExchangeMetadata.ownsField(it.title) || it.title == ProjectCredentialGroup.FIELD || it.title == MONICA_USERNAME_ALIAS_META_FIELD_TITLE || EmbeddedWalletContent.isMetadata(it.title) || PasswordContentBlocks.owns(it.title) || takagi.ru.monica.data.model.TemplateCredentialDraft.ownsField(it.title) }
             .filterNot {
                 settings.separateUsernameAccountEnabled &&
                     (it.title == MONICA_USERNAME_ALIAS_FIELD_TITLE ||

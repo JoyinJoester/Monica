@@ -4350,4 +4350,11 @@
     <string name="custom_icon_installed_load_failed">圖標未能載入，請重試。</string>
     <string name="custom_icon_installed_save_failed">此圖標未能使用，請重試或另選。</string>
     <string name="field_barcode_linear_too_wide">屏寬不足，條碼難辨。請橫置其機，或用二維碼。</string>
+    <string name="url_match_title">URI 匹配之法</string>
+    <string name="url_match_default">默认（从全局）</string>
+    <string name="url_match_host">主机（仅此名）</string>
+    <string name="url_match_explanation">此法仅施于此 URL；任一 URL 相合，皆可荐此凭据。</string>
+    <string name="url_match_limited_context">主机不含旁支域。浏览器仅报主机名时，不臆定协议、路径及查询；精确 URL 与 URL 前缀须得全址。正则从 RE2 法。</string>
+    <string name="url_match_regex_error">请先修 URL，使合 RE2 正则之法。</string>
+    <string name="url_match_unreadable">URL 匹配资料不可读；旧数据留存，暂禁保存。</string>
 </resources>

@@ -4,6 +4,11 @@ package takagi.ru.monica.ui.screens
 import takagi.ru.monica.data.model.CredentialExchangeMetadata
 
 import takagi.ru.monica.data.passwordProjectKey
+import takagi.ru.monica.data.model.PasswordUrlRules
+import takagi.ru.monica.ui.components.EditorActionMenu
+import takagi.ru.monica.ui.components.EditorMenuAction
+import takagi.ru.monica.ui.components.UrlMatchModeDialog
+import takagi.ru.monica.ui.components.urlMatchModeLabel
 import takagi.ru.monica.data.model.ProjectCredentialGroup
 import takagi.ru.monica.ui.components.ProjectCredentialEditor
 import takagi.ru.monica.ui.components.CredentialPasswordActions
@@ -486,6 +491,13 @@ private fun PasswordEntryEditor(
     val websiteUrls = rememberSaveable(saver = takagi.ru.monica.utils.StringListSaver) {
         mutableStateListOf("")
     }
+    val websiteMatchModes = rememberSaveable(saver = takagi.ru.monica.utils.StringListSaver) {
+        mutableStateListOf(PasswordUrlRules.Mode.DEFAULT.name)
+    }
+    var urlRulesLoadFailed by remember { mutableStateOf(false) }
+    fun currentUrlRules() = websiteUrls.mapIndexed { index, url ->
+        PasswordUrlRules.Rule(url, PasswordUrlRules.Mode.valueOf(websiteMatchModes.getOrElse(index) { "DEFAULT" }))
+    }
     var username by rememberSaveable { mutableStateOf("") }
     // CHANGE: Support multiple passwords
     val passwords = rememberSaveable(saver = takagi.ru.monica.utils.StringListSaver) { mutableStateListOf("") }
@@ -574,6 +586,8 @@ private fun PasswordEntryEditor(
     fun replaceWebsiteUrlsFromRaw(rawValue: String) {
         websiteUrls.clear()
         websiteUrls.addAll(parsePasswordWebsiteUrls(rawValue))
+        websiteMatchModes.clear()
+        websiteMatchModes.addAll(websiteUrls.map { PasswordUrlRules.Mode.DEFAULT.name })
         website = encodePasswordWebsiteUrls(websiteUrls)
     }
 
@@ -1941,7 +1955,7 @@ private fun PasswordEntryEditor(
             PasswordContentSection.PAYMENT -> shouldShowPaymentInfo()
             PasswordContentSection.CONTACT -> false
             PasswordContentSection.ADDRESS -> shouldShowAddressInfo() || shouldShowPersonalInfo() || copiedContent(EmbeddedWalletContent.Kind.ADDRESS) != null
-            PasswordContentSection.CUSTOM_FIELDS -> section.name in requestedContentSections || contentExtraFields.any { it.title != ProjectCredentialGroup.FIELD && it.title != EntryContentFields.ORDER && !EmbeddedWalletContent.isMetadata(it.title) && !PasswordContentBlocks.owns(it.title) && !takagi.ru.monica.data.model.TemplateCredentialDraft.ownsField(it.title) && !CredentialExchangeMetadata.ownsField(it.title) && EntrySupplementalSpecs.spec(it.title) == null }
+            PasswordContentSection.CUSTOM_FIELDS -> section.name in requestedContentSections || contentExtraFields.any { it.title != PasswordUrlRules.FIELD && it.title != ProjectCredentialGroup.FIELD && it.title != EntryContentFields.ORDER && !EmbeddedWalletContent.isMetadata(it.title) && !PasswordContentBlocks.owns(it.title) && !takagi.ru.monica.data.model.TemplateCredentialDraft.ownsField(it.title) && !CredentialExchangeMetadata.ownsField(it.title) && EntrySupplementalSpecs.spec(it.title) == null }
             PasswordContentSection.ATTACHMENTS -> section.name in requestedContentSections || existingContentAttachments.isNotEmpty() || credentialAttachmentDrafts.any { it.isNotEmpty() }
         } }
     }
@@ -1971,7 +1985,7 @@ private fun PasswordEntryEditor(
             PasswordContentSection.PAYMENT -> if (isMultiCredentialMode) {
                 activeCredentialMetadata.creditCardNumber = ""; activeCredentialMetadata.creditCardHolder = ""; activeCredentialMetadata.creditCardExpiry = ""; activeCredentialMetadata.creditCardCVV = ""
             } else { creditCardNumber = ""; creditCardHolder = ""; creditCardExpiry = ""; creditCardCVV = "" }
-            PasswordContentSection.CUSTOM_FIELDS -> contentExtraFields.removeAll { it.title != ProjectCredentialGroup.FIELD && it.title != EntryContentFields.ORDER && !EmbeddedWalletContent.isMetadata(it.title) && !PasswordContentBlocks.owns(it.title) && !takagi.ru.monica.data.model.TemplateCredentialDraft.ownsField(it.title) && !CredentialExchangeMetadata.ownsField(it.title) && EntrySupplementalSpecs.spec(it.title) == null }
+            PasswordContentSection.CUSTOM_FIELDS -> contentExtraFields.removeAll { it.title != PasswordUrlRules.FIELD && it.title != ProjectCredentialGroup.FIELD && it.title != EntryContentFields.ORDER && !EmbeddedWalletContent.isMetadata(it.title) && !PasswordContentBlocks.owns(it.title) && !takagi.ru.monica.data.model.TemplateCredentialDraft.ownsField(it.title) && !CredentialExchangeMetadata.ownsField(it.title) && EntrySupplementalSpecs.spec(it.title) == null }
             PasswordContentSection.ATTACHMENTS -> credentialAttachmentDrafts.getOrNull(if (isMultiCredentialMode) selectedCredentialEditorIndex else 0)?.clear()
         }
         contentExtraFields.removeAll { field -> EntrySupplementalSpecs.forSection(section.name).any { EntryContentFields.key(section.name, it.key) == field.title } }
@@ -2467,6 +2481,15 @@ private fun PasswordEntryEditor(
                             }
                         }
                         
+                        if (existingDrafts.any { it.title == PasswordUrlRules.FIELD }) {
+                            val rules = PasswordUrlRules.read(existingDrafts)
+                            urlRulesLoadFailed = rules == null
+                            if (rules != null) {
+                                websiteUrls.clear(); websiteUrls.addAll(rules.map { it.url })
+                                websiteMatchModes.clear(); websiteMatchModes.addAll(rules.map { it.mode.name })
+                                syncWebsiteFromUrlRows()
+                            }
+                        }
                         customFields.addAll(existingDrafts)
                         if (requestedContentSections.isEmpty()) requestedContentSections.addAll(EntryContentFields.order(existingDrafts))
                         if (existingDrafts.isNotEmpty()) {
@@ -2532,7 +2555,7 @@ private fun PasswordEntryEditor(
         }
     }
 
-    val canSave = !templateLoadFailed && (templateDraft?.valid() != false) && title.isNotEmpty() &&
+    val canSave = !urlRulesLoadFailed && !templateLoadFailed && (templateDraft?.valid() != false) && title.isNotEmpty() &&
         (!isBarcodeMode || barcodePayload.isNotBlank()) &&
         !isSaving &&
         !hasOwnershipConflict
@@ -2668,7 +2691,8 @@ private fun PasswordEntryEditor(
             )
 
             // 快照自定义字段，并追加“用户名分离”内部转换字段（带标记）
-            val templateFields = templateDraft?.fields(customFields.toList()) ?: customFields.toList()
+            val urlFields = if (!isBarcodeMode && templateDraft == null) PasswordUrlRules.put(customFields.toList(), currentUrlRules()) else customFields.toList()
+            val templateFields = templateDraft?.fields(urlFields) ?: urlFields
             val currentCustomFields = (if (contentMode) EntryContentFields.withOrder(templateFields, requestedContentSections.toList()) else templateFields).toMutableList().apply {
                 removeAll {
                     it.title == MONICA_USERNAME_ALIAS_FIELD_TITLE ||
@@ -2933,7 +2957,7 @@ private fun PasswordEntryEditor(
                             creditCardCVV = if (isMultiCredentialMode) metadata.creditCardCVV else creditCardCVV,
                             passkeyBindings = if (!isMultiCredentialMode || index == 0) passkeyBindings else "",
                             sshKeyData = if (!isMultiCredentialMode || index == 0) existingSshKeyData else "",
-                            customFields = credentialFields
+                            customFields = PasswordUrlRules.put(credentialFields, currentUrlRules())
                         )
                     }
                     val editedCredentialSavePlan = if (isEditing) {
@@ -3318,9 +3342,8 @@ private fun PasswordEntryEditor(
                                             if (onScanAuthenticatorQrCode != null) IconButton(onClick = onScanAuthenticatorQrCode) {
                                                 Icon(Icons.Default.QrCodeScanner, stringResource(R.string.scan_qr_code))
                                             }
-                                            IconButton(onClick = { showInlineOtpSettings = true }, modifier = Modifier.testTag("password_otp_settings")) {
-                                                Icon(Icons.Default.MoreVert, stringResource(R.string.advanced_options))
-                                            }
+                                            takagi.ru.monica.ui.components.EditorAdvancedMenuButton(
+                                                onOpen = { showInlineOtpSettings = true }, modifier = Modifier.testTag("password_otp_settings"))
                                         }
                                     },
                                     modifier = Modifier.fillMaxWidth().testTag("password_otp_secret"),
@@ -3338,12 +3361,11 @@ private fun PasswordEntryEditor(
                                 primaryCredentialNoteField()
                             }
 
-                            if (showInlineOtpSettings) MonicaModalBottomSheet(
+                            if (showInlineOtpSettings) androidx.compose.ui.window.Dialog(
                                 onDismissRequest = { showInlineOtpSettings = false },
-                                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                             ) {
-                                LazyColumn(Modifier.fillMaxWidth().testTag("content_detail_scroll").imePadding(),
+                              Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 560.dp).testTag("content_detail_scroll").imePadding(),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)) {
                                     item {
                                         Column {
@@ -3413,6 +3435,7 @@ private fun PasswordEntryEditor(
                                         }
                                     }
                                 }
+                            }
                             }
 
                             MonicaExpandableContent(
@@ -3801,9 +3824,17 @@ private fun PasswordEntryEditor(
                         } else if (templateDraft == null) {
                             // Website URLs + App Binding (inline)
                             Column(verticalArrangement = Arrangement.spacedBy(if (contentMode) 2.dp else 10.dp)) {
+                            if (urlRulesLoadFailed) Text(stringResource(R.string.url_match_unreadable), color = MaterialTheme.colorScheme.error)
                             websiteUrls.forEachIndexed { index, url ->
                                 key("website_url_$index") {
                                     var urlMenuExpanded by remember { mutableStateOf(false) }
+                                    var showUrlMatchDialog by remember { mutableStateOf(false) }
+                                    val matchMode = PasswordUrlRules.Mode.valueOf(websiteMatchModes.getOrElse(index) { "DEFAULT" })
+                                    if (showUrlMatchDialog) UrlMatchModeDialog(url, matchMode,
+                                        onDismiss = { showUrlMatchDialog = false }, onConfirm = { mode ->
+                                            websiteMatchModes[index] = mode.name
+                                            showUrlMatchDialog = false
+                                        })
                                     SuggestedOutlinedTextField(
                                         suggestionField = CommonSuggestionField.WEBSITE,
                                         value = url,
@@ -3821,61 +3852,37 @@ private fun PasswordEntryEditor(
                                             )
                                         },
                                         leadingIcon = { Icon(Icons.Default.Language, null) },
+                                        supportingText = if (matchMode != PasswordUrlRules.Mode.DEFAULT) ({ Text(urlMatchModeLabel(matchMode)) }) else null,
                                         trailingIcon = {
                                             Box {
-                                                IconButton(onClick = { urlMenuExpanded = true }) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.MoreVert,
-                                                        contentDescription = stringResource(R.string.legacy_ui_url_menu)
-                                                    )
+                                                IconButton(onClick = { urlMenuExpanded = true }, modifier = Modifier.testTag("url_actions_$index")) {
+                                                    Icon(Icons.Default.MoreVert, stringResource(R.string.legacy_ui_url_menu))
                                                 }
-                                                DropdownMenu(
-                                                    expanded = urlMenuExpanded,
-                                                    onDismissRequest = { urlMenuExpanded = false }
-                                                ) {
-                                                    if (index > 0) {
-                                                        DropdownMenuItem(
-                                                            text = { Text(stringResource(R.string.move_up)) },
-                                                            leadingIcon = { Icon(Icons.Default.KeyboardArrowUp, null) },
-                                                            onClick = {
-                                                                val previous = websiteUrls[index - 1]
-                                                                websiteUrls[index - 1] = websiteUrls[index]
-                                                                websiteUrls[index] = previous
-                                                                syncWebsiteFromUrlRows()
-                                                                urlMenuExpanded = false
-                                                            }
-                                                        )
-                                                    }
-                                                    if (index < websiteUrls.lastIndex) {
-                                                        DropdownMenuItem(
-                                                            text = { Text(stringResource(R.string.move_down)) },
-                                                            leadingIcon = { Icon(Icons.Default.KeyboardArrowDown, null) },
-                                                            onClick = {
-                                                                val next = websiteUrls[index + 1]
-                                                                websiteUrls[index + 1] = websiteUrls[index]
-                                                                websiteUrls[index] = next
-                                                                syncWebsiteFromUrlRows()
-                                                                urlMenuExpanded = false
-                                                            }
-                                                        )
-                                                    }
-                                                    DropdownMenuItem(
-                                                        text = { Text(stringResource(R.string.delete)) },
-                                                        leadingIcon = { Icon(Icons.Default.Delete, null) },
-                                                        onClick = {
-                                                            if (websiteUrls.size == 1) {
-                                                                websiteUrls[0] = ""
-                                                            } else {
-                                                                websiteUrls.removeAt(index)
-                                                            }
-                                                            syncWebsiteFromUrlRows()
-                                                            urlMenuExpanded = false
+                                                EditorActionMenu(urlMenuExpanded, { urlMenuExpanded = false }, buildList {
+                                                    add(EditorMenuAction(stringResource(R.string.url_match_title), Icons.Default.Rule,
+                                                        onClick = { showUrlMatchDialog = true }, supporting = urlMatchModeLabel(matchMode), tag = "url_match_action_$index"))
+                                                    if (index > 0) add(EditorMenuAction(stringResource(R.string.move_up), Icons.Default.KeyboardArrowUp, onClick = {
+                                                        java.util.Collections.swap(websiteUrls, index, index - 1)
+                                                        java.util.Collections.swap(websiteMatchModes, index, index - 1)
+                                                        syncWebsiteFromUrlRows()
+                                                    }, tag = "url_up_$index"))
+                                                    if (index < websiteUrls.lastIndex) add(EditorMenuAction(stringResource(R.string.move_down), Icons.Default.KeyboardArrowDown, onClick = {
+                                                        java.util.Collections.swap(websiteUrls, index, index + 1)
+                                                        java.util.Collections.swap(websiteMatchModes, index, index + 1)
+                                                        syncWebsiteFromUrlRows()
+                                                    }, tag = "url_down_$index"))
+                                                    add(EditorMenuAction(stringResource(R.string.delete), Icons.Default.Delete, destructive = true, onClick = {
+                                                        if (websiteUrls.size == 1) {
+                                                            websiteUrls[0] = ""; websiteMatchModes[0] = PasswordUrlRules.Mode.DEFAULT.name
+                                                        } else {
+                                                            websiteUrls.removeAt(index); websiteMatchModes.removeAt(index)
                                                         }
-                                                    )
-                                                }
+                                                        syncWebsiteFromUrlRows()
+                                                    }, tag = "url_delete_$index"))
+                                                })
                                             }
                                         },
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier.fillMaxWidth().testTag("url_row_$index"),
                                         singleLine = true,
                                         keyboardOptions = KeyboardOptions(
                                             keyboardType = KeyboardType.Uri,
@@ -3898,9 +3905,10 @@ private fun PasswordEntryEditor(
                                 TextButton(
                                     onClick = {
                                         websiteUrls.add("")
+                                        websiteMatchModes.add(PasswordUrlRules.Mode.DEFAULT.name)
                                         syncWebsiteFromUrlRows()
                                     },
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.weight(1f).testTag("url_add"),
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
                                 ) {
                                     Icon(
@@ -4479,7 +4487,7 @@ private fun PasswordEntryEditor(
                     PasswordContentSection.CUSTOM_FIELDS -> {
             if (contentMode) {
                 val fields = if (isMultiCredentialMode && showCredentialEditorContent) activeCredentialMetadata.credentialCustomFields else customFields
-                val visibleFields = fields.filterNot { it.title == ProjectCredentialGroup.FIELD || it.title == EntryContentFields.ORDER || EmbeddedWalletContent.isMetadata(it.title) || PasswordContentBlocks.owns(it.title) || takagi.ru.monica.data.model.TemplateCredentialDraft.ownsField(it.title) || CredentialExchangeMetadata.ownsField(it.title) || EntrySupplementalSpecs.spec(it.title) != null }
+                val visibleFields = fields.filterNot { it.title == PasswordUrlRules.FIELD || it.title == ProjectCredentialGroup.FIELD || it.title == EntryContentFields.ORDER || EmbeddedWalletContent.isMetadata(it.title) || PasswordContentBlocks.owns(it.title) || takagi.ru.monica.data.model.TemplateCredentialDraft.ownsField(it.title) || CredentialExchangeMetadata.ownsField(it.title) || EntrySupplementalSpecs.spec(it.title) != null }
                 if (contentSectionEnabled(PasswordContentSection.CUSTOM_FIELDS, true) || visibleFields.isNotEmpty()) contentItem("content_custom_fields") {
                     takagi.ru.monica.ui.components.EntryContentPanel(PasswordContentSection.CUSTOM_FIELDS,
                         visibleFields.joinToString(" · ") { it.title }, editingContentSection == "CUSTOM_FIELDS",
@@ -4492,7 +4500,7 @@ private fun PasswordEntryEditor(
                             }
                         }
                         takagi.ru.monica.ui.components.EntryContentFieldButton(visibleFields) { updated ->
-                            val managed = fields.filter { it.title == ProjectCredentialGroup.FIELD || it.title == EntryContentFields.ORDER || EmbeddedWalletContent.isMetadata(it.title) || PasswordContentBlocks.owns(it.title) || takagi.ru.monica.data.model.TemplateCredentialDraft.ownsField(it.title) || CredentialExchangeMetadata.ownsField(it.title) || EntrySupplementalSpecs.spec(it.title) != null }
+                            val managed = fields.filter { it.title == PasswordUrlRules.FIELD || it.title == ProjectCredentialGroup.FIELD || it.title == EntryContentFields.ORDER || EmbeddedWalletContent.isMetadata(it.title) || PasswordContentBlocks.owns(it.title) || takagi.ru.monica.data.model.TemplateCredentialDraft.ownsField(it.title) || CredentialExchangeMetadata.ownsField(it.title) || EntrySupplementalSpecs.spec(it.title) != null }
                             fields.clear(); fields.addAll(managed + updated)
                         }
                     }

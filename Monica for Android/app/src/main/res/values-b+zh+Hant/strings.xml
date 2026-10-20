@@ -4368,4 +4368,11 @@
     <string name="wallet_address_line3">地址第三行</string>
     <string name="wallet_address_extra">補充地址欄位</string>
     <string name="monica_master_password_required">請先設定 Monica 主密碼。</string>
+    <string name="url_match_title">URI 比對偵測</string>
+    <string name="url_match_default">預設（全域設定）</string>
+    <string name="url_match_host">主機（僅此主機名稱）</string>
+    <string name="url_match_explanation">僅套用至此 URL。任一 URL 符合皆可推薦此憑證。</string>
+    <string name="url_match_limited_context">主機不含其他子網域。瀏覽器僅提供主機名稱時，不推測協定、路徑或查詢；精確 URL 和 URL 前綴須提供完整 URL。正規表示式使用 RE2 語法。</string>
+    <string name="url_match_regex_error">請先將 URL 改為有效的 RE2 正規表示式。</string>
+    <string name="url_match_unreadable">無法讀取 URL 比對資料。保留現有資料並停用儲存。</string>
 </resources>

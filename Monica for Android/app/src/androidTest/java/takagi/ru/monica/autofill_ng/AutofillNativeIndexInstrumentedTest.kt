@@ -19,6 +19,25 @@ import takagi.ru.monica.rustcore.RustAutofillCore
 @RunWith(AndroidJUnit4::class)
 class AutofillNativeIndexInstrumentedTest {
     @Test
+    fun urlOverridesSurviveNativePruningAndMetadataChanges() {
+        val entries = rows(300) + listOf(entry(1001, "https://unrelated.invalid", ""),
+            entry(1002, "https://login.example.com", ""), entry(1003, "https://prod.example.com", ""))
+        val native = BitwardenLikeAutofillMatcherNg()
+        val baseline = BitwardenLikeAutofillMatcherNg(useNativeIndex = false)
+        val rules = mapOf(1001L to listOf(takagi.ru.monica.data.model.PasswordUrlRules.Rule("^login\\.example\\.com$", takagi.ru.monica.data.model.PasswordUrlRules.Mode.REGEX)),
+            1002L to listOf(takagi.ru.monica.data.model.PasswordUrlRules.Rule("https://login.example.com", takagi.ru.monica.data.model.PasswordUrlRules.Mode.NEVER)),
+            1003L to listOf(takagi.ru.monica.data.model.PasswordUrlRules.Rule("https://prod.example.com", takagi.ru.monica.data.model.PasswordUrlRules.Mode.HOST)))
+        try {
+            val result = native.match(entries, "browser", "login.example.com", urlRules = rules)
+            assertEquals(listOf(1001L), result.map { it.id })
+            assertEquals(baseline.match(entries, "browser", "login.example.com", urlRules = rules), result)
+            assertTrue("Exercise the real JNI index", native.nativeQueryCount > 0)
+            val changed = rules + (1001L to listOf(takagi.ru.monica.data.model.PasswordUrlRules.Rule("https://unrelated.invalid", takagi.ru.monica.data.model.PasswordUrlRules.Mode.NEVER)))
+            assertTrue(native.match(entries, "browser", "login.example.com", urlRules = changed).isEmpty())
+        } finally { native.clear(); baseline.clear() }
+    }
+
+    @Test
     fun realNativeIndexPreservesPoliciesOrderAndUpdates() {
         val baseline = BitwardenLikeAutofillMatcherNg(cacheMetadata = false)
         val native = BitwardenLikeAutofillMatcherNg()

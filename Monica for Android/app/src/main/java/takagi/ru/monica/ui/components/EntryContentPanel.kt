@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -75,11 +76,11 @@ fun EntryContentPanel(
                 IconButton(onClick = { menu = true }, modifier = Modifier.testTag("content_actions_${section.name}")) {
                     Icon(Icons.Default.MoreVert, stringResource(R.string.more_options))
                 }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.edit)) }, onClick = { menu = false; onOpenChange(true) })
-                    actions?.remove?.let { DropdownMenuItem(text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
-                        modifier = Modifier.testTag("content_remove"), onClick = { menu = false; confirmRemoval = true }) }
-                }
+                EditorActionMenu(menu, { menu = false }, buildList {
+                    add(EditorMenuAction(stringResource(R.string.edit), Icons.Default.Edit, onClick = { onOpenChange(true) }))
+                    actions?.remove?.let { add(EditorMenuAction(stringResource(R.string.delete), Icons.Default.Delete,
+                        onClick = { confirmRemoval = true }, destructive = true, tag = "content_remove")) }
+                })
             }
         }
     }
