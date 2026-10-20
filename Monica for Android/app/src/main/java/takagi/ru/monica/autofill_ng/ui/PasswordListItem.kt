@@ -42,6 +42,9 @@ sealed class PasswordItemAction {
     /** 自动填充（不保存URI） */
     data class Autofill(val password: PasswordEntry) : PasswordItemAction()
     
+    /** User explicitly chooses accessibility regardless of picker entry point. */
+    data class AccessibilityFill(val password: PasswordEntry) : PasswordItemAction()
+
     /** 自动填充并保存应用或网站信息 */
     data class AutofillAndSaveUri(val password: PasswordEntry) : PasswordItemAction()
 
@@ -77,7 +80,7 @@ sealed class PasswordItemAction {
  * - 更大的触摸区域 (最小56dp高度)
  * - 清晰的视觉层级
  * - 美观的图标展示
- * - 支持 Dropdown 菜单选择操作
+ * - 支持 M3E 居中操作弹窗
  * 
  * @param password 密码条目
  * @param showDropdownMenu 是否显示 Dropdown 菜单模式
@@ -171,104 +174,11 @@ fun PasswordListItem(
             }
         }
             
-            // Dropdown 菜单
+            // Shared centered action dialog
             if (showDropdownMenu && onAction != null) {
-                DropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    // 自动填充
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.autofill)) },
-                        leadingIcon = {
-                            Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
-                        },
-                        onClick = {
-                            expanded = false
-                            onAction(PasswordItemAction.Autofill(password))
-                        }
-                    )
-                    
-                    // 自动填充并保存URI
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.autofill_and_save_uri)) },
-                        leadingIcon = {
-                            Icon(Icons.Outlined.Save, contentDescription = null)
-                        },
-                        onClick = {
-                            expanded = false
-                            onAction(PasswordItemAction.AutofillAndSaveUri(password))
-                        }
-                    )
-                    
-                    HorizontalDivider()
-                    
-                    // 复制用户名
-                    DropdownMenuItem(
-                        text = { 
-                            Column {
-                                Text(stringResource(R.string.copy_username))
-                                Text(
-                                    text = displayUsername,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        },
-                        leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
-                        onClick = {
-                            expanded = false
-                            onAction(PasswordItemAction.CopyUsername(password))
-                        }
-                    )
-                    
-                    // 复制密码
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.copy_password)) },
-                        leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
-                        onClick = {
-                            expanded = false
-                            onAction(PasswordItemAction.CopyPassword(password))
-                        }
-                    )
-                    
-                    HorizontalDivider()
-                    
-                    // 复制账号 (稍后复制密码) - 仅在有通知权限时显示
-                    if (showSmartCopyOptions) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.smart_copy_username_first)) },
-                            leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
-                            onClick = {
-                                expanded = false
-                                onAction(PasswordItemAction.SmartCopyUsernameFirst(password))
-                            }
-                        )
-                        
-                        // 复制密码 (稍后复制账号)
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.smart_copy_password_first)) },
-                            leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
-                            onClick = {
-                                expanded = false
-                                onAction(PasswordItemAction.SmartCopyPasswordFirst(password))
-                            }
-                        )
-                        
-                        HorizontalDivider()
-                    }
-                    
-                    // 查看详情
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.details)) },
-                        leadingIcon = {
-                            Icon(Icons.Outlined.Info, contentDescription = null)
-                        },
-                        onClick = {
-                            expanded = false
-                            onAction(PasswordItemAction.ViewDetails(password))
-                        }
-                    )
+                if (expanded) {
+                    PasswordActionDialog(password, displayUsername, credentialLabel,
+                        showSmartCopyOptions, onDismiss = { expanded = false }, onAction = onAction)
                 }
             }
         }
@@ -535,104 +445,10 @@ fun SuggestedPasswordListItem(
                 }
             }
             
-            // Dropdown 菜单 - 参考 Keyguard 样式
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                // 自动填充
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.autofill)) },
-                    leadingIcon = { Icon(Icons.Outlined.AutoAwesome, contentDescription = null) },
-                    onClick = {
-                        expanded = false
-                        onAction(PasswordItemAction.Autofill(password))
-                    }
-                )
-                
-                // 自动填充并保存应用或网站信息
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.autofill_and_save_uri)) },
-                    leadingIcon = { Icon(Icons.Outlined.Save, contentDescription = null) },
-                    onClick = {
-                        expanded = false
-                        onAction(PasswordItemAction.AutofillAndSaveUri(password))
-                    }
-                )
-                
-                HorizontalDivider()
-                
-                // 复制用户名
-                DropdownMenuItem(
-                    text = { 
-                        Column {
-                            Text(stringResource(R.string.copy_username))
-                            Text(
-                                text = displayUsername,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    },
-                    leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
-                    onClick = {
-                        expanded = false
-                        onAction(PasswordItemAction.CopyUsername(password))
-                    }
-                )
-                
-                // 复制密码
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.copy_password)) },
-                    leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
-                    onClick = {
-                        expanded = false
-                        onAction(PasswordItemAction.CopyPassword(password))
-                    }
-                )
-                
-                HorizontalDivider()
-                
-                // 复制账号 (稍后复制密码) - 仅在有通知权限时显示
-                if (showSmartCopyOptions) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.smart_copy_username_first)) },
-                        leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
-                        onClick = {
-                            expanded = false
-                            onAction(PasswordItemAction.SmartCopyUsernameFirst(password))
-                        }
-                    )
-                    
-                    // 复制密码 (稍后复制账号)
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.smart_copy_password_first)) },
-                        leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
-                        onClick = {
-                            expanded = false
-                            onAction(PasswordItemAction.SmartCopyPasswordFirst(password))
-                        }
-                    )
-                    
-                    HorizontalDivider()
-                }
-                
-                // 查看详情
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.details)) },
-                    leadingIcon = { Icon(Icons.Outlined.Info, contentDescription = null) },
-                    trailingIcon = { 
-                        Icon(
-                            Icons.Default.KeyboardArrowRight, 
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        ) 
-                    },
-                    onClick = {
-                        expanded = false
-                        onAction(PasswordItemAction.ViewDetails(password))
-                    }
-                )
+            // Shared centered action dialog
+            if (expanded) {
+                PasswordActionDialog(password, displayUsername, credentialLabel,
+                    showSmartCopyOptions, onDismiss = { expanded = false }, onAction = onAction)
             }
         }
     }

@@ -1393,6 +1393,60 @@ class AutofillFlowInstrumentedTest {
         expectStatus("user=OK password=OK")
     }
 
+    @Test fun frameworkPickerCanChooseAccessibilityFillIndependently() {
+        open("standard")
+        awaitAccessibility()
+        focusFirstField()
+        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_manual_entry_title) ||
+            it.contentDescription?.toString() == context.getString(R.string.autofill_manual_entry_title) })
+        unlockActionPicker()
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
+        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_accessibility_fill) })
+        expectStatus("user=OK password=OK")
+    }
+
+    @Test fun imePickerCanChooseAccessibilityFillIndependently() {
+        open("enterprise", accessibilityOnly = true)
+        awaitAccessibility()
+        focusFirstField()
+        context.startActivity(AutofillPickerActivityV2.getIntent(context, AutofillPickerActivityV2.Args(
+            applicationId = fixturePackage, isSaveMode = false, rememberLastFilled = false)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra(AutofillPickerActivityV2.EXTRA_MANUAL_MODE, true)
+            putExtra(AutofillPickerActivityV2.EXTRA_IME_MODE, true)
+        })
+        unlockActionPicker()
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
+        tap(waitNode { it.text?.toString() == context.getString(R.string.autofill_accessibility_fill) })
+        expectStatus("user=OK password=OK")
+    }
+
+    @Test fun accessibilityActionFromDetailsReturnsToTarget() {
+        open("enterprise", accessibilityOnly = true)
+        awaitAccessibility()
+        focusFirstField()
+        context.startActivity(AutofillPickerActivityV2.getIntent(context, AutofillPickerActivityV2.Args(
+            applicationId = fixturePackage)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra(AutofillPickerActivityV2.EXTRA_MANUAL_MODE, true)
+        })
+        unlockActionPicker()
+        tap(waitNode { it.text?.toString() == NATIVE_TITLE })
+        tap(waitNode(scroll = true) { it.text?.toString() == context.getString(R.string.details) })
+        tap(waitNode(scroll = true) { it.text?.toString() == context.getString(R.string.autofill_accessibility_fill) })
+        expectStatus("user=OK password=OK")
+    }
+
+    private fun unlockActionPicker() {
+        // Exercise the real Monica master-password verification, never a test bypass.
+        val input = waitNode { it.packageName?.toString() == context.packageName && it.isEditable }
+        assertTrue(input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, MASTER_PASSWORD)
+        }))
+        tap(waitNode { it.text?.toString() == context.getString(R.string.confirm) })
+        waitNode { it.text?.toString() == NATIVE_TITLE }
+    }
+
     @Test fun accessibilityPickerHandlesAWebViewThatReplacesThePasswordField() {
         repeat(4) {
             open("web_dynamic", accessibilityOnly = true)

@@ -36,7 +36,8 @@ fun InlinePasswordDetailContent(
     onAutofill: () -> Unit,
     onAutofillAndSaveUri: () -> Unit,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onAccessibilityFill: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var passwordVisible by remember { mutableStateOf(false) }
@@ -200,6 +201,13 @@ fun InlinePasswordDetailContent(
                 Text(stringResource(R.string.autofill))
             }
             
+            if (onAccessibilityFill != null) {
+                FilledTonalButton(onClick = onAccessibilityFill, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.AccessibilityNew, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.autofill_accessibility_fill))
+                }
+            }
             OutlinedButton(
                 onClick = onAutofillAndSaveUri,
                 modifier = Modifier.fillMaxWidth()

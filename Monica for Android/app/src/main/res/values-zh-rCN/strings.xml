@@ -17,4 +17,14 @@
     <string name="wallet_address_line3">地址第三行</string>
     <string name="wallet_address_extra">补充地址字段</string>
     <string name="monica_master_password_required">请先设置 Monica 主密码。</string>
+    <string name="autofill_action_fill_methods">填充方式</string>
+    <string name="autofill_action_copy">复制</string>
+    <string name="autofill_accessibility_fill">无障碍填充</string>
+    <string name="autofill_accessibility_fill_hint">返回当前应用填写</string>
+    <string name="autofill_accessibility_setup_message">请在系统无障碍设置中开启 Monica，然后返回选择账号进行填充。</string>
+    <string name="autofill_accessibility_open_settings">前往设置</string>
+    <string name="autofill_action_username_first">先复制账号</string>
+    <string name="autofill_action_password_first">先复制密码</string>
+    <string name="autofill_action_password_next">随后从通知复制密码</string>
+    <string name="autofill_action_username_next">随后从通知复制账号</string>
 </resources>

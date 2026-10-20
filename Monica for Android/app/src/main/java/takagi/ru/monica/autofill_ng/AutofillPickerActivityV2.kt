@@ -559,6 +559,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     onAutofill = { password, forceAddUri ->
                         handleAutofill(password, forceAddUri)
                     },
+                    onAccessibilityFill = ::handleAccessibilityFill,
                     onAutofillBankCard = ::handleBankCardAutofill,
                     onAutofillDocument = ::handleDocumentAutofill,
                     onAutofillBillingAddress = ::handleBillingAddressAutofill,
@@ -738,6 +739,43 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 .getOrElse { preparePasswordAutofill(password) }
         }
         return preparePasswordAutofill(password)
+    }
+
+    private fun handleAccessibilityFill(password: PasswordEntry) {
+        if (!MonicaAccessibilityService.isCredentialFillAvailable(applicationContext)) {
+            android.widget.Toast.makeText(this, R.string.autofill_accessibility_setup_message,
+                android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!passwordAutofillInFlight.compareAndSet(false, true)) return
+        lifecycleScope.launch {
+            try {
+                // This explicit action is independent of framework IDs and manual-mode routing.
+                val credentials = withContext(Dispatchers.Default) {
+                    val security = SecurityManager(applicationContext)
+                    AccountFillPolicy.resolveAccountIdentifier(password, security) to
+                        AutofillSecretResolver.decryptPasswordOrNull(security, password.password, "AutofillPickerV2")
+                }
+                if (credentials.second.isNullOrBlank()) {
+                    android.widget.Toast.makeText(this@AutofillPickerActivityV2,
+                        R.string.autofill_copy_password_unavailable, android.widget.Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                if (scheduleManualAccessibilityFill(credentials.first, credentials.second.orEmpty(),
+                        expectedTargetPackage = manualTargetPackage ?: args.applicationId,
+                        allowClipboardFallback = false)) {
+                    finish()
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AutofillLogger.e("PICKER", "Accessibility fill failed", e)
+                android.widget.Toast.makeText(this@AutofillPickerActivityV2,
+                    R.string.autofill_active_fill_target_unavailable, android.widget.Toast.LENGTH_LONG).show()
+            } finally {
+                if (!isFinishing) passwordAutofillInFlight.set(false)
+            }
+        }
     }
 
     private fun handleAutofill(password: PasswordEntry, forceAddUri: Boolean) {
@@ -1062,6 +1100,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         password: String,
         preferPasswordField: Boolean = false,
         expectedTargetPackage: String? = manualTargetPackage,
+        allowClipboardFallback: Boolean = true,
     ): Boolean {
         if (!MonicaAccessibilityService.isCredentialFillAvailable(applicationContext)) {
             AutofillLogger.i("PICKER", "Manual accessibility fill unavailable; service is not active")
@@ -1082,11 +1121,14 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 password = password,
                 preferPasswordField = preferPasswordField,
                 attempt = 1,
+                allowClipboardFallback = allowClipboardFallback,
             )
         }
 
         setResult(Activity.RESULT_CANCELED)
-        moveTaskToBack(true)
+        // Framework authentication shares the caller's task. Only manual/IME
+        // entry owns a separate picker task that needs moving to the back.
+        if (isManualMode) moveTaskToBack(true)
         AutofillLogger.i("PICKER", "Manual accessibility fill scheduled")
         return true
     }
@@ -1099,6 +1141,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         password: String,
         preferPasswordField: Boolean,
         attempt: Int,
+        allowClipboardFallback: Boolean = true,
     ) {
         val activePackage = MonicaAccessibilityService.getActiveWindowPackageName().orEmpty()
         val resolvedTargetPackage = resolveManualFillTargetPackage(
@@ -1126,7 +1169,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
 
         if (filled || attempt >= MANUAL_ACCESSIBILITY_MAX_ATTEMPTS) {
             if (!filled) {
-                if (!expectedTargetPackage.isNullOrBlank()) {
+                if (!allowClipboardFallback || !expectedTargetPackage.isNullOrBlank()) {
                     android.widget.Toast.makeText(
                         appContext,
                         R.string.autofill_active_fill_target_unavailable,
@@ -1166,6 +1209,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             password = password,
             preferPasswordField = preferPasswordField,
             attempt = attempt + 1,
+            allowClipboardFallback = allowClipboardFallback,
         )
     }
 
@@ -1631,6 +1675,7 @@ private fun AutofillPickerContent(
     manualModeReason: String = "unknown",
     onPrepareAutofill: (PasswordEntry) -> Unit,
     onAutofill: (PasswordEntry, Boolean) -> Unit,
+    onAccessibilityFill: (PasswordEntry) -> Unit,
     onAutofillBankCard: (SecureItem) -> Unit,
     onAutofillDocument: (SecureItem) -> Unit,
     onAutofillBillingAddress: (SecureItem) -> Unit,
@@ -1792,9 +1837,29 @@ private fun AutofillPickerContent(
         !args.autofillIds.isNullOrEmpty() &&
         requestProfile.wantsBillingAddresses
 
+    var showAccessibilitySetup by remember { mutableStateOf(false) }
+    val requestAccessibilityFill: (PasswordEntry) -> Unit = { password ->
+        if (MonicaAccessibilityService.isCredentialFillAvailable(context)) onAccessibilityFill(password)
+        else showAccessibilitySetup = true
+    }
+    if (showAccessibilitySetup) {
+        AlertDialog(
+            onDismissRequest = { showAccessibilitySetup = false },
+            title = { Text(stringResource(R.string.autofill_accessibility_fill)) },
+            text = { Text(stringResource(R.string.autofill_accessibility_setup_message)) },
+            confirmButton = { TextButton(onClick = {
+                showAccessibilitySetup = false
+                context.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }) { Text(stringResource(R.string.autofill_accessibility_open_settings)) } },
+            dismissButton = { TextButton(onClick = { showAccessibilitySetup = false }) {
+                Text(stringResource(R.string.cancel))
+            } },
+        )
+    }
     val handlePasswordAction: (PasswordItemAction) -> Unit = { action ->
         when (action) {
             is PasswordItemAction.Autofill -> onAutofill(action.password, false)
+            is PasswordItemAction.AccessibilityFill -> requestAccessibilityFill(action.password)
             is PasswordItemAction.AutofillAndSaveUri -> onAutofill(action.password, true)
             is PasswordItemAction.ViewDetails -> {
                 onPrepareAutofill(action.password)
@@ -3069,6 +3134,7 @@ private fun AutofillPickerContent(
                     securityManager = securityManager,
                     onAutofill = { onAutofill(password, false) },
                     onAutofillAndSaveUri = { onAutofill(password, true) },
+                    onAccessibilityFill = { requestAccessibilityFill(password) },
                     onBack = { currentScreen = "list" }
                 )
             }

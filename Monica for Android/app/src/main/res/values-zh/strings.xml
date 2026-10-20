@@ -4679,4 +4679,14 @@
     <string name="device_sync_passkey_continue">了解并继续</string>
     <string name="bank_branch">开户行</string>
     <string name="bank_branch_example">例如：中国工商银行北京海淀支行</string>
+    <string name="autofill_action_fill_methods">填充方式</string>
+    <string name="autofill_action_copy">复制</string>
+    <string name="autofill_accessibility_fill">无障碍填充</string>
+    <string name="autofill_accessibility_fill_hint">返回当前应用填写</string>
+    <string name="autofill_accessibility_setup_message">请在系统无障碍设置中开启 Monica，然后返回选择账号进行填充。</string>
+    <string name="autofill_accessibility_open_settings">前往设置</string>
+    <string name="autofill_action_username_first">先复制账号</string>
+    <string name="autofill_action_password_first">先复制密码</string>
+    <string name="autofill_action_password_next">随后从通知复制密码</string>
+    <string name="autofill_action_username_next">随后从通知复制账号</string>
 </resources>

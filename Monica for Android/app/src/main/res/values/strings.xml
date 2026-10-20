@@ -4721,4 +4721,14 @@
     <string name="wallet_address_line3">Address line 3</string>
     <string name="wallet_address_extra">Additional address fields</string>
     <string name="monica_master_password_required">Set up a Monica master password first.</string>
+    <string name="autofill_action_fill_methods">Fill method</string>
+    <string name="autofill_action_copy">Copy</string>
+    <string name="autofill_accessibility_fill">Accessibility fill</string>
+    <string name="autofill_accessibility_fill_hint">Return to the current app and fill</string>
+    <string name="autofill_accessibility_setup_message">Enable Monica in system accessibility settings, then return and select an account to fill.</string>
+    <string name="autofill_accessibility_open_settings">Open settings</string>
+    <string name="autofill_action_username_first">Copy account first</string>
+    <string name="autofill_action_password_first">Copy password first</string>
+    <string name="autofill_action_password_next">Copy the password next from the notification</string>
+    <string name="autofill_action_username_next">Copy the account next from the notification</string>
 </resources>
