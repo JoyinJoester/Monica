@@ -1233,9 +1233,42 @@ class AutofillFlowInstrumentedTest {
         }
     }
 
+    @Test fun systemAutofillFillsBarePackageWebsiteBindingInLargeVault() = runBlocking {
+        val original = requireNotNull(dao.getPasswordEntryById(insertedIds.first()))
+        dao.updatePasswordEntry(original.copy(appPackageName = "", website = fixturePackage))
+        repeat(300) { index ->
+            insertedIds += dao.insertPasswordEntry(PasswordEntry(title = "Unrelated package fixture $index",
+                website = "https://unrelated$index.test", username = "synthetic", password = "synthetic"))
+        }
+        open("standard")
+        fillFromSystem(NATIVE_TITLE)
+        expectStatus("user=OK password=OK")
+    }
+
     @Test fun issue167PickerRecommendsBoundAppWithoutPrecomputedIds() = pickerRecommendsBindings(false)
 
     @Test fun issue167PickerRecommendsBoundWebsiteWithoutPrecomputedIds() = pickerRecommendsBindings(true)
+
+    @Test fun issue167PickerRecommendsBarePackageStoredAsWebsite(): Unit = runBlocking {
+        val targetPackage = "com.cn21.ecloud"
+        val title = "Tianyi Cloud package in URL"
+        insertedIds += dao.insertPasswordEntry(PasswordEntry(title = title,
+            website = targetPackage,
+            username = "issue167-synthetic", password = security.encryptData("issue167-synthetic")))
+        settings.updateAutofillKeepUnlocked(true)
+        AutofillSessionGrants.grant(
+            takagi.ru.monica.autofill_ng.auth.AutofillGrantContext(targetPackage, null, null, null),
+            enabled = true,
+        )
+        val intent = AutofillPickerActivityV2.getIntent(context, AutofillPickerActivityV2.Args(
+            applicationId = targetPackage, webDomain = null, suggestedPasswordIds = null))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+            .putExtra(AutofillPickerActivityV2.EXTRA_MANUAL_MODE, true)
+        androidx.test.core.app.ActivityScenario.launch<AutofillPickerActivityV2>(intent).use {
+            waitNode { it.text?.toString() == context.getString(R.string.autofill_suggested_fill) }
+            waitNode { it.text?.toString() == title }
+        }
+    }
 
     private fun pickerRecommendsBindings(web: Boolean): Unit = runBlocking {
         val targetPackage = if (web) "com.android.chrome" else "org.issue167.native"

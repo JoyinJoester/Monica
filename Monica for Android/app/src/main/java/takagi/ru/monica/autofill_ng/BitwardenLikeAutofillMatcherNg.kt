@@ -116,6 +116,7 @@ class BitwardenLikeAutofillMatcherNg internal constructor(
     )
 
     companion object {
+        private val BARE_PACKAGE_SEGMENT = Regex("[a-z][a-z0-9_]*")
         private val PACKAGE_TOKEN_STOPWORDS = setOf(
             "com", "android", "app", "net", "org", "io",
             "mobile", "client", "common", "ui", "view", "service",
@@ -384,10 +385,18 @@ class BitwardenLikeAutofillMatcherNg internal constructor(
     private fun extractAndroidAppPackage(value: String?): String? {
         if (value.isNullOrBlank()) return null
         val raw = value.trim().lowercase(Locale.ROOT)
-        if (!raw.startsWith("androidapp://") && !raw.startsWith("android-app://")) {
+        if (raw.startsWith("androidapp://") || raw.startsWith("android-app://")) {
+            return normalizePackageName(raw)
+        }
+
+        // Older entries sometimes stored the application id directly in the
+        // URL field. Treat only package-shaped values as app bindings; normal
+        // URLs continue through host matching.
+        val packageParts = raw.split('.')
+        if (packageParts.size < 3 || packageParts.any { !BARE_PACKAGE_SEGMENT.matches(it) }) {
             return null
         }
-        return normalizePackageName(raw)
+        return raw
     }
 
     private fun extractNormalizedHosts(value: String?): Set<String> =

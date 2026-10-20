@@ -84,6 +84,24 @@ class BitwardenLikeAutofillMatcherNgTest {
     }
 
     @Test
+    fun `strict mode should match bare package name stored in website`() {
+        val entries = listOf(
+            entry(id = 1, title = "Tianyi Cloud", website = "com.cn21.ecloud"),
+            entry(id = 2, title = "Other", website = "https://example.com"),
+        )
+
+        val result = matcher.match(
+            entries = entries,
+            packageName = "com.cn21.ecloud",
+            webDomain = null,
+            config = BitwardenLikeAutofillMatcherNg.Config(strictOnly = true),
+        )
+
+        assertEquals(1, result.size)
+        assertEquals(1L, result.first().id)
+    }
+
+    @Test
     fun `strict mode should match base domain`() {
         val entries = listOf(
             entry(id = 1, title = "Example", website = "https://example.com"),
@@ -205,6 +223,29 @@ class BitwardenLikeAutofillMatcherNgTest {
 
         assertTrue(strictResult.isEmpty())
         assertEquals(listOf(1L), nonStrictResult.map { it.id })
+    }
+
+    @Test
+    fun `bare package bindings use exact matching across cached and uncached paths`() {
+        val entries = listOf(
+            entry(1, "Bare", website = "https://cloud.189.cn/login, COM.CN21.ECLOUD"),
+            entry(2, "Direct", appPackage = "com.old.app|com.cn21.ecloud"),
+            entry(3, "Different", website = "com.cn21.ecloud.other"),
+            entry(4, "Web only", website = "https://com.cn21.ecloud"),
+            entry(5, "Path", website = "com.cn21.ecloud/login"),
+        )
+        for (cache in listOf(false, true)) {
+            val subject = BitwardenLikeAutofillMatcherNg(useNativeIndex = false, cacheMetadata = cache)
+            try {
+                assertEquals(setOf(1L, 2L), subject.match(entries, "com.cn21.ecloud", null).map { it.id }.toSet())
+                assertTrue(subject.match(entries, "com.cn21.ecloud", null,
+                    config = BitwardenLikeAutofillMatcherNg.Config(allowPackageMatch = false)).isEmpty())
+                assertEquals(listOf(1L), subject.match(entries, "com.android.chrome", "cloud.189.cn").map { it.id })
+                assertTrue(subject.match(entries, "com.cn21.ecloud", "unrelated.test").isEmpty())
+                val removed = entries.map { if (it.id <= 2) it.copy(website = "", appPackageName = "") else it }
+                assertTrue(subject.match(removed, "com.cn21.ecloud", null).isEmpty())
+            } finally { subject.clear() }
+        }
     }
 
     private fun entry(

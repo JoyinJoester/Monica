@@ -31,6 +31,7 @@ class AutofillNativeIndexInstrumentedTest {
             entry(1006, "android-app://com.target.app; https://例子.测试", ""),
             entry(1007, "https://example.co.uk; https://second.test", ""),
             entry(1008, "", "", title = " 应用 École "),
+            entry(1009, "com.target.app", ""),
         )
         try {
             for (flags in 0 until 32) {
@@ -49,6 +50,7 @@ class AutofillNativeIndexInstrumentedTest {
                 }
             }
             assertTrue("The test must actually call the packaged JNI index", native.nativeQueryCount > 0)
+            assertTrue(native.match(entries, "com.target.app", null).any { it.id == 1009L })
             val exact = native.match(entries, "com.target.app", "example.com",
                 config = BitwardenLikeAutofillMatcherNg.Config(exactDomainOnly = true))
             assertEquals(listOf(1001L), exact.map { it.id })

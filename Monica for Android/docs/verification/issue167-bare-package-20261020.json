@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-20",
+  "version": "1.0.321",
+  "normalVersionCode": 12,
+  "fdroidVersionCode": 28,
+  "device": "Monica_Issue136_API_32 / Android 32 / x86_64 / isolated user 10",
+  "editions": {
+    "normal": {
+      "unitSuites": [
+        {
+          "name": "BitwardenLikeAutofillMatcherNgTest",
+          "tests": 12,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "AutofillPickerSuggestionsTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "AutofillRequestContextPolicyTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ],
+      "unitTests": 21,
+      "deviceTests": 7,
+      "deviceSeconds": 89.158,
+      "releaseBuild": "passed",
+      "debugBuild": "passed",
+      "testApkBuild": "passed",
+      "deviceLogSha256": "65316440b96bb73d2a72acc8529eafce5c210197f17baf9e0c4b1f107d5defe1",
+      "releaseLogSha256": "5713bdcd6591dcd2165a88e36b5f7972a47927c50b59ed5a2893982943d29919"
+    },
+    "fdroid": {
+      "unitSuites": [
+        {
+          "name": "BitwardenLikeAutofillMatcherNgTest",
+          "tests": 12,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "AutofillPickerSuggestionsTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "AutofillRequestContextPolicyTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ],
+      "unitTests": 21,
+      "deviceTests": 7,
+      "deviceSeconds": 69.269,
+      "releaseBuild": "passed",
+      "debugBuild": "passed",
+      "testApkBuild": "passed",
+      "deviceLogSha256": "3c6b60780c62b751194c753c5f4392121cd1de6c69fffd33b8ca09ca07e50f76",
+      "releaseLogSha256": "9525b190b02d32a49d7915a6e0b2bd7587afd82c8ce07903ed8e7c08e7bcdf91"
+    }
+  },
+  "sharedFiles": {
+    "app/src/main/java/takagi/ru/monica/autofill_ng/BitwardenLikeAutofillMatcherNg.kt": "10899e6bb7e241229bfaafc9c2af90b415baaff9d2059c4d6a5b463fb72db476",
+    "app/src/test/java/takagi/ru/monica/autofill_ng/BitwardenLikeAutofillMatcherNgTest.kt": "39750d05c6e2533ba54acc086e4ee35e2fec5ee8bff2fa0d8f01e6bc1ba3c6ee",
+    "app/src/androidTest/java/takagi/ru/monica/autofill_ng/AutofillFlowInstrumentedTest.kt": "be6e58a0f30669c270ca583e11bf986888c2248cce34b0191b6100886c8d0ece",
+    "app/src/androidTest/java/takagi/ru/monica/autofill_ng/AutofillNativeIndexInstrumentedTest.kt": "8923f0ced4ac8d93c50fe3825959d47e868d2f43c0c5c61821b00698ff630892"
+  }
+}
