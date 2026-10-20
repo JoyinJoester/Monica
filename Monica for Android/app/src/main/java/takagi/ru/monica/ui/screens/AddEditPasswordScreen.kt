@@ -3830,6 +3830,13 @@ private fun PasswordEntryEditor(
                                     var urlMenuExpanded by remember { mutableStateOf(false) }
                                     var showUrlMatchDialog by remember { mutableStateOf(false) }
                                     val matchMode = PasswordUrlRules.Mode.valueOf(websiteMatchModes.getOrElse(index) { "DEFAULT" })
+                                    val urlShape = if (contentMode) RoundedCornerShape(
+                                        topStart = if (settings.iconCardsEnabled && index == 0) 24.dp else 4.dp,
+                                        topEnd = if (settings.iconCardsEnabled && index == 0) 24.dp else 4.dp,
+                                        bottomStart = if (index == websiteUrls.lastIndex) 24.dp else 4.dp,
+                                        bottomEnd = if (index == websiteUrls.lastIndex) 24.dp else 4.dp
+                                    ) else RoundedCornerShape(12.dp)
+                                    val filledUrl = takagi.ru.monica.ui.components.LocalFilledEntryForm.current
                                     if (showUrlMatchDialog) UrlMatchModeDialog(url, matchMode,
                                         onDismiss = { showUrlMatchDialog = false }, onConfirm = { mode ->
                                             websiteMatchModes[index] = mode.name
@@ -3837,6 +3844,10 @@ private fun PasswordEntryEditor(
                                         })
                                     SuggestedOutlinedTextField(
                                         suggestionField = CommonSuggestionField.WEBSITE,
+                                        // Material supporting text sits outside the input's painted container.
+                                        // Extend the same grouped surface around the URL and its match policy.
+                                        containerModifier = if (filledUrl) Modifier.clip(urlShape)
+                                            .background(MaterialTheme.colorScheme.surfaceContainer) else Modifier,
                                         value = url,
                                         onValueChange = { value ->
                                             websiteUrls[index] = value
@@ -3852,7 +3863,11 @@ private fun PasswordEntryEditor(
                                             )
                                         },
                                         leadingIcon = { Icon(Icons.Default.Language, null) },
-                                        supportingText = if (matchMode != PasswordUrlRules.Mode.DEFAULT) ({ Text(urlMatchModeLabel(matchMode)) }) else null,
+                                        supportingText = if (matchMode != PasswordUrlRules.Mode.DEFAULT) ({
+                                            Text(urlMatchModeLabel(matchMode),
+                                                modifier = Modifier.padding(start = if (filledUrl) 36.dp else 0.dp,
+                                                    bottom = if (filledUrl) 8.dp else 0.dp))
+                                        }) else null,
                                         trailingIcon = {
                                             Box {
                                                 IconButton(onClick = { urlMenuExpanded = true }, modifier = Modifier.testTag("url_actions_$index")) {
@@ -3888,12 +3903,7 @@ private fun PasswordEntryEditor(
                                             keyboardType = KeyboardType.Uri,
                                             imeAction = ImeAction.Next
                                         ),
-                                        shape = if (contentMode) RoundedCornerShape(
-                                            topStart = if (settings.iconCardsEnabled && index == 0) 24.dp else 4.dp,
-                                            topEnd = if (settings.iconCardsEnabled && index == 0) 24.dp else 4.dp,
-                                            bottomStart = if (index == websiteUrls.lastIndex) 24.dp else 4.dp,
-                                            bottomEnd = if (index == websiteUrls.lastIndex) 24.dp else 4.dp
-                                        ) else RoundedCornerShape(12.dp)
+                                        shape = urlShape
                                     )
                                 }
                             }
