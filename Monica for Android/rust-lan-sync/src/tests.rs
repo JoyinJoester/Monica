@@ -26,7 +26,10 @@ fn receive_only_listener_receives_bundle_and_assets_without_sending() {
             "device":{"device_id":"sender", "name":"Sender", "content_type":"vault",
                 "vault_content_version":2, "sync_mode":sender_mode}
         }));
-        let handles = [receiver["handle"].as_u64().unwrap(), sender["handle"].as_u64().unwrap()];
+        let handles = [
+            receiver["handle"].as_u64().unwrap(),
+            sender["handle"].as_u64().unwrap(),
+        ];
         let results = [wait(handles[0]), wait(handles[1])];
         for handle in handles {
             call(json!({"operation":"release", "handle":handle}));
@@ -35,7 +38,10 @@ fn receive_only_listener_receives_bundle_and_assets_without_sending() {
             assert_eq!(result.phase, "completed", "{:?}", result.error);
         }
         for name in ["changes.mdbxsync", "assets.monica"] {
-            assert_eq!(std::fs::read(outgoing.join(name)).unwrap(), std::fs::read(receiver_in.join(name)).unwrap());
+            assert_eq!(
+                std::fs::read(outgoing.join(name)).unwrap(),
+                std::fs::read(receiver_in.join(name)).unwrap()
+            );
         }
         assert_eq!(std::fs::read_dir(sender_in).unwrap().count(), 0);
         let sender_peer = serde_json::to_value(results[1].peer.as_ref().unwrap()).unwrap();
