@@ -4,6 +4,9 @@
 
 ## 中文
 
+- 统一密码与卡包新建页顶部的模板切换菜单：采用紧凑的内容自适应宽度、左侧类型图标及右侧选中标记，背景统一为更清晰的高层级表面色；支持页面缩放、大字体及长菜单滚动。
+
+
 - 修复新建与编辑页三点菜单不随“页面缩放”变化的问题：弹出窗口整体继承页面密度，菜单尺寸、圆角、间距、图标和文字同步缩放；保留系统字体大小设置，较长菜单可滚动。
 
 - 附近设备同步的连接诊断按钮居中；已配对设备支持长按／右滑多选及左滑删除，单项与批量删除配对均二次确认并保留本地内容。接收远端删除前预览并弹窗确认，可选择同步删除或仅接收新增和更新；取消、锁定及后台中断不会默认同意删除；按删除版本记住跳过选择，避免重复提示，新的删除版本仍需确认。
@@ -48,6 +51,9 @@
 - 新增每条网站 URL 的独立自动填充匹配策略，可在右侧三点菜单设置默认、主域名、主机名、前缀、精确 URL、正则或从不匹配；移动 URL 时规则一同移动。匹配策略显示在对应网址卡片内，保持多网址卡片连续分组。新建与编辑页的三点操作统一为 M3E 分组菜单，去掉菜单外层厚包边与外壳阴影，并按当前屏幕宽度随 DPI 自适应，匹配检测使用居中弹窗，选项四角统一圆角。浏览器只提供域名时，不推测路径或查询参数。#171
 
 ## English
+
+- Unified template menus in password and wallet create pages with compact content-sized layouts, leading type icons and trailing selection checks. Both use a higher-contrast elevated surface and retain interface scaling, large text and scrolling.
+
 
 - Fixed create/edit three-dot menus ignoring interface scale: the entire popup now inherits page density, scaling its size, corners, spacing, icons and text together. System font size is retained and long menus remain scrollable.
 

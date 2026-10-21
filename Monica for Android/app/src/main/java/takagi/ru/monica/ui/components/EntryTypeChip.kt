@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
@@ -12,14 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -92,6 +90,7 @@ fun EntryTypeChip(
         label = "EntryTypeChipArrow"
     )
 
+    Box {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -133,59 +132,15 @@ fun EntryTypeChip(
         )
     }
 
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = { expanded = false },
-        shape = RoundedCornerShape(16.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        shadowElevation = 0.dp,
-        tonalElevation = 0.dp
-    ) {
-        EntryTypeChipOption.entries.filter {
-            (showApiToken || it != EntryTypeChipOption.API_TOKEN) &&
-                (showGpg || it != EntryTypeChipOption.GPG_KEY) &&
-                (showApiKey || it != EntryTypeChipOption.API_KEY)
-        }.forEach { option ->
-            val label = stringResource(option.labelRes())
-            val isCurrent = option == current
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        label,
-                        color = if (isCurrent) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        option.icon(),
-                        contentDescription = null,
-                        tint = if (isCurrent) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                },
-                trailingIcon = if (isCurrent) {
-                    {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                } else null,
-                onClick = {
-                    expanded = false
-                    if (!isCurrent) onSelect(option)
-                }
-            )
-        }
+    TemplateTypeMenu(expanded, { expanded = false }, EntryTypeChipOption.entries.filter {
+        (showApiToken || it != EntryTypeChipOption.API_TOKEN) &&
+            (showGpg || it != EntryTypeChipOption.GPG_KEY) &&
+            (showApiKey || it != EntryTypeChipOption.API_KEY)
+    }.map { option ->
+        TemplateTypeMenuOption(stringResource(option.labelRes()), option.icon(),
+            selected = option == current, onClick = { onSelect(option) },
+            tag = "password_template_${option.name}")
+    })
     }
 }
 

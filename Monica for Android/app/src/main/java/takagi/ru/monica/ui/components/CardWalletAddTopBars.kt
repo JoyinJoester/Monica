@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Badge
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Home
@@ -118,10 +117,9 @@ fun CardWalletAddTypeChip(
         )
     }
 
-    EditorActionMenu(expanded, { expanded = false }, options.map { option ->
-        EditorMenuAction(cardWalletAddTypeLabel(option),
-            if (option == current) Icons.Default.Check else cardWalletAddTypeIcon(option),
-            onClick = { if (option != current) onSelect(option) }, tag = "wallet_template_${option.name}")
+    TemplateTypeMenu(expanded, { expanded = false }, options.map { option ->
+        TemplateTypeMenuOption(cardWalletAddTypeLabel(option), cardWalletAddTypeIcon(option),
+            selected = option == current, onClick = { onSelect(option) }, tag = "wallet_template_${option.name}")
     })
     }
 }
