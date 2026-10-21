@@ -25,7 +25,7 @@
 
 - 优化凭据布局：新建与编辑页的备注紧接验证器密钥，连成一组卡片；详情页备注连接在验证码下方，空白备注不显示，支持复制；密码删除改为图标，与密码强度标签同一行。
 
-- 新增每条网站 URL 的独立自动填充匹配策略，可在右侧三点菜单设置默认、主域名、主机名、前缀、精确 URL、正则或从不匹配；移动 URL 时规则一同移动。匹配策略显示在对应网址卡片内，保持多网址卡片连续分组。新建与编辑页的三点操作统一为 M3E 分组菜单，匹配检测使用居中弹窗。浏览器只提供域名时，不推测路径或查询参数。#171
+- 新增每条网站 URL 的独立自动填充匹配策略，可在右侧三点菜单设置默认、主域名、主机名、前缀、精确 URL、正则或从不匹配；移动 URL 时规则一同移动。匹配策略显示在对应网址卡片内，保持多网址卡片连续分组。新建与编辑页的三点操作统一为连续的 M3E 圆角弹出菜单，移除条目间断开的卡片背景与双层包边，并按当前屏幕宽度随 DPI 自适应，匹配检测使用居中弹窗。浏览器只提供域名时，不推测路径或查询参数。#171
 
 ## English
 
@@ -42,4 +42,4 @@
 - Redesigned autofill account actions as a centered M3E dialog with grouped fill, copy and detail actions and scrolling for large text. Added independent Accessibility fill from the keyboard, system Autofill and quick tile, with a setup prompt when the service is disabled and correct return to the target app.
 - Unified primary and added credential editors with smooth password expansion, shared overflow menus for generation/deletion, consistent Username labels and star generator icons. Each credential now has a fixed multiline note field, saved and displayed independently of page-level notes.
 - Refined credential layouts: editor notes connect directly below the verification key; detail notes connect below the authenticator and stay hidden when blank, with copying supported. Password deletion uses an icon on the strength-label row.
-- Added per-URL autofill matching from the website overflow menu: Default, Base domain, Host, Starts with, Exact URL, Regex and Never. Rules follow reordered URLs. Matching policies stay inside each URL card, keeping grouped rows connected. Create/edit overflow actions now share grouped M3E menus, with a centered matching dialog. Path/query matching requires a full URL from the browser. #171
+- Added per-URL autofill matching from the website overflow menu: Default, Base domain, Host, Starts with, Exact URL, Regex and Never. Rules follow reordered URLs. Matching policies stay inside each URL card, keeping grouped rows connected. Create/edit overflow actions now share a single continuous rounded M3E menu surface without separate item cards or a double rim, resize with the current screen width/DPI, and use a centered matching dialog. Path/query matching requires a full URL from the browser. #171

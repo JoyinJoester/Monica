@@ -1,6 +1,5 @@
 package takagi.ru.monica.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -10,9 +9,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 
 internal data class EditorMenuAction(
@@ -27,16 +26,14 @@ internal data class EditorMenuAction(
 /** Shared M3 Expressive anchored menu for create/edit item actions. */
 @Composable
 internal fun EditorActionMenu(expanded: Boolean, onDismiss: () -> Unit, actions: List<EditorMenuAction>) {
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val menuWidth = (screenWidthDp * 0.76f).dp.coerceIn(224.dp, 320.dp)
     DropdownMenu(expanded, onDismissRequest = onDismiss,
         shape = RoundedCornerShape(24.dp),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 0.dp, shadowElevation = 6.dp,
-        modifier = Modifier.widthIn(min = 224.dp, max = 320.dp).testTag("editor_action_menu")) {
-        actions.forEachIndexed { index, action ->
-            val shape = RoundedCornerShape(
-                topStart = if (index == 0) 18.dp else 4.dp, topEnd = if (index == 0) 18.dp else 4.dp,
-                bottomStart = if (index == actions.lastIndex) 18.dp else 4.dp,
-                bottomEnd = if (index == actions.lastIndex) 18.dp else 4.dp)
+        modifier = Modifier.width(menuWidth).testTag("editor_action_menu")) {
+        actions.forEach { action ->
             val color = if (action.destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
             DropdownMenuItem(
                 text = { Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -48,8 +45,7 @@ internal fun EditorActionMenu(expanded: Boolean, onDismiss: () -> Unit, actions:
                 colors = MenuDefaults.itemColors(textColor = color, leadingIconColor = color),
                 onClick = { onDismiss(); action.onClick() },
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp).clip(shape)
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                modifier = Modifier
                     .then(if (action.tag.isNotBlank()) Modifier.testTag(action.tag) else Modifier))
         }
     }
