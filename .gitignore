@@ -102,6 +102,9 @@ bitwarden/
 !Monica for Android/app/src/test/java/takagi/ru/monica/bitwarden/
 Monica for Android/app/src/test/java/takagi/ru/monica/bitwarden/*
 !Monica for Android/app/src/test/java/takagi/ru/monica/bitwarden/BitwardenOrganizationKeysTest.kt
+!Monica for Android/app/src/test/java/takagi/ru/monica/bitwarden/service/
+Monica for Android/app/src/test/java/takagi/ru/monica/bitwarden/service/*
+!Monica for Android/app/src/test/java/takagi/ru/monica/bitwarden/service/BitwardenFolderTransferTest.kt
 !Monica for Android/app/src/androidTest/java/takagi/ru/monica/bitwarden/
 Monica for Android/app/src/androidTest/java/takagi/ru/monica/bitwarden/*
 !Monica for Android/app/src/androidTest/java/takagi/ru/monica/bitwarden/BitwardenOrganizationSyncTest.kt

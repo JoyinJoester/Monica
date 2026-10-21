@@ -19,9 +19,9 @@ import takagi.ru.monica.utils.KeePassKdbxService
 import java.util.UUID
 
 /** Operations are serialized; each pane owns only navigation state, never a writable database copy. */
-internal class DatabaseManagerRepository(context: Context) {
+internal class DatabaseManagerRepository(context: Context, databaseOverride: PasswordDatabase? = null) {
     val context = context.applicationContext
-    val db = PasswordDatabase.getDatabase(this.context)
+    val db = databaseOverride ?: PasswordDatabase.getDatabase(this.context)
     val security = SecurityManager(this.context)
     val mdbx = Mdbx2Repository(this.context, db.localMdbxDatabaseDao(), security,
         passwordEntryDao = db.passwordEntryDao(), secureItemDao = db.secureItemDao(), customFieldDao = db.customFieldDao())

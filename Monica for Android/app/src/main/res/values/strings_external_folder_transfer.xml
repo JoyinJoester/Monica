@@ -1,0 +1,7 @@
+<resources>
+    <string name="external_folder_bitwarden_hint">Bitwarden folders stay within the same account. Copying folders with attachments, passkeys or organization entries is not supported yet.</string>
+    <string name="external_folder_choose_destination">Choose a destination database and folder</string>
+    <string name="external_folder_root">Database root</string>
+    <string name="external_folder_copy_hint">Copy the folder and its contents; keep the original.</string>
+    <string name="external_folder_move_hint">Move the folder and its contents. The original is removed only after the destination is saved.</string>
+</resources>

@@ -1,0 +1,7 @@
+<resources>
+    <string name="external_folder_bitwarden_hint">Bitwarden 仅支持同账户内移动和复制。含附件、通行密钥或组织条目的文件夹暂不支持复制。</string>
+    <string name="external_folder_choose_destination">选择目标数据库和文件夹</string>
+    <string name="external_folder_root">数据库根目录</string>
+    <string name="external_folder_copy_hint">复制文件夹及其内容，保留原文件夹。</string>
+    <string name="external_folder_move_hint">移动文件夹及其内容，目标保存成功后才移除源内容。</string>
+</resources>

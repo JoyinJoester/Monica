@@ -194,6 +194,7 @@ internal class TransferFixture {
             takagi.ru.monica.bitwarden.BitwardenVaultPremiumStore.clear(context, it)
             db.bitwardenPendingOperationDao().deleteByVault(it)
             db.bitwardenSyncRawEntryRecordDao().deleteByVault(it)
+            db.bitwardenFolderDao().deleteByVault(it)
             db.openHelper.writableDatabase.execSQL("DELETE FROM bitwarden_vaults WHERE id = ?", arrayOf(it))
             context.getSharedPreferences("credential_import_attachments_v1", 0).edit().remove("vault:$it").commit()
         }
@@ -209,6 +210,8 @@ internal class TransferFixture {
 
     class Remote : Dispatcher() {
         val created = mutableListOf<JSONObject>()
+        val folders = mutableListOf<JSONObject>()
+        @Volatile var rejectFolderRenameId: String? = null
         val attachmentCreates = mutableListOf<JSONObject>()
         val attachmentUploads = mutableMapOf<String, ByteArray>()
         @Volatile var rejectWrites = false
@@ -216,8 +219,21 @@ internal class TransferFixture {
         override fun dispatch(request: RecordedRequest): MockResponse = synchronized(created) {
             when {
                 request.method == "GET" && request.path.orEmpty().startsWith("/sync") -> MockResponse().setBody(
-                    JSONObject().put("ciphers", JSONArray(created.map { JSONObject(it.toString()) })).put("folders", JSONArray())
+                    JSONObject().put("ciphers", JSONArray(created.map { JSONObject(it.toString()) })).put("folders", JSONArray(folders.map { JSONObject(it.toString()) }))
                         .put("profile", JSONObject().put("id", "synthetic").put("email", "fixture@example.invalid")).toString())
+                request.method == "POST" && request.path == "/folders" -> {
+                    val folder = JSONObject(request.body.readUtf8()).put("id", UUID.randomUUID().toString()).put("revisionDate", "2026-10-21T00:00:00Z")
+                    folders += folder
+                    MockResponse().setBody(folder.toString())
+                }
+                request.method == "PUT" && request.path.orEmpty().startsWith("/folders/") -> {
+                    val id = request.path!!.substringAfterLast('/')
+                    if (id == rejectFolderRenameId) MockResponse().setResponseCode(503)
+                    else folders.firstOrNull { it.optString("id") == id }?.let { folder ->
+                        folder.put("name", JSONObject(request.body.readUtf8()).getString("name"))
+                        MockResponse().setBody(folder.toString())
+                    } ?: MockResponse().setResponseCode(404)
+                }
                 request.method == "POST" && request.path == "/ciphers" && rejectWrites -> MockResponse().setResponseCode(503)
                 request.method == "POST" && request.path == "/ciphers" -> {
                     val cipher = JSONObject(request.body.readUtf8()).put("id", UUID.randomUUID().toString())

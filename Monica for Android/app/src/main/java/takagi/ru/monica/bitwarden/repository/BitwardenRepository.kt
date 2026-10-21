@@ -10,6 +10,7 @@ import androidx.room.withTransaction
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
@@ -1285,6 +1286,88 @@ class BitwardenRepository(private val context: Context) {
             Result.failure(e)
         }
     }
+
+    /** Bitwarden nesting is expressed by folder names; encrypted ciphers stay in this account. */
+    internal suspend fun transferFolder(vaultId: Long, folderId: String, parentId: String?, copy: Boolean): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            try {
+                syncMutexForVault(vaultId).withLock {
+                    val vault = requireNotNull(vaultDao.getVaultById(vaultId))
+                    check(isVaultUnlocked(vaultId)) { strings.get(R.string.legacy_ui_vault_locked) }
+                    val vaultKey = requireNotNull(symmetricKeyCache[vaultId])
+                    var token = requireNotNull(accessTokenCache[vaultId])
+                    if ((vault.accessTokenExpiresAt ?: 0) <= System.currentTimeMillis() + 60000) {
+                        token = requireNotNull(refreshToken(vault)) { "Cannot refresh the account token" }
+                        accessTokenCache[vaultId] = token
+                    }
+                    val api = apiManager.getVaultApi(vault)
+                    val remote = api.sync("Bearer $token").let { check(it.isSuccessful) { "Cannot read server folders (${it.code()})" }; requireNotNull(it.body()) }
+                    val folders = remote.folders.map { it.id to BitwardenCrypto.decryptToString(requireNotNull(it.name), vaultKey) }.toMap()
+                    val names = takagi.ru.monica.bitwarden.service.planBitwardenFolderTransfer(
+                        folders, folderId, parentId, copy, strings.get(R.string.copy))
+                    val tree = names.keys.map { it to folders.getValue(it) }
+                    if (!copy) {
+                        // Membership and all cipher fields remain untouched by a name-based move.
+                        val renamed = mutableListOf<Pair<String, String>>()
+                        try {
+                            tree.forEach { (id, oldName) ->
+                                renameFolder(vaultId, id, names.getValue(id)).getOrThrow()
+                                renamed += id to oldName
+                            }
+                        } catch (failure: Exception) {
+                            // Best effort restore if a later HTTP request fails; no cipher is deleted.
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                                renamed.asReversed().forEach { (id, oldName) ->
+                                    renameFolder(vaultId, id, oldName).exceptionOrNull()?.let(failure::addSuppressed)
+                                }
+                            }
+                            if (failure.suppressed.isNotEmpty()) error("Folder move failed and some folder names could not be restored. All source entries were retained: ${failure.message}")
+                            throw failure
+                        }
+                    } else {
+                        val localPasswords = passwordEntryDao.getAllPasswordEntriesSync() + passwordEntryDao.getDeletedEntriesSync()
+                        val localItems = secureItemDao.getAllItems().first() + secureItemDao.getDeletedItemsSync()
+                        check(localPasswords.none { it.bitwardenVaultId == vaultId && it.bitwardenFolderId in names && it.bitwardenLocalModified } &&
+                            localItems.none { it.bitwardenVaultId == vaultId && it.bitwardenFolderId in names && it.bitwardenLocalModified } &&
+                            passkeyDao.getByBitwardenVaultId(vaultId).none { it.bitwardenFolderId in names && it.syncStatus == "PENDING" } &&
+                            pendingOpDao.getPendingOperationsByVault(vaultId).isEmpty()) {
+                            "Sync pending account changes before copying this folder; the source is unchanged"
+                        }
+                        val ciphers = remote.ciphers.filter { it.folderId in names }
+                        check(ciphers.none { !it.attachments.isNullOrEmpty() || !it.login?.fido2Credentials.isNullOrEmpty() }) {
+                            "Folders with attachments or passkeys cannot be duplicated in Bitwarden; the source is unchanged"
+                        }
+                        val documents = ciphers.map { cipher ->
+                            val response = api.getCipherDocument("Bearer $token", cipher.id)
+                            check(response.isSuccessful) { "Cannot read source entry (${response.code()})" }
+                            val document = requireNotNull(response.body())
+                            check(takagi.ru.monica.bitwarden.service.folderCopyDocumentIsSafe(document, cipher.id, cipher.folderId)) {
+                                "The source entry changed or contains attachments or passkeys; the source is unchanged"
+                            }
+                            cipher to document
+                        }
+                        // Preflight every source before creating any folder or entry.
+                        val targets = tree.associate { (id, _) -> id to createFolder(vaultId, names.getValue(id)).getOrThrow().bitwardenFolderId }
+                        documents.forEach { (cipher, document) ->
+                            check(isVaultUnlocked(vaultId)) { strings.get(R.string.legacy_ui_vault_locked) }
+                            val request = takagi.ru.monica.bitwarden.service.folderCopyDocument(document, targets.getValue(cipher.folderId!!))
+                            val response = api.createCipherDocument("Bearer $token", request)
+                            check(response.isSuccessful && response.body() != null) { "Folder copy incomplete (${response.code()}); the original folder and entries were retained" }
+                            check(takagi.ru.monica.bitwarden.service.folderCopyPreserved(request, response.body()!!)) {
+                                "Copied entry verification failed; the original folder and entries were retained"
+                            }
+                        }
+                    }
+                }
+                when (val refreshed = sync(vaultId)) {
+                    is SyncResult.Success -> Unit
+                    is SyncResult.Error -> error("Transfer saved, but account refresh failed: ${refreshed.message}")
+                    else -> error("Transfer saved, but account refresh requires attention")
+                }
+                Result.success(Unit)
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (failure: Exception) { Result.failure(failure) }
+        }
 
     fun requestLocalMutationSync(vaultId: Long) {
         BitwardenMutationSyncBridge.requestLocalMutationSync(

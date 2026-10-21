@@ -215,6 +215,13 @@ fun UnifiedCategoryFilterChipMenu(
     var externalTarget by remember { mutableStateOf<ExternalFolderTarget?>(null) }
     ManagedExternalFolderActions(externalTarget, { externalTarget = null }, onExternalFolderChanged,
         onDeleted = { target ->
+            when (target) {
+                is ExternalFolderTarget.KeePass -> if ((selected as? UnifiedCategoryFilterSelection.KeePassGroupFilter)?.databaseId == target.databaseId)
+                    onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(target.databaseId))
+                is ExternalFolderTarget.Mdbx -> if ((selected as? UnifiedCategoryFilterSelection.MdbxFolderFilter)?.databaseId == target.databaseId)
+                    onSelect(UnifiedCategoryFilterSelection.MdbxDatabaseFilter(target.databaseId))
+                else -> Unit
+            }
             val current = selected as? UnifiedCategoryFilterSelection.BitwardenFolderFilter
             if (target is ExternalFolderTarget.Bitwarden && current?.vaultId == target.databaseId && current.folderId == target.folderId) {
                 onSelect(UnifiedCategoryFilterSelection.BitwardenVaultFilter(target.databaseId))

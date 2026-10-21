@@ -172,6 +172,13 @@ interface BitwardenVaultApi {
         @Header("Authorization") authorization: String,
         @Body cipher: CipherCreateRequest
     ): Response<CipherApiResponse>
+
+    /** Same-account duplication preserves encrypted fields unknown to this client. */
+    @POST("ciphers")
+    suspend fun createCipherDocument(
+        @Header("Authorization") authorization: String,
+        @Body cipher: kotlinx.serialization.json.JsonObject
+    ): Response<kotlinx.serialization.json.JsonObject>
     
     /**
      * 更新 Cipher

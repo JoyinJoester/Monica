@@ -12,6 +12,8 @@ import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.repository.ExternalFolderRepository
 import takagi.ru.monica.repository.ExternalFolderTarget
+import takagi.ru.monica.repository.DatabaseManagerLocation
+import takagi.ru.monica.repository.DatabaseManagerStore
 import takagi.ru.monica.ui.FolderActionsDialog
 import takagi.ru.monica.ui.components.OutlinedTextField
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
@@ -41,13 +43,23 @@ internal fun ManagedExternalFolderActions(target: ExternalFolderTarget?, onDismi
     val repository = remember(context) { ExternalFolderRepository(context) }
     ExternalFolderActionDialogs(target, onDismiss,
         onRename = { repository.rename(target, it); onChanged(target) },
-        onDelete = { repository.delete(target); onChanged(target); onDeleted(target) })
+        onDelete = { repository.delete(target); onChanged(target); onDeleted(target) },
+        onTransfer = { destination, copy ->
+            repository.transfer(target, destination, copy)
+            onChanged(target)
+            if (!copy && (target !is ExternalFolderTarget.Bitwarden || destination.database.databaseId != target.databaseId)) onDeleted(target)
+        },
+        loadStores = { repository.transferStores(target) },
+        loadFolders = { repository.transferFolders(target, it) })
 }
 
 /** Failures keep the dialog and typed name; deleting always requires a separate confirmation. */
 @Composable
 internal fun ExternalFolderActionDialogs(target: ExternalFolderTarget, onDismiss: () -> Unit,
-    onRename: suspend (String) -> Unit, onDelete: suspend () -> Unit) {
+    onRename: suspend (String) -> Unit, onDelete: suspend () -> Unit,
+    onTransfer: (suspend (DatabaseManagerLocation, Boolean) -> Unit)? = null,
+    loadStores: suspend () -> List<DatabaseManagerStore> = { emptyList() },
+    loadFolders: suspend (DatabaseManagerStore) -> List<Pair<DatabaseManagerLocation, String>> = { emptyList() }) {
     key(target) {
         var action by remember { mutableStateOf("actions") }
         var name by remember { mutableStateOf(if (target is ExternalFolderTarget.KeePass)
@@ -69,7 +81,14 @@ internal fun ExternalFolderActionDialogs(target: ExternalFolderTarget, onDismiss
         }
         if (action == "actions") {
             FolderActionsDialog(target.name, onDismiss,
-                onRename = { action = "rename" }, onDelete = { action = "delete" })
+                onRename = { action = "rename" }, onDelete = { action = "delete" },
+                onMove = onTransfer?.let { { action = "move" } },
+                onCopy = onTransfer?.let { { action = "copy" } })
+        } else if (action == "move" || action == "copy") {
+            ExternalFolderTransferDialog(target.name, action == "copy", onDismiss,
+                loadStores, loadFolders,
+                accountHint = if (target is ExternalFolderTarget.Bitwarden) stringResource(R.string.external_folder_bitwarden_hint) else null,
+                onConfirm = { destination -> onTransfer!!(destination, action == "copy") })
         } else {
             AlertDialog(
                 onDismissRequest = { if (!busy) onDismiss() },

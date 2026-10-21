@@ -48,4 +48,14 @@ internal object AutofillRequestContextPolicy {
         if (isWebView) return false
         return !isKnownBrowser(packageName)
     }
+
+    /** Local HTML login forms have no web origin. Only explicit app bindings are eligible. */
+    fun allowExactPackageMatching(
+        packageName: String,
+        webDomain: String?,
+        isWebView: Boolean,
+        webScheme: String?,
+    ): Boolean = allowPackageMatching(packageName, webDomain, isWebView) ||
+        (packageName.isNotBlank() && !isKnownBrowser(packageName) && webDomain.isNullOrBlank() &&
+            isWebView && webScheme.equals("file", ignoreCase = true))
 }

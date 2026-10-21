@@ -9,6 +9,21 @@ import java.util.Date
 class BitwardenLikeAutofillMatcherNgTest {
     private val matcher = BitwardenLikeAutofillMatcherNg()
 
+    @Test fun `local html app matches bindings without title or package token fallback`() {
+        val entries = listOf(
+            entry(id = 1, title = "Bound app", appPackage = "com.cn21.ecloud"),
+            entry(id = 2, title = "Package URL", website = "com.cn21.ecloud"),
+            entry(id = 3, title = "天翼云盘"),
+            entry(id = 4, title = "ecloud backup", appPackage = "com.other.app"),
+        )
+        for (strict in listOf(true, false)) {
+            val matches = matcher.match(entries, "com.cn21.ecloud", null, "天翼云盘",
+                BitwardenLikeAutofillMatcherNg.Config(strictOnly = strict,
+                    allowPackageMatch = false, allowExactPackageMatch = true))
+            assertEquals(setOf(1L, 2L), matches.map { it.id }.toSet())
+        }
+    }
+
     @Test
     fun `strict mode should return exact package match`() {
         val entries = listOf(

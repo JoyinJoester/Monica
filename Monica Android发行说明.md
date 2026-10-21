@@ -4,6 +4,10 @@
 
 ## 中文
 
+- 补齐 KeePass、MDBX 与 Bitwarden 文件夹的移动、复制入口，统一使用居中目标选择弹窗；KeePass/MDBX 复用原生树迁移并校验写入，失败保留源内容。Bitwarden 支持同账户内移动和复制，保留加密字段；含附件、通行密钥或组织条目时暂停复制。
+
+- 修复天翼云盘等应用使用本地 file: WebView 登录页时，明确绑定应用或包名的凭据不推荐的问题；仅恢复精确包名匹配，保留缺失域名的浏览器及远程 WebView 保护。
+
 - 修复旧版 KeePass 验证器条目编辑保存后、切换数据库时出现重复项目的问题；保存前恢复原条目身份，无法唯一确认时停止写入，保留独立条目。
 
 - 卡包新增会员卡、积分卡与旅行票证模板，可从新建页顶部菜单切换并保留各模板草稿；支持会员等级、积分余额／到期日、航班／车次、行程时间、航站楼、登机口、座位等字段，提供类型筛选、搜索、详情复制与重新编辑，沿用加密存储、附件及同步机制。#169
@@ -28,6 +32,10 @@
 - 新增每条网站 URL 的独立自动填充匹配策略，可在右侧三点菜单设置默认、主域名、主机名、前缀、精确 URL、正则或从不匹配；移动 URL 时规则一同移动。匹配策略显示在对应网址卡片内，保持多网址卡片连续分组。新建与编辑页的三点操作统一为连续的 M3E 圆角弹出菜单，移除条目间断开的卡片背景与双层包边，并按当前屏幕宽度随 DPI 自适应，匹配检测使用居中弹窗。浏览器只提供域名时，不推测路径或查询参数。#171
 
 ## English
+
+- Added move/copy actions for KeePass, MDBX and Bitwarden folders with a centered destination picker. KeePass/MDBX use native tree transfers and verified writes, retaining the source on failure. Bitwarden supports same-account folder moves/copies while preserving encrypted fields; copies with attachments, passkeys or organization entries are blocked.
+
+- Fixed missing explicitly app/package-bound suggestions for local file: WebView logins such as Tianyi Cloud. Only exact package matching is restored; originless browsers and remote WebViews remain protected.
 
 - Fix duplicate legacy KeePass authenticator entries after editing and switching databases. Resolve the original entry before saving and stop ambiguous writes while preserving distinct entries.
 

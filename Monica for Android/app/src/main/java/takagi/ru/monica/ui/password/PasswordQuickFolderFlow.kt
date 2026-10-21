@@ -46,6 +46,13 @@ internal fun PasswordQuickFolderFlow(
     var externalTarget by remember { mutableStateOf<ExternalFolderTarget?>(null) }
     ManagedExternalFolderActions(externalTarget, { externalTarget = null }, params.onExternalFolderChanged,
         onDeleted = { target ->
+            when (target) {
+                is ExternalFolderTarget.KeePass -> if ((params.currentFilter as? CategoryFilter.KeePassGroupFilter)?.databaseId == target.databaseId)
+                    params.onSelectFilter(CategoryFilter.KeePassDatabase(target.databaseId))
+                is ExternalFolderTarget.Mdbx -> if ((params.currentFilter as? CategoryFilter.MdbxFolderFilter)?.databaseId == target.databaseId)
+                    params.onSelectFilter(CategoryFilter.MdbxDatabase(target.databaseId))
+                else -> Unit
+            }
             val selected = params.currentFilter as? CategoryFilter.BitwardenFolderFilter
             if (target is ExternalFolderTarget.Bitwarden && selected?.vaultId == target.databaseId && selected.folderId == target.folderId) {
                 params.onSelectFilter(CategoryFilter.BitwardenVault(target.databaseId))

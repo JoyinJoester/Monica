@@ -5,6 +5,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AutofillRequestContextPolicyTest {
+    @Test fun localHtmlAppAllowsOnlyExplicitBindings() {
+        assertFalse(AutofillRequestContextPolicy.allowPackageMatching("com.cn21.ecloud", null, true))
+        assertTrue(AutofillRequestContextPolicy.allowExactPackageMatching("com.cn21.ecloud", null, true, "file"))
+        for (scheme in listOf(null, "https", "http", "content", "about")) {
+            assertFalse(AutofillRequestContextPolicy.allowExactPackageMatching("com.cn21.ecloud", null, true, scheme))
+        }
+        assertFalse(AutofillRequestContextPolicy.allowExactPackageMatching("com.android.chrome", null, true, "file"))
+        assertFalse(AutofillRequestContextPolicy.allowExactPackageMatching("", null, true, "file"))
+    }
+
     @Test
     fun knownBrowserWithoutOriginCannotUsePackageFallback() {
         assertFalse(

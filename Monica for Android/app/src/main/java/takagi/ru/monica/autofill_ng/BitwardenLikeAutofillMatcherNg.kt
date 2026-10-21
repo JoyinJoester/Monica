@@ -98,6 +98,7 @@ class BitwardenLikeAutofillMatcherNg internal constructor(
         val allowPackageMatch: Boolean = true,
         val maxSuggestions: Int = 20,
         val defaultUriMatchDisabled: Boolean = false,
+        val allowExactPackageMatch: Boolean = allowPackageMatch,
     )
 
     private enum class Reason {
@@ -242,7 +243,7 @@ class BitwardenLikeAutofillMatcherNg internal constructor(
         val entryRoots = prepared?.roots ?: entryHosts.map(::extractBaseDomain).toSet()
 
         if (!preferDomainSignals &&
-            config.allowPackageMatch &&
+            config.allowExactPackageMatch &&
             !targetPackage.isNullOrBlank() &&
             entryPackages.contains(targetPackage)
         ) {

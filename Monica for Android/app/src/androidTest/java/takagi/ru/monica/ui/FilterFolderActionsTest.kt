@@ -28,6 +28,46 @@ import takagi.ru.monica.viewmodel.CategoryFilter
 
 @RunWith(AndroidJUnit4::class)
 class FilterFolderActionsTest {
+    @Test fun externalFolderCopySelectsNativeIdentityAndKeepsErrorsVisible() {
+        val destination = takagi.ru.monica.credentialexchange.ImportDestination(
+            takagi.ru.monica.credentialexchange.ImportDestinationKind.KEEPASS, 11)
+        val store = takagi.ru.monica.repository.DatabaseManagerStore(destination, "Test KeePass")
+        val folder = takagi.ru.monica.repository.DatabaseManagerLocation(destination, "native-uuid")
+        var dismissed = false
+        var received: takagi.ru.monica.repository.DatabaseManagerLocation? = null
+        var attempts = 0
+        compose.setContent { MaterialTheme {
+            ExternalFolderActionDialogs(ExternalFolderTarget.KeePass(11, "Work", "uuid", "Work"),
+                { dismissed = true }, {}, {},
+                onTransfer = { location, copy ->
+                    org.junit.Assert.assertTrue(copy)
+                    received = location
+                    attempts++
+                    if (attempts == 1) error("Synthetic save failure")
+                },
+                loadStores = { listOf(store) }, loadFolders = { listOf(folder to "Parent / Destination") })
+        } }
+        compose.onNodeWithText(compose.activity.getString(R.string.copy)).performClick()
+        compose.onNodeWithTag("external-folder-confirm").assertIsNotEnabled()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("external-folder-store-KEEPASS:11").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("external-folder-store-KEEPASS:11").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("external-folder-location-native-uuid").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("external-folder-location-native-uuid").performClick()
+        captureTransferDialog()
+        compose.onNodeWithTag("external-folder-confirm").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Synthetic save failure", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle { assertFalse(dismissed); assertEquals(folder, received) }
+        compose.onNodeWithTag("external-folder-confirm").performClick()
+        compose.waitUntil(5_000) { dismissed }
+    }
+
+    private fun captureTransferDialog() {
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        val bitmap = instrumentation.uiAutomation.takeScreenshot()
+        try { java.io.File(instrumentation.targetContext.cacheDir, "external-folder-transfer.png").outputStream().use {
+            check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it))
+        } } finally { bitmap.recycle() }
+    }
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     @Before fun awake() { compose.runOnUiThread {
         compose.activity.setTurnScreenOn(true)
@@ -138,6 +178,8 @@ class FilterFolderActionsTest {
         folder.performClick()
         compose.onNodeWithText(compose.activity.getString(R.string.edit_category)).assertIsDisplayed()
         compose.onNodeWithText(compose.activity.getString(R.string.rename_category)).assertIsDisplayed()
+        compose.onNodeWithText(compose.activity.getString(R.string.move)).assertIsDisplayed()
+        compose.onNodeWithText(compose.activity.getString(R.string.copy)).assertIsDisplayed()
         compose.onNodeWithText(compose.activity.getString(R.string.delete)).assertIsDisplayed()
         val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
         if (androidx.test.platform.app.InstrumentationRegistry.getArguments()

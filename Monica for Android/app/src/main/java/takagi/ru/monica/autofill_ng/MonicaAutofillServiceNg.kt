@@ -512,6 +512,9 @@ class MonicaAutofillServiceNg : AutofillService() {
             isWebView = parsed.webView,
         )
         val loginTargetCount = fillableTargets.count { isLoginHint(it.hint) }
+        val allowExactPackageMatch = AutofillRequestContextPolicy.allowExactPackageMatching(
+            packageName, webDomain, parsed.webView, parsed.webScheme,
+        )
         val structuredTargetCount = fillableTargets.size - loginTargetCount
         val structuredDecision = evaluateStructuredConfidence(fillableTargets)
         if (!isManualRequest && loginTargetCount == 0 && !structuredDecision.highConfidence) {
@@ -549,6 +552,7 @@ class MonicaAutofillServiceNg : AutofillService() {
                 "webDomain" to (webDomain ?: "none"),
                 "webView" to parsed.webView,
                 "packageMatchAllowed" to allowPackageMatch,
+                "exactPackageMatchAllowed" to allowExactPackageMatch,
                 "domainSource" to when {
                     parsedWebDomain != null -> "assist_structure"
                     browserFallbackDomain != null -> "accessibility_browser_context"
@@ -637,6 +641,7 @@ class MonicaAutofillServiceNg : AutofillService() {
                         allowBaseDomainMatch = uriConfig.allowBaseDomainMatch,
                         exactDomainOnly = uriConfig.exactDomainOnly,
                         allowPackageMatch = allowPackageMatch,
+                        allowExactPackageMatch = allowExactPackageMatch,
                         maxSuggestions = Int.MAX_VALUE,
                         defaultUriMatchDisabled = uriConfig.disableMatch,
                     ),
