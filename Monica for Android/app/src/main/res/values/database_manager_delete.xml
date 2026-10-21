@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="manager_delete_title">Delete selected items?</string>
+    <string name="manager_delete_source">%1$s · %2$s · %3$d selected</string>
+    <string name="manager_delete_local_hint">Folders and their contents are included. Local passwords and secure items go to Trash. Folders and passkeys are permanently deleted.</string>
+    <string name="manager_delete_native_hint">Selected items and folder contents will be permanently deleted from this database. This cannot be undone.</string>
+</resources>

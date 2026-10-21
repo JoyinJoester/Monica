@@ -71,7 +71,8 @@ internal fun DatabaseManagerActionBar(current: DatabaseManagerPane, other: Datab
 @Composable
 internal fun DatabaseManagerActionsSheet(title: String, paneIndex: Int, rows: List<MdbxStructureNode>, dual: Boolean,
     canTransfer: Boolean, onDismiss: () -> Unit, onCopy: () -> Unit, onMove: () -> Unit, onChooseDestination: () -> Unit,
-    onOpen: () -> Unit, onRename: () -> Unit, onSelect: () -> Unit, onSelectAll: () -> Unit, onClear: () -> Unit) {
+    onOpen: () -> Unit, onRename: () -> Unit, onSelect: () -> Unit, onSelectAll: () -> Unit, onClear: () -> Unit,
+    onDelete: () -> Unit = {}) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp).padding(bottom = 16.dp)
             .testTag("manager-actions-sheet")) {
@@ -80,22 +81,25 @@ internal fun DatabaseManagerActionsSheet(title: String, paneIndex: Int, rows: Li
                 style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(8.dp))
             Text(rows.singleOrNull()?.name ?: title, style = MaterialTheme.typography.bodyMedium,
                 maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-            @Composable fun action(tag: String, label: String, icon: ImageVector, enabled: Boolean = true, click: () -> Unit) {
-                TextButton(onClick = click, enabled = enabled, modifier = Modifier.fillMaxWidth().testTag("manager-menu-$tag"), contentPadding = PaddingValues(12.dp)) {
+            @Composable fun action(tag: String, label: String, icon: ImageVector, enabled: Boolean = true,
+                destructive: Boolean = false, click: () -> Unit) {
+                TextButton(onClick = click, enabled = enabled, modifier = Modifier.fillMaxWidth().testTag("manager-menu-$tag"), contentPadding = PaddingValues(12.dp),
+                    colors = ButtonDefaults.textButtonColors(contentColor = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)) {
                     Icon(icon, null, Modifier.size(22.dp)); Spacer(Modifier.width(16.dp))
                     Text(label, modifier = Modifier.weight(1f))
                 }
             }
             if (rows.isNotEmpty() && (!dual || !canTransfer)) action("destination", stringResource(R.string.manager_choose_destination), Icons.Default.FolderOpen, click = onChooseDestination)
             action("copy", stringResource(if (paneIndex == 0) R.string.manager_copy_right else R.string.manager_copy_left), Icons.Default.ContentCopy,
-                canTransfer && rows.isNotEmpty(), onCopy)
+                canTransfer && rows.isNotEmpty(), click = onCopy)
             action("move", stringResource(if (paneIndex == 0) R.string.manager_move_right else R.string.manager_move_left), Icons.Default.DriveFileMove,
-                canTransfer && rows.isNotEmpty(), onMove)
+                canTransfer && rows.isNotEmpty(), click = onMove)
             if (rows.size == 1) {
                 action("open", stringResource(R.string.manager_open_item), Icons.Default.OpenInNew, click = onOpen)
                 action("rename", stringResource(R.string.rename_category), Icons.Default.Edit, click = onRename)
                 action("select", stringResource(R.string.manager_select), Icons.Default.CheckCircle, click = onSelect)
             }
+            action("delete", stringResource(R.string.delete), Icons.Default.Delete, rows.isNotEmpty(), destructive = true, click = onDelete)
             action("all", stringResource(R.string.select_all), Icons.Default.SelectAll, click = onSelectAll)
             action("clear", stringResource(R.string.manager_clear_selection), Icons.Default.Deselect, click = onClear)
         }

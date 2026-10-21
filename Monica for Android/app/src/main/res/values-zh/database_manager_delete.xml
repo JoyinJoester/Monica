@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="manager_delete_title">删除所选项目？</string>
+    <string name="manager_delete_source">%1$s · %2$s · 已选 %3$d 项</string>
+    <string name="manager_delete_local_hint">文件夹及其内容也会一起删除。本地密码、卡片等内容将移至回收站；文件夹与通行密钥会永久删除。</string>
+    <string name="manager_delete_native_hint">将从此数据库永久删除所选项目及文件夹内的内容，此操作无法撤销。</string>
+</resources>

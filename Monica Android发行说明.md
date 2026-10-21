@@ -4,6 +4,8 @@
 
 ## 中文
 
+- Monica 本地数据库新增“管理原始信息”入口；项目菜单支持单项／批量删除并二次确认，显示当前栏、数据库和所选数量，删除前重新校验数据版本。本地密码与卡片等内容移至回收站。
+
 - 补齐 KeePass、MDBX 与 Bitwarden 文件夹的移动、复制入口，统一使用居中目标选择弹窗；KeePass/MDBX 复用原生树迁移并校验写入，失败保留源内容。Bitwarden 支持同账户内移动和复制，保留加密字段；含附件、通行密钥或组织条目时暂停复制。
 
 - 修复天翼云盘等应用使用本地 file: WebView 登录页时，明确绑定应用或包名的凭据不推荐的问题；仅恢复精确包名匹配，保留缺失域名的浏览器及远程 WebView 保护。
@@ -32,6 +34,8 @@
 - 新增每条网站 URL 的独立自动填充匹配策略，可在右侧三点菜单设置默认、主域名、主机名、前缀、精确 URL、正则或从不匹配；移动 URL 时规则一同移动。匹配策略显示在对应网址卡片内，保持多网址卡片连续分组。新建与编辑页的三点操作统一为连续的 M3E 圆角弹出菜单，移除条目间断开的卡片背景与双层包边，并按当前屏幕宽度随 DPI 自适应，匹配检测使用居中弹窗。浏览器只提供域名时，不推测路径或查询参数。#171
 
 ## English
+
+- Added raw-information management for Monica local storage and confirmed single/batch deletion from item actions. Confirmation identifies the pane, database and selection count; writes recheck the source revision. Local passwords and secure items go to Trash.
 
 - Added move/copy actions for KeePass, MDBX and Bitwarden folders with a centered destination picker. KeePass/MDBX use native tree transfers and verified writes, retaining the source on failure. Bitwarden supports same-account folder moves/copies while preserving encrypted fields; copies with attachments, passkeys or organization entries are blocked.
 

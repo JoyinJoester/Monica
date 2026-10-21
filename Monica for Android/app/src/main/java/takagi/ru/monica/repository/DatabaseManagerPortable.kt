@@ -18,8 +18,8 @@ import java.util.UUID
 import takagi.ru.monica.security.SessionManager
 
 internal suspend fun managerLocalRevision(repo: DatabaseManagerRepository): String {
-    val passwords = repo.db.passwordEntryDao().getAllPasswordEntriesSync().filter(ImportDestination.Local::contains).sortedBy { it.id }
-    val items = repo.db.secureItemDao().getAllItems().first().filter(ImportDestination.Local::contains).sortedBy { it.id }
+    val passwords = repo.db.passwordEntryDao().getDeviceSyncLocalPasswords().sortedBy { it.id }
+    val items = repo.db.secureItemDao().getDeviceSyncLocalItems().sortedBy { it.id }
     val categories = repo.db.categoryDao().getAllCategories().first().filter { it.mdbxDatabaseId == null && it.bitwardenVaultId == null }.sortedBy { it.id }
     val fields = passwords.map { it.id }.chunked(500).flatMap { repo.db.customFieldDao().getFieldsByEntryIds(it) }.sortedBy { it.id }
     val passkeys = repo.db.passkeyDao().getAllPasskeysSync().filter(ImportDestination.Local::contains).sortedBy { it.id }

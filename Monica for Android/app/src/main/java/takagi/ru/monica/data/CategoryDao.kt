@@ -5,6 +5,17 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CategoryDao {
+    /** Include hidden/unavailable mirrors when checking local folder ownership. */
+    @Query("""
+        SELECT EXISTS(SELECT 1 FROM password_entries WHERE categoryId = :categoryId AND
+            (keepassDatabaseId IS NOT NULL OR mdbx_database_id IS NOT NULL OR bitwarden_vault_id IS NOT NULL))
+        OR EXISTS(SELECT 1 FROM secure_items WHERE categoryId = :categoryId AND
+            (keepass_database_id IS NOT NULL OR mdbx_database_id IS NOT NULL OR bitwarden_vault_id IS NOT NULL))
+        OR EXISTS(SELECT 1 FROM passkeys WHERE category_id = :categoryId AND
+            (keepass_database_id IS NOT NULL OR mdbx_database_id IS NOT NULL OR bitwarden_vault_id IS NOT NULL))
+    """)
+    suspend fun hasExternalEntries(categoryId: Long): Boolean
+
     @Query("SELECT * FROM categories ORDER BY sortOrder ASC")
     suspend fun getDeviceSyncCategories(): List<Category>
     @Query("SELECT * FROM categories ORDER BY sortOrder ASC")

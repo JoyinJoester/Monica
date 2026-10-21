@@ -418,6 +418,11 @@ class PasskeyRepository(
             roomCommit = { passkeyDao.delete(passkey) },
             rollbackMirror = { mdbxRepository?.upsertPasskey(passkey) }
         )
+        cleanupDeletedPasskey(passkey)
+    }
+
+    /** Call only after the metadata deletion has committed. */
+    internal suspend fun cleanupDeletedPasskey(passkey: PasskeyEntry) {
         context?.let { takagi.ru.monica.passkey.PasskeyCipherFolderIntent.discard(it, passkey) }
         cleanupPrivateKeyIfUnreferenced(passkey.privateKeyAlias)
         logAudit("PASSKEY_DELETED", "${passkey.credentialId}|rpId=${passkey.rpId}")

@@ -2694,6 +2694,40 @@ class KeePassKdbxService(
         }
     }
 
+    /** One revision-checked mutation for mixed selected groups and entries. */
+    internal suspend fun deleteNativeManagerSelection(databaseId: Long, entries: Set<UUID>, groups: Set<UUID>,
+        expectedRevision: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            mutateDatabase(databaseId) { loaded ->
+                check(takagi.ru.monica.security.SessionManager.isUnlocked.value) { "The vault is locked." }
+                assertNativeRevision(expectedRevision, loaded.nativeSession.value.revisionToken)
+                require(entries.isNotEmpty() || groups.isNotEmpty())
+                val changes = groups.map { uuid ->
+                    val record = requireUniqueNativeGroup(loaded.nativeSession.value, uuid)
+                    KeePassChangeSet(databaseId = databaseId, target = KeePassChangeTarget.GROUP,
+                        operation = KeePassChangeOperation.DELETE_GROUP, entryUuid = null, baseFingerprint = null,
+                        baseGroupPath = record.legacyPath, baseGroupUuid = record.parentGroup?.groupUuid?.toString(),
+                        structurePatch = KeePassStructureChangePatch(sourceGroupPath = record.legacyPath,
+                            sourceGroupUuid = uuid.toString(), groupName = record.group.name))
+                } + entries.map { uuid ->
+                    val record = requireUniqueNativeEntry(loaded.nativeSession.value, uuid)
+                    KeePassChangeSet(databaseId = databaseId, target = KeePassChangeTarget.UNKNOWN_ENTRY,
+                        operation = KeePassChangeOperation.PERMANENT_DELETE, entryUuid = uuid.toString(),
+                        baseFingerprint = buildConflictEntrySignature(record.entry),
+                        baseGroupPath = record.legacyGroupPath, baseGroupUuid = record.parentGroup.groupUuid.toString(),
+                        structurePatch = KeePassStructureChangePatch(sourceGroupPath = record.legacyGroupPath,
+                            sourceGroupUuid = record.parentGroup.groupUuid.toString()))
+                }
+                val applier = KeePassChangeSetApplier()
+                val updated = changes.fold(loaded.keePassDatabase) { db, change -> applier.apply(db, change).updatedDatabase }
+                MutationPlan(updatedDatabase = updated, result = Unit,
+                    beforeRemoteUpload = { database, workingRevision -> enqueuePendingChangeSetsIfRemote(database, changes, workingRevision) },
+                    afterWrite = { database, written -> dao.updateEntryCount(database.id, countEntries(written.content.group)) })
+            }
+            Unit
+        }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+    }
+
     internal suspend fun deleteNativeEntries(
         databaseId: Long,
         entryUuids: Set<UUID>,

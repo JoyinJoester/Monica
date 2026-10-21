@@ -897,6 +897,25 @@ class Mdbx2Repository(
         }
     }
 
+    internal suspend fun managerDeleteSelection(databaseId: Long, ids: Set<String>, expectedHead: String) {
+        require(ids.isNotEmpty())
+        sessions.withMutatingVault(databaseId) { _, vault ->
+            check(takagi.ru.monica.security.SessionManager.isUnlocked.value) { "The vault is locked." }
+            val branches = vault.listBranches()
+            val head = branches.firstOrNull { it.branchName.equals("main", true) }?.headCommitId ?: branches.maxByOrNull { it.updatedAt }?.headCommitId
+            check(head == expectedHead) { "The source changed. Refresh and select again." }
+            val browser = readMdbxNativeBrowser(vault)
+            val tree = databaseManagerSelectionRoots(browser.nodes, ids)
+                .flatMap { databaseManagerDescendants(browser.nodes, it) }.distinctBy { it.id }
+            val commands = tree.filter { it.type == MdbxStructureNodeType.ENTRY }.map {
+                val value = browser.objects.getValue(it.id)
+                MdbxWriteCommand.DeleteEntry(value.id, value.collectionId)
+            } + tree.filter { it.type == MdbxStructureNodeType.FOLDER }.asReversed().map { MdbxWriteCommand.DeleteProject(it.id) }
+            vault.executeWriteOperation(UUID.randomUUID().toString(), "manager-delete-selection", commands)
+            markPendingUpload(databaseId)
+        }
+    }
+
     internal suspend fun managerSetFolderProfile(databaseId: Long, id: String, profile: uniffi.mdbx_ffi.MdbxCollectionProfile) {
         sessions.withMutatingVault(databaseId) { _, vault ->
             vault.setCollectionProfile(id, profile.collectionTypeId, profile.payload, profile.payloadSchemaVersion,

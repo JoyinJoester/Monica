@@ -268,6 +268,25 @@ internal class DatabaseManagerRepository(context: Context, databaseOverride: Pas
         }
     }
 
+    /** Confirmed selections are checked again inside each backend's atomic write. */
+    suspend fun delete(location: DatabaseManagerLocation, selected: Set<String>, expectedRevision: String) = transferMutex.withLock {
+        withContext(Dispatchers.IO) {
+            check(SessionManager.isUnlocked.value) { "The vault is locked." }
+            require(selected.isNotEmpty())
+            val snapshot = browse(location)
+            check(snapshot.revision == expectedRevision) { "The source changed. Refresh and select again." }
+            val roots = databaseManagerSelectionRoots(snapshot.nodes, selected)
+            when (location.database.kind) {
+                ImportDestinationKind.LOCAL -> managerDeleteLocal(this@DatabaseManagerRepository, snapshot, roots)
+                ImportDestinationKind.MDBX -> mdbx.managerDeleteSelection(location.database.databaseId, selected, expectedRevision)
+                ImportDestinationKind.KEEPASS -> kdbx.deleteNativeManagerSelection(location.database.databaseId,
+                    roots.filter { it.type == MdbxStructureNodeType.ENTRY }.map { UUID.fromString(it.id) }.toSet(),
+                    roots.filter { it.type == MdbxStructureNodeType.FOLDER }.map { UUID.fromString(it.id) }.toSet(), expectedRevision).getOrThrow()
+                else -> error("Unsupported database")
+            }
+        }
+    }
+
     private fun node(id: String, parent: String?, title: String, folder: Boolean, type: String = "") =
         MdbxStructureNode(id, parent, title, if (folder) MdbxStructureNodeType.FOLDER else MdbxStructureNodeType.ENTRY,
             title, MdbxStructureNodeStatus.UNCHANGED, 0, type)

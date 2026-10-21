@@ -396,6 +396,12 @@ internal fun PasswordListTopSection(
                         expanded = topActionsMenuExpanded,
                         onDismissRequest = { onTopActionsMenuExpandedChange(false) }
                     ) {
+                            if (currentFilter.isMonicaDatabaseFilter() || currentFilter is CategoryFilter.LocalOnly) {
+                                KeepassNativeManagerTopActionsMenuItem(onClick = {
+                                    onTopActionsMenuExpandedChange(false)
+                                    takagi.ru.monica.ui.screens.DatabaseManagerNavigation.open(takagi.ru.monica.credentialexchange.ImportDestination.Local)
+                                })
+                            }
                             if (isKeePassDatabaseView) {
                                 KeepassRefreshTopActionsMenuItem(
                                     onClick = {

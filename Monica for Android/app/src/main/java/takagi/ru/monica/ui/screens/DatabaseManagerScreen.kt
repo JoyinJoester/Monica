@@ -76,6 +76,8 @@ internal fun DatabaseManagerScreen(initialDatabaseKey: String?, mdbxViewModel: M
     var detail by remember { mutableStateOf<Pair<DatabaseManagerLocation, MdbxStructureNode>?>(null) }
     var transferRequest by remember { mutableStateOf<ManagerTransferRequest?>(null) }
     var actionRequest by remember { mutableStateOf<ManagerActionRequest?>(null) }
+    var deleteRequest by remember { mutableStateOf<ManagerActionRequest?>(null) }
+    var deleteError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val unlocked by SessionManager.isUnlocked.collectAsState()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -83,13 +85,13 @@ internal fun DatabaseManagerScreen(initialDatabaseKey: String?, mdbxViewModel: M
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, _ ->
             foreground = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-            if (!foreground) { left.snapshot = null; right.snapshot = null; detail = null; nameRequest = null; transferRequest = null; actionRequest = null; report = null }
+            if (!foreground) { left.snapshot = null; right.snapshot = null; detail = null; nameRequest = null; transferRequest = null; actionRequest = null; deleteRequest = null; deleteError = null; report = null }
         }
         lifecycle.addObserver(observer); onDispose { lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(revision, foreground, unlocked) {
         if (foreground && unlocked) stores = repo.stores() else {
-            stores = emptyList(); detail = null; nameRequest = null; transferRequest = null; actionRequest = null; report = null
+            stores = emptyList(); detail = null; nameRequest = null; transferRequest = null; actionRequest = null; deleteRequest = null; deleteError = null; report = null
         }
     }
     listOf(left, right).forEach { pane ->
@@ -255,7 +257,27 @@ internal fun DatabaseManagerScreen(initialDatabaseKey: String?, mdbxViewModel: M
             onRename = { actionRequest = null; request.rows.singleOrNull()?.let { nameRequest = ManagerNameRequest(request.location, it) } },
             onSelect = { actionRequest = null; request.rows.singleOrNull()?.let { request.pane.toggleSelection(it.id) } },
             onSelectAll = { actionRequest = null; request.pane.selectAll(request.pane.visibleIds) },
-            onClear = { actionRequest = null; request.pane.clearSelection() })
+            onClear = { actionRequest = null; request.pane.clearSelection() },
+            onDelete = { actionRequest = null; deleteError = null; deleteRequest = request })
+    }
+    deleteRequest?.takeIf { foreground && unlocked }?.let { request ->
+        DatabaseManagerDeleteDialog(request.title, request.paneIndex, request.ids.size,
+            request.location.database.kind == ImportDestinationKind.LOCAL, busy, deleteError,
+            onDismiss = { deleteRequest = null; deleteError = null }, onConfirm = {
+                if (!busy) {
+                    busy = true; deleteError = null
+                    scope.launch {
+                        try {
+                            repo.delete(request.location, request.ids, request.revision)
+                            request.pane.clearSelection()
+                            deleteRequest = null
+                            refreshDatabases(request.location.database)
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (error: Exception) { deleteError = context.getString(R.string.save_failed_with_error, error.message.orEmpty()) }
+                        finally { busy = false; revision++ }
+                    }
+                }
+            })
     }
     transferRequest?.let { request ->
         val source = request.source
