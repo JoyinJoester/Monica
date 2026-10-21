@@ -37,11 +37,21 @@ class TemplateEditorsDeviceTest {
     private fun text(id: Int) = fixture.context.getString(id)
     private fun capture(name: String) {
         compose.waitForIdle()
+        // Captures are optional artifacts; protected windows can refuse them.
+        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return
         val file = File(fixture.context.getExternalFilesDir("template-editors-verification"), name)
-        InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().let { bitmap ->
+        bitmap.let {
             file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
             bitmap.recycle()
         }
+    }
+    private fun openTypeMenu() {
+        val description = text(R.string.entry_type_chip_content_description)
+        // Native database metadata loads asynchronously before the editor is shown.
+        compose.waitUntil(20_000) {
+            compose.onAllNodesWithContentDescription(description).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription(description).performClick()
     }
     @Test fun barcodeCreationRendersGroupedFieldsAndKeepsSaveReachable() {
         compose.setContent { MaterialTheme {
@@ -83,7 +93,8 @@ class TemplateEditorsDeviceTest {
         }
     }
     @Test fun wifiMenuIncludesAllTypesAndCarriesMultipleTargets() {
-        val targets = listOf(StorageTarget.Mdbx(987, "folder"), StorageTarget.MonicaLocal(123))
+        val native = runBlocking { fixture.mdbx() }
+        val targets = listOf(StorageTarget.Mdbx(native.databaseId, "folder"), StorageTarget.MonicaLocal(123))
         var selected: EntryTypeChipOption? = null
         var delivered: List<StorageTarget>? = null
         compose.setContent { MaterialTheme {
@@ -92,11 +103,11 @@ class TemplateEditorsDeviceTest {
                 AddEditWifiScreen(model, passwordId = null, onNavigateBack = {}, onNavigateToPassword = {})
             }
         } }
-        compose.onNodeWithContentDescription(text(R.string.entry_type_chip_content_description)).performClick()
-        compose.onNodeWithText("API Key").assertIsDisplayed()
-        compose.onNodeWithText(text(R.string.gpg_title)).assertIsDisplayed()
+        openTypeMenu()
+        compose.onNodeWithTag("password_template_API_KEY").assertIsDisplayed()
+        compose.onNodeWithTag("password_template_GPG_KEY").assertIsDisplayed()
         capture("wifi-menu.png")
-        compose.onNodeWithText("API Key").performClick()
+        compose.onNodeWithTag("password_template_API_KEY").performClick()
         assertEquals(EntryTypeChipOption.API_KEY, selected)
         assertEquals(targets, delivered)
     }
@@ -123,7 +134,8 @@ class TemplateEditorsDeviceTest {
     }
     @Test fun sshUsesInheritedTargetAndExposesCompleteMenuInDarkTheme() {
         var delivered: List<StorageTarget>? = null
-        val targets = listOf(StorageTarget.Mdbx(987, "chosen"))
+        val native = runBlocking { fixture.mdbx() }
+        val targets = listOf(StorageTarget.Mdbx(native.databaseId, "chosen"))
         compose.setContent { MaterialTheme(colorScheme = darkColorScheme()) {
             CompositionLocalProvider(LocalTemplateTargets provides targets,
                 LocalTemplateNavigation provides { _, values -> delivered = values }) {
@@ -131,8 +143,8 @@ class TemplateEditorsDeviceTest {
             }
         } }
         capture("ssh-dark.png")
-        compose.onNodeWithContentDescription(text(R.string.entry_type_chip_content_description)).performClick()
-        compose.onNodeWithText("API Key").performClick()
+        openTypeMenu()
+        compose.onNodeWithTag("password_template_API_KEY").performClick()
         assertEquals(targets, delivered)
     }
 }
