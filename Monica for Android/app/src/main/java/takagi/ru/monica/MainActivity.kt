@@ -1186,6 +1186,7 @@ fun MonicaContent(
         takagi.ru.monica.ui.components.LocalExpansionAnimationsEnabled provides !settings.reduceAnimations,
         takagi.ru.monica.ui.LocalHapticFeedbackEnabled provides settings.hapticFeedbackEnabled
     ) {
+        takagi.ru.monica.ui.screens.NearbyDeletionReviewHost()
         Box(modifier = Modifier.fillMaxSize()) {
             NavHost(
                 navController = navController,

@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.model.CardBrand
+import takagi.ru.monica.security.maskPasswordNotePreview
 
 internal sealed interface PasswordPageListItemUi {
     val key: String
@@ -112,8 +113,8 @@ private fun resolvePasswordGroupDisplayTitle(
     val first = passwords.firstOrNull() ?: return null
     val noteLabel = getPasswordNoteStackLabel(first) ?: return null
     return when (groupMode) {
-        "note" -> noteLabel
-        "smart" -> noteLabel
+        "note" -> maskPasswordNotePreview(noteLabel)
+        "smart" -> maskPasswordNotePreview(noteLabel)
         "folder" -> getPasswordFolderStackLabel(first)
         else -> null
     }

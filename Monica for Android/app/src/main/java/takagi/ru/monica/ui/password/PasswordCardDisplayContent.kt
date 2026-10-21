@@ -1,7 +1,6 @@
 package takagi.ru.monica.ui.password
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.height
@@ -25,9 +24,9 @@ import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.PasswordCardDisplayField
 import takagi.ru.monica.data.PasswordEntry
-import takagi.ru.monica.ui.nextSmoothTotpProgressTarget
+import takagi.ru.monica.security.maskCardNumbersInPasswordPreview
+import takagi.ru.monica.security.maskPasswordNotePreview
 import takagi.ru.monica.ui.rememberTotpTickerMillis
-import takagi.ru.monica.ui.shouldResetSmoothTotpProgress
 import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.TotpGenerator
 
@@ -41,7 +40,8 @@ data class PasswordAuthenticatorDisplayState(
     val code: String,
     val remainingSeconds: Int?,
     val progress: Float?,
-    val periodSeconds: Int? = null
+    val periodSeconds: Int? = null,
+    val sampledAtMillis: Long? = null
 )
 
 fun resolvePasswordCardDisplayLines(
@@ -53,7 +53,7 @@ fun resolvePasswordCardDisplayLines(
         when (field) {
             PasswordCardDisplayField.USERNAME -> entry.username
                 .takeIf { it.isNotBlank() }
-                ?.let { PasswordCardDisplayLine(field, Icons.Default.Person, it) }
+                ?.let { PasswordCardDisplayLine(field, Icons.Default.Person, maskCardNumbersInPasswordPreview(it)) }
 
             PasswordCardDisplayField.WEBSITE -> entry.website
                 .takeIf { it.isNotBlank() }
@@ -61,10 +61,8 @@ fun resolvePasswordCardDisplayLines(
 
             PasswordCardDisplayField.APP_NAME -> null
 
-            PasswordCardDisplayField.NOTE_PREVIEW -> entry.notes
-                .lineSequence()
-                .firstOrNull { it.isNotBlank() }
-                ?.trim()
+            PasswordCardDisplayField.NOTE_PREVIEW -> maskPasswordNotePreview(entry.notes)
+                .takeIf { it.isNotBlank() }
                 ?.let { PasswordCardDisplayLine(field, Icons.Default.Description, it) }
 
             PasswordCardDisplayField.UPDATED_AT -> {
@@ -141,7 +139,7 @@ fun rememberPasswordAuthenticatorDisplayState(
         ) {
             if (smoothProgress) {
                 val periodMillis = (totpData.period * 1000L).coerceAtLeast(1000L)
-                val correctedMillis = (currentSeconds * 1000L) + (timeOffsetSeconds * 1000L)
+                val correctedMillis = currentTimeMillis + (timeOffsetSeconds * 1000L)
                 val elapsedInPeriod = ((correctedMillis % periodMillis) + periodMillis) % periodMillis
                 (elapsedInPeriod.toFloat() / periodMillis.toFloat()).coerceIn(0f, 1f)
             } else {
@@ -156,7 +154,8 @@ fun rememberPasswordAuthenticatorDisplayState(
             code = formattedCode,
             remainingSeconds = remaining,
             progress = progress,
-            periodSeconds = totpData.period.coerceAtLeast(1)
+            periodSeconds = totpData.period.coerceAtLeast(1),
+            sampledAtMillis = currentTimeMillis
         )
     }
 }
@@ -176,19 +175,17 @@ internal fun PasswordAuthenticatorProgressIndicator(
     val periodSeconds = state.periodSeconds?.coerceAtLeast(1) ?: 30
     val animatedProgress = remember(periodSeconds) { Animatable(clampedProgress) }
 
-    LaunchedEffect(clampedProgress, smoothProgress, periodSeconds) {
+    LaunchedEffect(clampedProgress, smoothProgress, periodSeconds, state.sampledAtMillis) {
+        // Samples are clock corrections, not animation targets. This also handles
+        // foregrounding, clock changes and rollover without replaying stale time.
+        animatedProgress.snapTo(clampedProgress)
         if (smoothProgress) {
-            if (shouldResetSmoothTotpProgress(animatedProgress.value, clampedProgress)) {
-                animatedProgress.snapTo(clampedProgress)
-            }
+            val durationMillis = state.sampledAtMillis?.let {
+                1000L - Math.floorMod(it, 1000L)
+            }?.toInt() ?: 1000
             animatedProgress.animateTo(
-                targetValue = nextSmoothTotpProgressTarget(clampedProgress, periodSeconds),
-                animationSpec = tween(durationMillis = 1000, easing = LinearEasing)
-            )
-        } else {
-            animatedProgress.animateTo(
-                targetValue = clampedProgress,
-                animationSpec = tween(durationMillis = 80, easing = FastOutSlowInEasing)
+                targetValue = (clampedProgress + durationMillis / (periodSeconds * 1000f)).coerceAtMost(1f),
+                animationSpec = tween(durationMillis = durationMillis, easing = LinearEasing)
             )
         }
     }

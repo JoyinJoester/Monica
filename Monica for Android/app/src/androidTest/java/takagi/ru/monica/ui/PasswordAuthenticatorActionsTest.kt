@@ -60,7 +60,7 @@ class PasswordAuthenticatorActionsTest {
         }
         card().performTouchInput { down(center) }
         compose.mainClock.advanceTimeBy(150)
-        File(context.getExternalFilesDir(null), "authenticator-pressed.png").outputStream().use {
+        File(context.filesDir, "authenticator-pressed.png").outputStream().use {
             compose.onAllNodes(isRoot()).onFirst().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG,100,it)
         }
         card().performTouchInput { up() }

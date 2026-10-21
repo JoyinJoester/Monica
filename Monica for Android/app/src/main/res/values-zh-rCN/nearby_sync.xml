@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="nearby_indicator_idle">待命</string>
     <string name="nearby_status_background">后台已暂停</string>
     <string name="nearby_status_waiting_apps">等待对方打开 Monica</string>
     <string name="nearby_hint_background">两端均需打开 Monica 并保持解锁，退到后台后暂停自动发现和连接。</string>
@@ -35,7 +36,7 @@
     <string name="nearby_auto_frequency">自动同步频率</string>
     <string name="nearby_frequency_disabled">开启自动同步后可设置</string>
     <string name="nearby_wait_manual">等待手动同步</string>
-    <string name="nearby_manual_both_hint">两端都关闭自动同步时，请在两台设备上点击“立即同步”。</string>
+    <string name="nearby_manual_both_hint">两端各点一次“立即同步”，可先后操作；保持解锁并等待连接。</string>
     <string name="nearby_cancel_sync">取消本次同步</string>
     <string name="nearby_status_ready">等待同步</string>
     <string name="nearby_status_preparing">正在准备同步内容</string>
@@ -48,10 +49,10 @@
     <string name="nearby_status_confirming">等待对方确认完成</string>
     <string name="nearby_status_completed">同步已完成</string>
     <string name="nearby_status_review">请确认通行密钥传输限制</string>
-    <string name="nearby_status_waiting">等待已配对设备连接</string>
-    <string name="nearby_hint_preparing">正在读取所选数据库，准备完成后开始连接。</string>
+    <string name="nearby_status_waiting">等待另一台设备就绪</string>
+    <string name="nearby_hint_preparing">正在准备本机内容；另一端可同时点击同步，就绪后自动连接。</string>
     <string name="nearby_hint_prepare_failed">尚未开始连接。检查所选数据库是否可用；若仍失败，复制诊断信息反馈。</string>
-    <string name="nearby_hint_connect">两端保持解锁并连接可互通的同一 Wi-Fi；两端均关闭自动时，分别点击立即同步。</string>
+    <string name="nearby_hint_connect">两端保持解锁并使用可互通的同一 Wi-Fi；各点一次同步即可等待连接。</string>
     <string name="nearby_hint_pair">确认对方是要连接的设备，再在两端重新配对。</string>
     <string name="nearby_hint_update">将两台设备更新到兼容版本后重试。</string>
     <string name="nearby_hint_database">在“同步数据库”中选择可用数据库后重试。</string>
@@ -97,4 +98,21 @@
     <string name="nearby_passkey_none">最近检查未发现受限通行密钥</string>
     <string name="nearby_passkey_count">最近检查到 %1$d 项限制 · 点击查看</string>
     <string name="nearby_passkey_refresh">重新检查通行密钥</string>
+    <string name="nearby_status_cancelling">正在停止同步</string>
+    <string name="nearby_status_cancelled">本次同步已取消</string>
+    <string name="nearby_hint_cancelling">已请求停止，正在关闭连接；已保存的内容会保留。</string>
+    <string name="nearby_hint_cancelled">配对和已保存内容均保留，可点击立即同步重新开始。</string>
+    <string name="nearby_hint_waiting_peer">请在另一端点一次同步。两分钟内等待连接，无需重复点击。</string>
+    <string name="nearby_hint_retrying">对方尚未就绪，正在重试连接；请保持两端解锁。</string>
+    <string name="nearby_deletion_review_title">对方包含删除操作</string>
+    <string name="nearby_deletion_review_hint">请确认是否同步删除，确认前不会应用本次接收内容。</string>
+    <string name="nearby_deletion_review_body">%1$s 包含 %2$d 项待同步删除操作。是否同时删除本地对应内容？也可以保留本地内容，仅接收新增和更新。</string>
+    <string name="nearby_deletions_keep">仅同步新增和更新</string>
+    <string name="nearby_deletions_include">同步删除</string>
+    <string name="nearby_forget_count">删除 %1$d 台设备的配对？</string>
+    <string name="nearby_forget_body">删除后需重新配对才能同步。本地保存的内容不会被删除。</string>
+    <string name="nearby_selected_devices">已选择 %1$d 台设备</string>
+    <string name="nearby_select_all">全选或取消全选</string>
+    <string name="nearby_delete_selected">删除所选配对</string>
+    <string name="nearby_device_gestures">长按或右滑多选 · 左滑删除配对</string>
 </resources>

@@ -19,6 +19,7 @@ import takagi.ru.monica.data.*
 import takagi.ru.monica.data.model.*
 import takagi.ru.monica.repository.*
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.ui.components.PasswordQrContentEditor
 import takagi.ru.monica.ui.screens.PasswordDetailScreen
 import takagi.ru.monica.utils.AppLocaleStringResolver
@@ -30,13 +31,19 @@ class PasswordQrTemplateUiTest {
     private lateinit var db: PasswordDatabase
     private lateinit var model: PasswordViewModel
     private lateinit var security: SecurityManager
+    private var wasUnlocked = false
     @Before fun setup() {
+        wasUnlocked = SessionManager.isUnlocked.value
+        SessionManager.markUnlocked()
         db = Room.inMemoryDatabaseBuilder(context, PasswordDatabase::class.java).build()
         security = SecurityManager(context)
         model = PasswordViewModel(PasswordRepository(db.passwordEntryDao(), categoryDao = db.categoryDao()), security,
             customFieldRepository = CustomFieldRepository(db.customFieldDao()), strings = AppLocaleStringResolver(context))
     }
-    @After fun cleanup() { model.viewModelScope.cancel(); db.close() }
+    @After fun cleanup() {
+        model.viewModelScope.cancel(); db.close()
+        if (!wasUnlocked) SessionManager.markLocked()
+    }
 
     @Test fun existingFieldQrRouteSavesTemplateAndResolvesUpdatedPassword() {
         val id = runBlocking { db.passwordEntryDao().insertPasswordEntry(PasswordEntry(title = "QR fixture", username = "wifi;network",
@@ -93,6 +100,9 @@ class PasswordQrTemplateUiTest {
         compose.setContent { CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.3f)) { MaterialTheme(colorScheme = darkColorScheme()) { PasswordQrContentEditor(block,
             readValues = { PasswordQrTemplate.Values(mapOf("PASSWORD" to null)) }, onSave = { saves++ }, onDismiss = { dismissed = true }) } }
         }
+        compose.waitUntil(15000) {
+            compose.onAllNodesWithTag("qr_template_generate").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+        }
         compose.onNodeWithTag("qr_template_generate").performScrollTo().performClick()
         compose.onNodeWithTag("qr_template_error").performScrollTo().assertIsDisplayed()
             .assertTextContains(context.getString(R.string.qr_template_field_error, "PASSWORD"))
@@ -104,7 +114,7 @@ class PasswordQrTemplateUiTest {
     private fun capture(name: String) {
         compose.waitForIdle()
         val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return
-        val dir = java.io.File(context.getExternalFilesDir(null), "qr-template-315").apply { mkdirs() }
+        val dir = java.io.File(context.filesDir, "qr-template-315").apply { mkdirs() }
         java.io.File(dir, "$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
     }

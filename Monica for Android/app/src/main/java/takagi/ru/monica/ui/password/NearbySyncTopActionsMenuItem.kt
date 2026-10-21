@@ -33,7 +33,7 @@ internal class NearbySyncMenuActions(
 }
 
 private val DeviceSyncState.hasSyncInProgress: Boolean
-    get() = manualSync || activeConnections > 0 || passkeyReview != null ||
+    get() = manualSync || activeConnections > 0 || passkeyReview != null || deletionReview != null ||
         (error == null && phase == "preparing")
 
 @Composable

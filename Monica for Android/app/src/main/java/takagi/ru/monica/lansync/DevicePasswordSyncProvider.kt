@@ -225,8 +225,9 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
         DevicePasswordExport(revisionStamp(result), directory, result.getString("content_key"), passkeyIssues)
     }
 
-    suspend fun apply(directory: File, peer: JSONObject): Int = gate.withLock {
-        reconcile()
+    suspend fun apply(directory: File, peer: JSONObject,
+        reviewDeletions: suspend (Int) -> Boolean): Int = gate.withLock {
+        reconcile(force = true)
         incomingAssets = DeviceAssetTransfer(directory, peer.getJSONObject("pairing").getString("content_key"))
         var localAssetCache: File? = null
         var changed = 0
@@ -240,8 +241,32 @@ internal class DevicePasswordSyncProvider(context: Context, private val security
             fallbackAssets = DeviceAssetTransfer(cache,key)
             for(asset in assets) { val bytes = readAsset(asset); try { fallbackAssets!!.append(asset.id,bytes) } finally { bytes.fill(0) } }
         }
-        request("replica_merge") { put("path", File(directory, "changes.mdbxsync").absolutePath)
-            put("content_key", peer.getJSONObject("pairing").getString("content_key")) }
+        fun incoming(operation: String, extra: JSONObject.() -> Unit = {}) = request(operation) {
+            put("path", File(directory, "changes.mdbxsync").absolutePath)
+            put("content_key", peer.getJSONObject("pairing").getString("content_key")); extra()
+        }
+        var reviewAttempts = 0
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val preview = incoming("replica_merge_preview")
+            val count = preview.getInt("deletions")
+            val include = count == 0 || reviewDeletions(count)
+            currentCoroutineContext().ensureActive()
+            check(SessionManager.isUnlocked.value) { "device_sync_locked" }
+            // Re-read physical data after a possibly long user decision. A new
+            // local edit or selected database invalidates the previous preview.
+            reconcile(force = true)
+            val latest = incoming("replica_merge_preview")
+            if (latest.getString("review_revision") != preview.getString("review_revision")) {
+                if (++reviewAttempts > 4) throw LanSyncException("passwords_changing")
+                continue
+            }
+            incoming("replica_merge") {
+                put("review_revision", latest.getString("review_revision"))
+                put("deletion_policy", if (include) "include" else "omit")
+            }
+            break
+        }
         while (true) {
             currentCoroutineContext().ensureActive()
             check(SessionManager.isUnlocked.value) { "device_sync_locked" }

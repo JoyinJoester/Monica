@@ -1,0 +1,155 @@
+{
+  "date": "2026-10-21",
+  "android": {
+    "Main": {
+      "build": "passed",
+      "jvmTests": 17,
+      "suites": [
+        {
+          "name": "DeviceManualSyncTest",
+          "tests": 9,
+          "timestamp": "2026-10-21T09:35:35",
+          "cases": [
+            "manual_connection_window_expires_when_the_peer_never_connects",
+            "cancellation_interrupts_a_snapshot_wait_and_does_not_replay_a_queued_sync",
+            "receiver_write_failure_reaches_sender_as_rejection_and_retry_completes",
+            "manual_send_only_to_receive_only_runs_once_without_enabling_automatic_sync",
+            "absent_peer_never_prepares_or_probes_and_background_rejects_manual_work",
+            "passkey_diagnostics_do_not_start_sync_or_change_its_phase_and_close_idle_replica",
+            "passkey_notice_is_remembered_only_after_valid_confirmation_and_can_be_restored",
+            "automatic_toggle_is_immediate_and_persisted_while_sync_holds_the_gate",
+            "cancellation_is_visible_without_waiting_for_preparation_gate_and_stale_progress_cannot_restore_it"
+          ]
+        },
+        {
+          "name": "DeviceSyncUnlockTest",
+          "tests": 1,
+          "timestamp": "2026-10-21T09:35:59",
+          "cases": [
+            "unlock_observers_receive_a_session_with_valid_timestamps"
+          ]
+        },
+        {
+          "name": "NearbyProgressPercentTest",
+          "tests": 2,
+          "timestamp": "2026-10-21T09:36:01",
+          "cases": [
+            "unknown_or_stopped_progress_is_not_reported_as_zero_or_success",
+            "byte_and_item_progress_are_bounded_and_support_large_counts"
+          ]
+        },
+        {
+          "name": "DeviceSyncPreparationTest",
+          "tests": 2,
+          "timestamp": "2026-10-21T09:35:59",
+          "cases": [
+            "unknownFailureIdentifiesOperationWithoutRetainingSecrets",
+            "existingNativeOperationAndCancellationRemainIntact"
+          ]
+        },
+        {
+          "name": "DeviceSyncModeTest",
+          "tests": 3,
+          "timestamp": "2026-10-21T09:35:58",
+          "cases": [
+            "receive_only_native_exchange_needs_no_outgoing_vault_and_sends_no_content_key",
+            "legacy_preferences_default_to_bidirectional_and_unknown_modes_are_rejected",
+            "protected_preferences_keep_direction_and_existing_pairing_on_reload"
+          ]
+        }
+      ],
+      "emulator": {
+        "status": {
+          "tests": 7,
+          "completed": true,
+          "environmentRestored": true,
+          "apkSha256": "5C08ECF86C56FD3F71B7D70EA5CFD82D75469ED0AFB0B467D829D41D087F6026"
+        },
+        "status-shape": {
+          "tests": 3,
+          "completed": true,
+          "environmentRestored": true,
+          "apkSha256": "F60FCEC9E4F1F9915D4AE94D4EB0D54B704AA275ACC808082E2A452908D18A0F"
+        }
+      }
+    },
+    "Fdroid": {
+      "build": "passed",
+      "jvmTests": 17,
+      "suites": [
+        {
+          "name": "DeviceManualSyncTest",
+          "tests": 9,
+          "timestamp": "2026-10-21T09:36:08",
+          "cases": [
+            "manual_connection_window_expires_when_the_peer_never_connects",
+            "cancellation_interrupts_a_snapshot_wait_and_does_not_replay_a_queued_sync",
+            "receiver_write_failure_reaches_sender_as_rejection_and_retry_completes",
+            "manual_send_only_to_receive_only_runs_once_without_enabling_automatic_sync",
+            "absent_peer_never_prepares_or_probes_and_background_rejects_manual_work",
+            "passkey_diagnostics_do_not_start_sync_or_change_its_phase_and_close_idle_replica",
+            "passkey_notice_is_remembered_only_after_valid_confirmation_and_can_be_restored",
+            "automatic_toggle_is_immediate_and_persisted_while_sync_holds_the_gate",
+            "cancellation_is_visible_without_waiting_for_preparation_gate_and_stale_progress_cannot_restore_it"
+          ]
+        },
+        {
+          "name": "DeviceSyncUnlockTest",
+          "tests": 1,
+          "timestamp": "2026-10-21T09:36:27",
+          "cases": [
+            "unlock_observers_receive_a_session_with_valid_timestamps"
+          ]
+        },
+        {
+          "name": "NearbyProgressPercentTest",
+          "tests": 2,
+          "timestamp": "2026-10-21T09:36:29",
+          "cases": [
+            "unknown_or_stopped_progress_is_not_reported_as_zero_or_success",
+            "byte_and_item_progress_are_bounded_and_support_large_counts"
+          ]
+        },
+        {
+          "name": "DeviceSyncPreparationTest",
+          "tests": 2,
+          "timestamp": "2026-10-21T09:36:27",
+          "cases": [
+            "unknownFailureIdentifiesOperationWithoutRetainingSecrets",
+            "existingNativeOperationAndCancellationRemainIntact"
+          ]
+        },
+        {
+          "name": "DeviceSyncModeTest",
+          "tests": 3,
+          "timestamp": "2026-10-21T09:36:27",
+          "cases": [
+            "receive_only_native_exchange_needs_no_outgoing_vault_and_sends_no_content_key",
+            "legacy_preferences_default_to_bidirectional_and_unknown_modes_are_rejected",
+            "protected_preferences_keep_direction_and_existing_pairing_on_reload"
+          ]
+        }
+      ],
+      "emulator": {
+        "status": {
+          "tests": 7,
+          "completed": true,
+          "environmentRestored": true,
+          "apkSha256": "E22C33CB91B8F4DA4AD2A0B0CEF7DE65B1257BC5AC84C790E0FB35140C4B6818"
+        },
+        "status-shape": {
+          "tests": 3,
+          "completed": true,
+          "environmentRestored": true,
+          "apkSha256": "7FE74C9F7F8F7A1595C040487CD1BDFC1E6E5E2B4774DCAB7A59995D42F9F280"
+        }
+      }
+    }
+  },
+  "browser": {
+    "tests": 108,
+    "failures": 0,
+    "productionBuild": "passed"
+  },
+  "limits": "Native host timing and shared API 32 x86_64 emulator; no two-physical-device Wi-Fi acceptance."
+}

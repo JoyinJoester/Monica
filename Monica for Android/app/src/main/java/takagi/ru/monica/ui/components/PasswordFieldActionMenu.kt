@@ -404,7 +404,7 @@ internal fun encodeFieldBarcode(value: String, format: FieldBarcodeFormat, avail
     }.getOrElse { FieldBarcodeRender() }
 
 @Composable
-private fun FieldBarcodePage(
+internal fun FieldBarcodePage(
     label: String,
     value: String,
     onDismiss: () -> Unit

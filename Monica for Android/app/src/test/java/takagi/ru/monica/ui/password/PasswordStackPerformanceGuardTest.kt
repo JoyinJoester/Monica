@@ -26,14 +26,12 @@ class PasswordStackPerformanceGuardTest {
     }
 
     @Test
-    fun `password card smooth progress uses second samples and draw phase animation`() {
+    fun `password card keeps second samples and draw phase animation`() {
         val source = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/password/PasswordCardDisplayContent.kt"
         ).readText()
 
         assertTrue(source.contains("rememberTotpTickerMillis(smooth = false)"))
-        assertTrue(source.contains("Animatable(clampedProgress)"))
-        assertTrue(source.contains("nextSmoothTotpProgressTarget(clampedProgress, periodSeconds)"))
         assertTrue(source.contains("progress = { animatedProgress.value }"))
         assertFalse(source.contains("rememberTotpTickerMillis(smoothProgress)"))
     }
@@ -74,7 +72,9 @@ class PasswordStackPerformanceGuardTest {
     @Test
     fun `stack summary preserves merged favorite and cover semantics without allocations`() {
         val first = password(id = 1L, username = "same", favorite = true, cover = true)
+            .copy(passwordGroupId = "fixture-project")
         val second = password(id = 2L, username = "same", favorite = true)
+            .copy(passwordGroupId = "fixture-project")
         val different = password(id = 3L, username = "different", favorite = false)
 
         assertEquals(

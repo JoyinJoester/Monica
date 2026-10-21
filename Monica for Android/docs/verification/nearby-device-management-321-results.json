@@ -1,0 +1,105 @@
+{
+  "date": "2026-10-21",
+  "version": "1.0.321 unreleased",
+  "sourceParity": 14,
+  "fastlaneCharacters": {
+    "en-US": 494,
+    "zh-CN": 500
+  },
+  "nativeReplicaTests": 18,
+  "editions": {
+    "main": {
+      "jvmSuites": [
+        {
+          "name": "DeviceVaultProviderTest",
+          "tests": 16,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "DeviceManualSyncTest",
+          "tests": 11,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "NearbyProgressPercentTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "DeviceSelectedDatabaseTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "DeviceSteamSyncTest",
+          "tests": 7,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ],
+      "jvmTotal": 37,
+      "uiTests": 10,
+      "emulator": "Monica_Issue136_API_32 / emulator-5554 / isolated user 10",
+      "environmentRestored": true,
+      "apkSha256": "15fccf62da2ca45d2b1ca217bbc7c8e1cf567f16572b2c2987f2a5561a7cd100"
+    },
+    "fdroid": {
+      "jvmSuites": [
+        {
+          "name": "DeviceVaultProviderTest",
+          "tests": 16,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "DeviceManualSyncTest",
+          "tests": 11,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "NearbyProgressPercentTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "DeviceSelectedDatabaseTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "DeviceSteamSyncTest",
+          "tests": 7,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ],
+      "jvmTotal": 37,
+      "uiTests": 10,
+      "emulator": "Monica_Issue136_API_32 / emulator-5554 / isolated user 10",
+      "environmentRestored": true,
+      "apkSha256": "45af6092cbd76dbacbe5aad7452301749c2854400564303f915c97c350c242b1"
+    }
+  },
+  "finalEnvironment": {
+    "user": "0",
+    "isolatedUserLockscreenDisabled": false,
+    "existingAvdLeftRunning": true
+  }
+}

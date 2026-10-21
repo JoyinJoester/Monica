@@ -5,8 +5,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.FlightTakeoff
+import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -65,4 +73,28 @@ internal fun WalletPassDetails(template: WalletPassTemplate, data: DocumentData)
         template.fields().forEach { (key, label) -> add(label to data.walletFields[key].orEmpty()) }
         add(R.string.expiry_date_label to data.expiryDate)
     })
+}
+
+/** Display the saved membership number verbatim using the existing field-code viewer. */
+@Composable
+internal fun WalletPassCodeButton(data: DocumentData) {
+    val template = WalletPassTemplate.fromStored(data.walletTemplate)
+    if (template !in listOf(WalletPassTemplate.MEMBERSHIP, WalletPassTemplate.REWARDS) ||
+        data.documentNumber.isBlank()
+    ) return
+
+    var showCode by rememberSaveable(data.walletTemplate, data.documentNumber) { mutableStateOf(false) }
+    OutlinedButton(
+        onClick = { showCode = true },
+        modifier = Modifier.fillMaxWidth().testTag("wallet_pass_show_code")
+    ) {
+        Icon(Icons.Default.QrCode2, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text(stringResource(R.string.wallet_pass_show_code))
+    }
+    if (showCode) FieldBarcodePage(
+        label = stringResource(R.string.wallet_pass_number),
+        value = data.documentNumber,
+        onDismiss = { showCode = false }
+    )
 }

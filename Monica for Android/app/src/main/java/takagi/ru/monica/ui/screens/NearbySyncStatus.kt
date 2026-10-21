@@ -12,12 +12,17 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.BuildConfig
 import takagi.ru.monica.R
@@ -28,9 +33,12 @@ import java.text.DateFormat
 import java.util.Date
 
 internal fun nearbyStageLabel(context: Context, state: DeviceSyncState): String = context.getString(when {
+    state.phase == "cancelling" -> R.string.nearby_status_cancelling
+    state.phase == "cancelled" -> R.string.nearby_status_cancelled
     state.error != null -> if (state.failureStage == "preparing") R.string.nearby_status_prepare_failed else R.string.nearby_status_failed
     !state.appVisible -> R.string.nearby_status_background
     state.phase == "waiting_for_app" -> R.string.nearby_status_waiting_apps
+    state.deletionReview != null -> R.string.nearby_deletion_review_title
     state.passkeyReview != null -> R.string.nearby_status_review
     state.phase == "locked" -> R.string.device_sync_locked
     else -> when (state.progress?.stage ?: state.phase) {
@@ -52,6 +60,10 @@ internal fun nearbyStageLabel(context: Context, state: DeviceSyncState): String 
 })
 
 internal fun nearbyNextStep(context: Context, state: DeviceSyncState): String = context.getString(when {
+    state.phase == "cancelling" -> R.string.nearby_hint_cancelling
+    state.phase == "cancelled" -> R.string.nearby_hint_cancelled
+    state.manualSync && state.retryInSeconds > 0 && state.error == null -> R.string.nearby_hint_retrying
+    state.manualSync && state.phase in setOf("idle", "waiting", "connecting") && state.progress == null && state.activeConnections == 0 && state.error == null -> R.string.nearby_hint_waiting_peer
     !state.appVisible -> R.string.nearby_hint_background
     state.enabled && !state.nearbyDiscoveryAvailable -> R.string.nearby_hint_presence_unavailable
     state.phase == "waiting_for_app" -> R.string.nearby_hint_waiting_apps
@@ -68,6 +80,7 @@ internal fun nearbyNextStep(context: Context, state: DeviceSyncState): String = 
     state.error != null && state.failureStage in setOf("received", "applying", "remembering") -> R.string.nearby_hint_apply
     state.error != null -> R.string.nearby_hint_generic
     state.phase == "locked" -> R.string.nearby_hint_locked
+    state.deletionReview != null -> R.string.nearby_deletion_review_hint
     state.passkeyReview != null || state.phase == "passkey_review" -> R.string.nearby_hint_review
     state.phase == "received" && DeviceSyncEditGate.isEditing -> R.string.nearby_hint_editing
     state.progress?.stage == "preparing" || state.phase == "preparing" -> R.string.nearby_hint_preparing
@@ -88,42 +101,82 @@ private fun nearbyProgressText(context: Context, progress: DeviceSyncProgress?):
     else -> ""
 }
 
-/** The same text slots and progress space remain in the layout in every state. */
+/** Progress is per current phase; an unknown total never becomes a fabricated percentage. */
+internal fun nearbyProgressPercent(state: DeviceSyncState): Int? {
+    if (state.error != null || state.phase in setOf("cancelling", "cancelled")) return null
+    if (state.phase == "completed") return 100
+    val progress = state.progress ?: return null
+    val total = if (progress.totalBytes > 0) progress.totalBytes else progress.total
+    val completed = if (progress.totalBytes > 0) progress.bytes else progress.completed
+    return if (total > 0) ((completed.toDouble() / total).coerceIn(0.0, 1.0) * 100).toInt() else null
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun NearbySyncStatus(state: DeviceSyncState, diagnostics: () -> Unit, cancelPairing: () -> Unit) {
+private fun NearbySyncIndicator(state: DeviceSyncState) {
+    val stopped = state.phase in setOf("cancelling", "cancelled", "completed", "paused", "locked", "background")
+    val active = !stopped && state.error == null &&
+        (state.manualSync || state.pairing || state.activeConnections > 0 || state.progress != null)
+    val percentage = nearbyProgressPercent(state)
+    val label = when {
+        percentage != null -> "$percentage%"
+        state.error != null -> "!"
+        active -> "…"
+        else -> stringResource(R.string.nearby_indicator_idle)
+    }
+    val indicatorColor = MaterialTheme.colorScheme.primary
+    // Custom themes may override primary without changing onPrimary. Choose
+    // the higher-contrast foreground against the indicator's actual fill.
+    val labelColor = if (indicatorColor.luminance() > 0.179f) Color.Black else Color.White
+    Box(Modifier.size(96.dp).testTag("nearby-sync-indicator"), contentAlignment = Alignment.Center) {
+        if (active) LoadingIndicator(Modifier.size(88.dp).clearAndSetSemantics {}, color = indicatorColor)
+        else LoadingIndicator(progress = { 0f }, modifier = Modifier.size(88.dp).clearAndSetSemantics {},
+            color = indicatorColor, polygons = LoadingIndicatorDefaults.IndeterminateIndicatorPolygons)
+        Text(label, Modifier.testTag("nearby-sync-percentage"), style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
+            color = labelColor, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+/** Fixed scaled text slots and an always-present indicator keep every state the same size. */
+@Composable
+internal fun NearbySyncStatus(state: DeviceSyncState, diagnostics: () -> Unit, cancelPairing: () -> Unit,
+    sync: () -> Unit = {}, cancelSync: () -> Unit = {}) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val titleStyle = MaterialTheme.typography.titleMedium
     val hintStyle = MaterialTheme.typography.bodySmall
-    // minLines alone still changes height when fallback CJK glyph metrics differ.
-    // Reserve two scaled lines plus font overhang, independent of the current text.
     val titleHeight = with(density) { titleStyle.lineHeight.toDp() * 2 } + 4.dp
-    val hintHeight = with(density) { hintStyle.lineHeight.toDp() * 2 } + 4.dp
-    Surface(Modifier.fillMaxWidth().testTag("nearby-status"), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Text(nearbyStageLabel(context, state), Modifier.height(titleHeight).testTag("nearby-status-title"), style = titleStyle,
-                color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(nearbyNextStep(context, state), Modifier.height(hintHeight), style = hintStyle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.Center) {
-                val progress = state.progress.takeIf { state.error == null }
-                if (progress != null) Column(Modifier.fillMaxWidth()) {
-                    Text(nearbyProgressText(context, progress).ifEmpty { " " }, style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.height(4.dp))
-                    val total = if (progress.totalBytes > 0) progress.totalBytes else progress.total
-                    val done = if (progress.totalBytes > 0) progress.bytes else progress.completed
-                    if (total > 0) LinearProgressIndicator(progress = { (done.toFloat() / total).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                    else LinearProgressIndicator(Modifier.fillMaxWidth())
-                } else if (state.error == null && (state.manualSync || state.pairing || state.activeConnections > 0)) LinearProgressIndicator(Modifier.fillMaxWidth())
+    val hintHeight = with(density) { hintStyle.lineHeight.toDp() * 3 } + 4.dp
+    val countHeight = with(density) { MaterialTheme.typography.labelSmall.lineHeight.toDp() } + 4.dp
+    val cancelling = state.phase == "cancelling"
+    Surface(Modifier.fillMaxWidth().testTag("nearby-status"), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                NearbySyncIndicator(state)
+                Column(Modifier.weight(1f)) {
+                    Text(nearbyStageLabel(context, state), Modifier.height(titleHeight).testTag("nearby-status-title"), style = titleStyle,
+                        color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                        minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(nearbyNextStep(context, state), Modifier.height(hintHeight), style = hintStyle,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, minLines = 3, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(diagnostics, Modifier.weight(1f)) {
+            Text(nearbyProgressText(context, state.progress.takeUnless { state.error != null || cancelling }).ifEmpty { " " },
+                Modifier.fillMaxWidth().height(countHeight), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Button(if (state.manualSync) cancelSync else sync, Modifier.fillMaxWidth(),
+                enabled = !cancelling && (state.manualSync || state.peers.isNotEmpty() && !state.pairing)) {
+                Icon(if (state.manualSync || cancelling) Icons.Default.Close else Icons.Default.Sync, null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(if (cancelling) R.string.nearby_status_cancelling else if (state.manualSync) R.string.nearby_cancel_sync else R.string.device_sync_now),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Box(Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                TextButton(diagnostics, Modifier.align(Alignment.Center).testTag("nearby-diagnostics-button")) {
                     Text(stringResource(R.string.nearby_view_diagnostics), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Box(Modifier.size(48.dp)) {
-                    if (state.pairing) IconButton(cancelPairing) { Icon(Icons.Default.Close, stringResource(R.string.nearby_cancel_pairing)) }
+                if (state.pairing) IconButton(cancelPairing, Modifier.align(Alignment.CenterEnd)) {
+                    Icon(Icons.Default.Close, stringResource(R.string.nearby_cancel_pairing))
                 }
             }
         }

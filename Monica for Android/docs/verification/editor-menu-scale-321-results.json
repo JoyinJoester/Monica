@@ -1,0 +1,62 @@
+{
+  "date": "2026-10-21",
+  "version": "1.0.321 unreleased",
+  "device": "Monica_Issue136_API_32 / emulator-5554 / API 32 x86_64",
+  "red": "At 80% interface scale the original popup stayed 820px wide; expected 656px. The regression assertion failed before the fix.",
+  "editions": {
+    "Main": {
+      "build": "assembleDebug + assembleDebugAndroidTest passed",
+      "instrumentedTests": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "menuSizePxByInterfaceScalePercent": {
+        "80": [
+          656,
+          246
+        ],
+        "100": [
+          820,
+          306
+        ],
+        "120": [
+          984,
+          367
+        ]
+      },
+      "installedApkSha256": "E40797DC6233DAA9BD5A55E4CFD54D131B9B5950B5AB69199E414DE0377CBBC9",
+      "installedTestApkSha256": "06461659E461A3FDAF2B06AA329B0FDBB95B2836CD99EB2E0FF073501C1DC7B5",
+      "environmentRestored": true
+    },
+    "Fdroid": {
+      "build": "assembleDebug + assembleDebugAndroidTest passed",
+      "instrumentedTests": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "menuSizePxByInterfaceScalePercent": {
+        "80": [
+          656,
+          246
+        ],
+        "100": [
+          820,
+          306
+        ],
+        "120": [
+          984,
+          367
+        ]
+      },
+      "installedApkSha256": "2229BC9DB6781A32D28552F9C30EECFEB9E0A9EBA61C6AA7EF425A94EC808432",
+      "installedTestApkSha256": "43855BCC8D29ECA9D0C07BC539B055E291E2930C70280446EF15DA658EE243E7",
+      "environmentRestored": true
+    }
+  },
+  "sharedSources": {
+    "app/src/main/java/takagi/ru/monica/ui/components/EditorActionMenu.kt": "34df0065825c61246feb12a021cfb9da836f979eea5bdea8fd954d1d45992cb8",
+    "app/src/androidTest/java/takagi/ru/monica/ui/components/EditorActionMenuScaleTest.kt": "c1e1f9cb75848c539792c67bf88df7b773b886525a58d148620c96ff63aee98f"
+  }
+}

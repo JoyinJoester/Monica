@@ -7,6 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -36,6 +38,60 @@ import java.util.UUID
     shadows = [DeviceVaultProviderTest.SecureStoreShadow::class, DeviceVaultProviderTest.SecurityShadow::class])
 @OptIn(ExperimentalCoroutinesApi::class)
 class DeviceManualSyncTest {
+    @Test fun cancellation_interrupts_a_snapshot_wait_and_does_not_replay_a_queued_sync() = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined); SessionManager.markUnlocked()
+        val fixture = Fixture(RuntimeEnvironment.getApplication(), "z-interrupt", "a-interrupt", DeviceSyncMode.SEND_ONLY)
+        ReflectionHelpers.setField(fixture.coordinator, "running", Job())
+        val gate = ReflectionHelpers.getField<Mutex>(fixture.coordinator, "gate")
+        val providerGate = ReflectionHelpers.getField<Mutex>(fixture.provider, "gate")
+        providerGate.lock()
+        fixture.request()
+        val work = launch(Dispatchers.Default) { gate.withLock { fixture.tick() } }
+        try {
+            withTimeout(5_000) { while (ReflectionHelpers.getField<Job?>(fixture.coordinator, "activeSyncWork") == null) delay(10) }
+            fixture.coordinator.cancelSync()
+            withTimeout(2_000) { work.join() }
+            providerGate.unlock()
+            withTimeout(5_000) { while (fixture.coordinator.state.value.phase != "cancelled") delay(10) }
+            assertEquals(0L, fixture.coordinator.state.value.lastAttemptAt)
+            gate.lock()
+            val request = fixture.settings.syncRequest
+            fixture.coordinator.syncNow()
+            fixture.coordinator.cancelSync()
+            gate.unlock()
+            withTimeout(5_000) { while (fixture.coordinator.state.value.phase != "cancelled") delay(10) }
+            assertEquals("Queued work from before Cancel must not run later", request, fixture.settings.syncRequest)
+        } finally {
+            if (providerGate.isLocked) providerGate.unlock()
+            work.cancel()
+            fixture.close(); SessionManager.markLocked(); Dispatchers.resetMain()
+        }
+    }
+
+    @Test fun cancellation_is_visible_without_waiting_for_preparation_gate_and_stale_progress_cannot_restore_it() = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined); SessionManager.markUnlocked()
+        val fixture = Fixture(RuntimeEnvironment.getApplication(), "z-cancel", "a-cancel", DeviceSyncMode.SEND_ONLY)
+        ReflectionHelpers.setField(fixture.coordinator, "running", Job())
+        val gate = ReflectionHelpers.getField<Mutex>(fixture.coordinator, "gate")
+        gate.lock()
+        try {
+            fixture.request()
+            fixture.coordinator.cancelSync()
+            assertEquals("Cancel must respond while export holds the gate", "cancelling", fixture.coordinator.state.value.phase)
+            ReflectionHelpers.callInstanceMethod<Void>(fixture.coordinator, "updateProgress",
+                ClassParameter.from(DeviceSyncProgress::class.java, DeviceSyncProgress("preparing", 1, 2)))
+            assertEquals("cancelling", fixture.coordinator.state.value.phase)
+            assertNull(fixture.coordinator.state.value.progress)
+            gate.unlock()
+            withTimeout(5_000) { while (fixture.coordinator.state.value.phase != "cancelled") delay(10) }
+            assertFalse(fixture.coordinator.state.value.manualSync)
+            assertFalse(fixture.store.load().enabled)
+        } finally {
+            if (gate.isLocked) gate.unlock()
+            fixture.close(); SessionManager.markLocked(); Dispatchers.resetMain()
+        }
+    }
+
     private class Fixture(context: Context, id: String, peer: String, mode: DeviceSyncMode) {
         val online = kotlinx.coroutines.flow.MutableStateFlow(setOf(peer))
         val db = Room.inMemoryDatabaseBuilder(context, PasswordDatabase::class.java).allowMainThreadQueries().setQueryExecutor { it.run() }.build()
@@ -73,6 +129,52 @@ class DeviceManualSyncTest {
             }
             provider.pause(); db.close(); steam.close()
         }
+    }
+
+    @Test fun deletion_confirmation_does_not_wait_for_receive_gate_and_ignores_stale_answers() = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined); SessionManager.markUnlocked()
+        val fixture=Fixture(RuntimeEnvironment.getApplication(),"review-local","review-peer",DeviceSyncMode.BIDIRECTIONAL)
+        ReflectionHelpers.setField(fixture.coordinator,"running",Job())
+        val gate=ReflectionHelpers.getField<Mutex>(fixture.coordinator,"gate")
+        gate.lock()
+        suspend fun review(): Boolean = kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn { continuation ->
+            val method=DeviceSyncCoordinator::class.java.getDeclaredMethod("reviewReceivedDeletions",org.json.JSONObject::class.java,
+                Int::class.javaPrimitiveType,kotlin.coroutines.Continuation::class.java)
+            method.isAccessible=true
+            method.invoke(fixture.coordinator,org.json.JSONObject().put("device_id","review-peer").put("name","Synthetic browser"),2,continuation)
+        }
+        try {
+            val work=async { review() }
+            withTimeout(5000) { while(fixture.coordinator.state.value.deletionReview==null) delay(10) }
+            val pending=fixture.coordinator.state.value.deletionReview!!
+            assertEquals(2,pending.count)
+            fixture.coordinator.confirmReceivedDeletions(pending.copy(id="stale"),true)
+            assertFalse(work.isCompleted)
+            fixture.coordinator.confirmReceivedDeletions(pending,false)
+            assertFalse(withTimeout(5000) { work.await() })
+            assertNull(fixture.coordinator.state.value.deletionReview)
+            fixture.coordinator.confirmReceivedDeletions(pending,true)
+            val cancelled=async { review() }
+            withTimeout(5000) { while(fixture.coordinator.state.value.deletionReview==null) delay(10) }
+            ReflectionHelpers.setField(fixture.coordinator,"activeSyncWork",cancelled)
+            fixture.coordinator.cancelSync()
+            assertNull(fixture.coordinator.state.value.deletionReview)
+            assertTrue(runCatching { cancelled.await() }.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+        } finally { gate.unlock(); fixture.close(); SessionManager.markLocked(); Dispatchers.resetMain() }
+    }
+
+    @Test fun batch_forget_removes_only_requested_pairs_and_persists_the_rest() = runBlocking {
+        Dispatchers.setMain(Dispatchers.Unconfined); SessionManager.markUnlocked()
+        val fixture=Fixture(RuntimeEnvironment.getApplication(),"batch-local","remove-one",DeviceSyncMode.BIDIRECTIONAL)
+        ReflectionHelpers.setField(fixture.coordinator,"running",Job())
+        fixture.settings.peers+=SavedSyncPeer("remove-two","Second fixture","pair-two","A".repeat(43))
+        fixture.settings.peers+=SavedSyncPeer("keep","Kept fixture","pair-three","A".repeat(43))
+        fixture.store.save(fixture.settings)
+        try {
+            fixture.coordinator.forgetDevices(setOf("remove-one","remove-two","already-absent"))
+            withTimeout(5000) { while(fixture.coordinator.state.value.peers.map { it.deviceId }!=listOf("keep")) delay(10) }
+            assertEquals(listOf("keep"),fixture.store.load().peers.map { it.deviceId })
+        } finally { fixture.close(); SessionManager.markLocked(); Dispatchers.resetMain() }
     }
 
     @Test fun absent_peer_never_prepares_or_probes_and_background_rejects_manual_work() = runBlocking {

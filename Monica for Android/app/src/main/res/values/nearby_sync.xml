@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="nearby_indicator_idle">Ready</string>
     <string name="nearby_status_background">Paused in background</string>
     <string name="nearby_status_waiting_apps">Waiting for the other app</string>
     <string name="nearby_hint_background">Keep Monica open and unlocked on both devices. Automatic discovery and connections pause in the background.</string>
@@ -35,7 +36,7 @@
     <string name="nearby_auto_frequency">Automatic sync frequency</string>
     <string name="nearby_frequency_disabled">Available when automatic sync is on</string>
     <string name="nearby_wait_manual">Waiting for manual sync</string>
-    <string name="nearby_manual_both_hint">When automatic sync is off on both devices, tap Sync now on each device.</string>
+    <string name="nearby_manual_both_hint">Tap Sync now once on each device, in either order. Keep both unlocked while they connect.</string>
     <string name="nearby_cancel_sync">Cancel this sync</string>
     <string name="nearby_status_ready">Ready to sync</string>
     <string name="nearby_status_preparing">Preparing sync content</string>
@@ -48,10 +49,10 @@
     <string name="nearby_status_confirming">Waiting for the other device to confirm</string>
     <string name="nearby_status_completed">Sync completed</string>
     <string name="nearby_status_review">Review Passkey transfer limits</string>
-    <string name="nearby_status_waiting">Waiting for a paired device</string>
-    <string name="nearby_hint_preparing">Reading the selected database. Connection starts after preparation.</string>
+    <string name="nearby_status_waiting">Waiting for the other device</string>
+    <string name="nearby_hint_preparing">Preparing local content. You can start sync on the other device now; connection follows when ready.</string>
     <string name="nearby_hint_prepare_failed">Connection has not started. Check the selected database; copy diagnostics if the problem continues.</string>
-    <string name="nearby_hint_connect">Keep both devices unlocked on the same reachable Wi-Fi. If automatic sync is off on both, tap Sync now on both.</string>
+    <string name="nearby_hint_connect">Keep both devices unlocked on the same reachable Wi-Fi. Tap Sync now once on each device and wait.</string>
     <string name="nearby_hint_pair">Verify that this is the intended device, then pair again on both devices.</string>
     <string name="nearby_hint_update">Update both devices to a compatible version, then try again.</string>
     <string name="nearby_hint_database">Choose an available database in Sync database, then try again.</string>
@@ -97,4 +98,21 @@
     <string name="nearby_passkey_none">No restricted Passkeys found in the last check</string>
     <string name="nearby_passkey_count">%1$d restricted Passkeys in the last check · Tap to view</string>
     <string name="nearby_passkey_refresh">Check Passkeys again</string>
+    <string name="nearby_status_cancelling">Stopping sync</string>
+    <string name="nearby_status_cancelled">This sync was cancelled</string>
+    <string name="nearby_hint_cancelling">Stop requested; closing connections. Content already saved is retained.</string>
+    <string name="nearby_hint_cancelled">Pairing and saved content are retained. Tap Sync now to start another run.</string>
+    <string name="nearby_hint_waiting_peer">Tap sync on the other device. Waiting up to two minutes; no need to tap again.</string>
+    <string name="nearby_hint_retrying">The other device is not ready yet. Retrying the connection; keep both unlocked.</string>
+    <string name="nearby_deletion_review_title">The other device includes deletions</string>
+    <string name="nearby_deletion_review_hint">Choose whether to apply deletions. Received content is not applied until you decide.</string>
+    <string name="nearby_deletion_review_body">%1$s includes %2$d pending deletions. Delete the matching local content too, or keep local content and receive only additions and updates.</string>
+    <string name="nearby_deletions_keep">Additions and updates only</string>
+    <string name="nearby_deletions_include">Apply deletions</string>
+    <string name="nearby_forget_count">Remove %1$d paired devices?</string>
+    <string name="nearby_forget_body">Pair again to sync with these devices. Content saved locally will be kept.</string>
+    <string name="nearby_selected_devices">%1$d devices selected</string>
+    <string name="nearby_select_all">Select or deselect all</string>
+    <string name="nearby_delete_selected">Remove selected devices</string>
+    <string name="nearby_device_gestures">Long press or swipe right to select · Swipe left to remove pairing</string>
 </resources>

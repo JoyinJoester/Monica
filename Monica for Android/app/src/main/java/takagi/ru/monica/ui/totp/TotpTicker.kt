@@ -1,8 +1,11 @@
 package takagi.ru.monica.ui
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -46,7 +49,16 @@ private val secondTicker = tickerFlow(smooth = false).stateIn(
 
 @Composable
 fun rememberTotpTickerMillis(smooth: Boolean): Long {
-    val millis by (if (smooth) smoothTicker else secondTicker).collectAsState()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val millis by produceState(System.currentTimeMillis(), smooth, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            // A resumed collector must never render the shared StateFlow's cached time.
+            value = System.currentTimeMillis()
+            (if (smooth) smoothTicker else secondTicker).collect {
+                value = System.currentTimeMillis()
+            }
+        }
+    }
     return millis
 }
 

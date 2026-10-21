@@ -4,6 +4,20 @@
 
 ## 中文
 
+- 修复新建与编辑页三点菜单不随“页面缩放”变化的问题：弹出窗口整体继承页面密度，菜单尺寸、圆角、间距、图标和文字同步缩放；保留系统字体大小设置，较长菜单可滚动。
+
+- 附近设备同步的连接诊断按钮居中；已配对设备支持长按／右滑多选及左滑删除，单项与批量删除配对均二次确认并保留本地内容。接收远端删除前预览并弹窗确认，可选择同步删除或仅接收新增和更新；取消、锁定及后台中断不会默认同意删除；按删除版本记住跳过选择，避免重复提示，新的删除版本仍需确认。
+
+- 附近设备同步状态卡移至页面顶部，固定无背景 M3E 指示器搭配高对比度中央文字，在空闲时静止、同步时转动，中央显示当前阶段的实际进度；未知总量不显示虚假百分比。完善准备、等待与重试提示，准备完成后保留完整连接窗口；取消立即反馈并中断可取消的准备及网络任务，保留配对和已保存内容。
+
+- 移除二维码模板编辑表单中标题、内容与备注输入框的底部指示线，聚焦、未聚焦及禁用时均保持完整圆角填充样式。
+
+- 会员卡与积分卡详情新增“查看会员码”，直接使用已保存的会员号，复用现有二维码／Code 128 条形码展示页；保留开头的零与原始文本，不支持条形码的内容仍可查看二维码。
+
+- 修复密码页面列表直接显示银行卡号和笔记内容的问题：卡号预览仅保留末四位（含旧导入条目的用户名／持卡人预览），笔记隐藏中间内容，短笔记全部遮挡；单项与分组卡片统一处理，保留原始数据、搜索及详情。
+
+- 修复密码列表验证码进度条在首次进入或返回前台时从旧进度追赶的问题；立即按当前时间对齐，保留毫秒精度、按秒更新卡片与绘制层平滑动画，共享计时器恢复时重新采样。
+
 - Monica 本地数据库新增“管理原始信息”入口；项目菜单支持单项／批量删除并二次确认，显示当前栏、数据库和所选数量，删除前重新校验数据版本。本地密码与卡片等内容移至回收站。
 
 - 补齐 KeePass、MDBX 与 Bitwarden 文件夹的移动、复制入口，统一使用居中目标选择弹窗；KeePass/MDBX 复用原生树迁移并校验写入，失败保留源内容。Bitwarden 支持同账户内移动和复制，保留加密字段；含附件、通行密钥或组织条目时暂停复制。
@@ -27,13 +41,27 @@
 
 - 优化自动填充账号操作为 M3E 居中弹窗，分组展示填充、复制和详情操作，支持大字体滚动；新增独立“无障碍填充”，从输入法、系统 Autofill 或磁贴进入均可使用，服务未启用时提供设置入口，并正确返回目标应用填写。
 
-- 统一默认与新增账号密码凭据的编辑体验：添加密码时平滑展开，生成器与删除操作统一放入三点菜单，标签统一为“用户名”并复用星星生成器图标；每个凭据固定提供简单的多行备注，独立保存、编辑与展示，不覆盖页面已有笔记或备注。
+- 统一默认与新增账号密码凭据的编辑体验：添加密码时平滑展开，生成器与删除操作统一放入三点菜单，标签统一为“用户名”并复用星星生成器图标；每个凭据固定提供简单的多行备注，独立保存、编辑与展示，不覆盖页面已有笔记或备注。#172
 
 - 优化凭据布局：新建与编辑页的备注紧接验证器密钥，连成一组卡片；详情页备注连接在验证码下方，空白备注不显示，支持复制；密码删除改为图标，与密码强度标签同一行。
 
-- 新增每条网站 URL 的独立自动填充匹配策略，可在右侧三点菜单设置默认、主域名、主机名、前缀、精确 URL、正则或从不匹配；移动 URL 时规则一同移动。匹配策略显示在对应网址卡片内，保持多网址卡片连续分组。新建与编辑页的三点操作统一为连续的 M3E 圆角弹出菜单，移除条目间断开的卡片背景与双层包边，并按当前屏幕宽度随 DPI 自适应，匹配检测使用居中弹窗。浏览器只提供域名时，不推测路径或查询参数。#171
+- 新增每条网站 URL 的独立自动填充匹配策略，可在右侧三点菜单设置默认、主域名、主机名、前缀、精确 URL、正则或从不匹配；移动 URL 时规则一同移动。匹配策略显示在对应网址卡片内，保持多网址卡片连续分组。新建与编辑页的三点操作统一为 M3E 分组菜单，去掉菜单外层厚包边与外壳阴影，并按当前屏幕宽度随 DPI 自适应，匹配检测使用居中弹窗，选项四角统一圆角。浏览器只提供域名时，不推测路径或查询参数。#171
 
 ## English
+
+- Fixed create/edit three-dot menus ignoring interface scale: the entire popup now inherits page density, scaling its size, corners, spacing, icons and text together. System font size is retained and long menus remain scrollable.
+
+- Centered nearby connection diagnostics. Paired devices support long-press/right-swipe selection and left-swipe removal; single and batch unpairing require confirmation and keep local content. Incoming deletions are previewed before applying, with a choice to include deletions or receive additions and updates only. Cancellation, locking and background interruptions never grant deletion consent. Skipped deletion versions are remembered locally to prevent repeat prompts; newer deletions still require consent.
+
+- Moved nearby sync status to the top with a fixed background-free M3E indicator and high-contrast center text: static when idle, animated during sync, and showing actual per-stage progress when available. Clarified preparation, waiting and retries; the connection window starts after preparation. Cancel responds immediately and interrupts cancellable preparation and network work while retaining pairing and saved content.
+
+- Removed the bottom indicators from title, content and notes fields in the QR template editor, retaining rounded filled fields when focused, unfocused or disabled.
+
+- Membership and rewards card details now offer View membership code, reusing the existing QR / Code 128 viewer with the saved membership number. Leading zeros and original text are preserved; values unsupported by Code 128 can still be shown as QR codes.
+
+- Mask bank-card numbers and note previews in the password list: show only the last four card digits, including legacy username/cardholder previews, and hide the middle of notes or all of short notes. Single and grouped cards share the rule; original data, search and details are preserved.
+
+- Fixed password-list OTP progress catching up from stale positions on entry or foreground return. Progress now aligns immediately with current time, retains millisecond precision and draw-layer smoothing with second-level card updates, and refreshes the shared clock on resume.
 
 - Added raw-information management for Monica local storage and confirmed single/batch deletion from item actions. Confirmation identifies the pane, database and selection count; writes recheck the source revision. Local passwords and secure items go to Trash.
 
@@ -54,4 +82,4 @@
 - Redesigned autofill account actions as a centered M3E dialog with grouped fill, copy and detail actions and scrolling for large text. Added independent Accessibility fill from the keyboard, system Autofill and quick tile, with a setup prompt when the service is disabled and correct return to the target app.
 - Unified primary and added credential editors with smooth password expansion, shared overflow menus for generation/deletion, consistent Username labels and star generator icons. Each credential now has a fixed multiline note field, saved and displayed independently of page-level notes.
 - Refined credential layouts: editor notes connect directly below the verification key; detail notes connect below the authenticator and stay hidden when blank, with copying supported. Password deletion uses an icon on the strength-label row.
-- Added per-URL autofill matching from the website overflow menu: Default, Base domain, Host, Starts with, Exact URL, Regex and Never. Rules follow reordered URLs. Matching policies stay inside each URL card, keeping grouped rows connected. Create/edit overflow actions now share a single continuous rounded M3E menu surface without separate item cards or a double rim, resize with the current screen width/DPI, and use a centered matching dialog. Path/query matching requires a full URL from the browser. #171
+- Added per-URL autofill matching from the website overflow menu: Default, Base domain, Host, Starts with, Exact URL, Regex and Never. Rules follow reordered URLs. Matching policies stay inside each URL card, keeping grouped rows connected. Create/edit overflow actions now share grouped M3E menus without the thick outer rim or shell shadow, resize with the current screen width/DPI, and use a centered matching dialog with uniform option corners. Path/query matching requires a full URL from the browser. #171

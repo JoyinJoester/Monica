@@ -46,9 +46,12 @@ struct State {
     applied: BTreeMap<String, Clock>,
     #[serde(default)]
     active_scopes: Option<BTreeSet<String>>,
+    // Local receive decisions, never part of Wire or the advertised content revision.
+    #[serde(default)]
+    ignored_deletions: BTreeMap<String, Clock>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct Local {
     local_id: String,
     #[serde(default)]
@@ -151,6 +154,7 @@ struct Scan {
     state: State,
     scopes: BTreeSet<String>,
     seen: BTreeSet<String>,
+    locals: BTreeMap<String, Local>,
 }
 struct Replica {
     path: PathBuf,
@@ -158,6 +162,9 @@ struct Replica {
     state: State,
     content_revision: String,
     scan: Option<Scan>,
+    // Physical snapshots from the last complete scan, never sent to peers.
+    locals: BTreeMap<String, Local>,
+    physical_scan: bool,
 }
 static REPLICAS: OnceLock<Mutex<HashMap<u64, Replica>>> = OnceLock::new();
 
@@ -312,6 +319,16 @@ fn attach_alias(state: &mut State, left: &str, right: &str) -> Result<()> {
     for binding in state.bindings.values_mut() {
         if binding.record_id == alias {
             binding.record_id = canonical.clone();
+        }
+    }
+    if let Some(clock) = state.ignored_deletions.remove(&alias) {
+        let ignored = state
+            .ignored_deletions
+            .entry(canonical.clone())
+            .or_default();
+        *ignored = union(ignored, &clock);
+        if ignored.len() > 64 {
+            return Err("replica_limit");
         }
     }
     if let Some(clock) = state.applied.remove(&alias) {
@@ -674,6 +691,194 @@ fn acknowledge(state: &mut State, value: &Value) -> Result<()> {
     Ok(())
 }
 
+fn destructive(record: &Record) -> bool {
+    record.deleted || record.data.get("trashed").and_then(Value::as_bool) == Some(true)
+}
+
+fn review_count(state: &State) -> usize {
+    let index = binding_index(state);
+    state
+        .records
+        .values()
+        .filter(|record| {
+            destructive(record)
+                && needs_apply(state, record)
+                && index
+                    .get(&record.id)
+                    .is_none_or(|items| items.iter().any(|(_, b)| binding_active(state, b)))
+        })
+        .count()
+}
+
+fn ignore_deletion(state: &mut State, record: &Record) -> Result<()> {
+    if state.ignored_deletions.len() >= MAX_RECORDS
+        && !state.ignored_deletions.contains_key(&record.id)
+    {
+        return Err("replica_limit");
+    }
+    let ignored = state
+        .ignored_deletions
+        .entry(record.id.clone())
+        .or_default();
+    *ignored = union(ignored, &record.clock);
+    if ignored.len() > 64 {
+        return Err("replica_limit");
+    }
+    Ok(())
+}
+
+// Keeping a physical local item is a real local decision, not an acknowledgement
+// pretending that the item was deleted. This also repairs tombstones left pending
+// by older interrupted receives. Its new clock dominates the rejected deletion.
+fn retain_pending(state: &mut State, locals: &BTreeMap<String, Local>) -> Result<()> {
+    let live: Vec<_> = locals
+        .values()
+        .filter(|local| {
+            !local.deleted && local.data.get("trashed").and_then(Value::as_bool) != Some(true)
+        })
+        .cloned()
+        .collect();
+    for local in live {
+        let Some(binding) = state.bindings.get(&local.local_id).cloned() else {
+            continue;
+        };
+        if !binding_active(state, &binding) {
+            continue;
+        }
+        let id = resolve(state, &binding.record_id);
+        let Some(mut record) = state.records.get(&id).cloned() else {
+            continue;
+        };
+        if !destructive(&record) || !needs_apply(state, &record) {
+            continue;
+        }
+        state.counter = state
+            .counter
+            .max(record.clock.get(&state.node).copied().unwrap_or(0))
+            .checked_add(1)
+            .ok_or("replica_limit")?;
+        record.clock.insert(state.node.clone(), state.counter);
+        record.writer = state.node.clone();
+        record.deleted = false;
+        record.data = local.data.clone();
+        validate_record(&record)?;
+        state.applied.insert(id.clone(), record.clock.clone());
+        state.bindings.insert(
+            local.local_id,
+            Binding {
+                record_id: id.clone(),
+                scope: local.scope,
+                guard: local.guard,
+                hash: fingerprint(false, &local.data)?,
+                clock: record.clock.clone(),
+                deleted: false,
+            },
+        );
+        state.records.insert(id, record);
+    }
+    // A complete physical scan proves that remaining active tombstones have no
+    // live local item to retain. Do not import cached unbound trash from an old
+    // interrupted receive, and never mark a retained live item as deleted.
+    let index = binding_index(state);
+    let absent: Vec<_> = state
+        .records
+        .values()
+        .filter(|r| {
+            destructive(r)
+                && needs_apply(state, r)
+                && index
+                    .get(&r.id)
+                    .is_none_or(|bs| bs.iter().any(|(_, b)| binding_active(state, b)))
+        })
+        .map(|r| (r.clone(), index.contains_key(&r.id)))
+        .collect();
+    for (record, bound) in absent {
+        ignore_deletion(state, &record)?;
+        if bound {
+            state.applied.insert(record.id, record.clock);
+        } else {
+            state.records.remove(&record.id);
+            state.applied.remove(&record.id);
+        }
+    }
+    Ok(())
+}
+
+fn incoming_state(baseline: &State, value: &Value, omit: bool) -> Result<State> {
+    let path = Path::new(string(value, "path")?);
+    if std::fs::metadata(path)
+        .map_err(|_| "storage_read_failed")?
+        .len()
+        > (MAX_STATE + 1024) as u64
+    {
+        return Err("replica_limit");
+    }
+    let bytes = std::fs::read(path).map_err(|_| "storage_read_failed")?;
+    let key = peering::secret_key(string(value, "content_key")?)?;
+    let wire: Wire =
+        serde_json::from_slice(&unseal(&bytes, &key)?).map_err(|_| "invalid_replica")?;
+    if wire.version != 1 || wire.records.len() > MAX_RECORDS || wire.aliases.len() > MAX_RECORDS * 2
+    {
+        return Err("replica_limit");
+    }
+    for (id, record) in &wire.records {
+        validate_record(record)?;
+        if id != &record.id {
+            return Err("invalid_record");
+        }
+    }
+    let mut state = baseline.clone();
+    for (alias, canonical) in &wire.aliases {
+        if !peering::identifier(alias) || !peering::identifier(canonical) || alias <= canonical {
+            return Err("invalid_alias");
+        }
+        attach_alias(&mut state, alias, canonical)?;
+    }
+    for mut record in wire.records.into_values() {
+        record.id = resolve(&state, &record.id);
+        state.counter = state
+            .counter
+            .max(record.clock.get(&state.node).copied().unwrap_or(0));
+        if destructive(&record)
+            && (omit
+                || state
+                    .ignored_deletions
+                    .get(&record.id)
+                    .is_some_and(|ignored| dominates(ignored, &record.clock)))
+        {
+            if omit {
+                ignore_deletion(&mut state, &record)?;
+            }
+            continue;
+        }
+        // Root metadata belongs to its source vault, even when two vaults have the same tags.
+        if !state.records.contains_key(&record.id)
+            && !record.deleted
+            && record.data.get("entry_type").and_then(Value::as_str) != Some("vault-metadata")
+        {
+            let f = fingerprint(false, &record.data)?;
+            let duplicate = state
+                .records
+                .values()
+                .find(|existing| {
+                    !existing.deleted
+                        && existing.origins.is_disjoint(&record.origins)
+                        && fingerprint(false, &existing.data).ok().as_deref() == Some(f.as_str())
+                })
+                .map(|existing| existing.id.clone());
+            if let Some(duplicate) = duplicate {
+                attach_alias(&mut state, &record.id, &duplicate)?;
+                record.id = resolve(&state, &record.id);
+            }
+        }
+        state.counter = state
+            .counter
+            .max(record.clock.get(&state.node).copied().unwrap_or(0));
+        merge_record(&mut state, record, 0)?;
+    }
+    Ok(state)
+}
+
 pub(super) fn request(value: &Value) -> Result<Value> {
     let operation = string(value, "operation")?;
     let mut sessions = replicas().lock().map_err(|_| "unavailable")?;
@@ -715,6 +920,8 @@ pub(super) fn request(value: &Value) -> Result<Value> {
             content_revision: revision(&state)?,
             state,
             scan: None,
+            locals: BTreeMap::new(),
+            physical_scan: false,
         };
         save(&replica)?;
         sessions.insert(handle, replica);
@@ -741,10 +948,12 @@ pub(super) fn request(value: &Value) -> Result<Value> {
             {
                 return Err("invalid_scope");
             }
+            replica.physical_scan = false;
             replica.scan = Some(Scan {
                 state: replica.state.clone(),
                 scopes,
                 seen: BTreeSet::new(),
+                locals: BTreeMap::new(),
             });
             Ok(json!({}))
         }
@@ -758,19 +967,25 @@ pub(super) fn request(value: &Value) -> Result<Value> {
             let scan = replica.scan.as_mut().ok_or("scan_not_started")?;
             let mut staged = scan.state.clone();
             let mut seen = scan.seen.clone();
+            let mut locals = BTreeMap::new();
             for local in entries {
                 if !scan.scopes.contains(&local.scope) || !seen.insert(local.local_id.clone()) {
                     return Err("invalid_scope");
                 }
-                reconcile(&mut staged, local)?;
+                reconcile(&mut staged, local.clone())?;
+                locals.insert(local.local_id.clone(), local);
             }
             scan.state = staged;
             scan.seen = seen;
+            scan.locals.extend(locals);
             Ok(json!({}))
         }
         "replica_scan_end" => {
             let scan = replica.scan.take().ok_or("scan_not_started")?;
+            let locals = scan.locals.clone();
             commit(replica, finish_scan(scan)?)?;
+            replica.locals = locals;
+            replica.physical_scan = true;
             Ok(json!({"revision":replica.content_revision}))
         }
         "replica_revision" => {
@@ -892,69 +1107,37 @@ pub(super) fn request(value: &Value) -> Result<Value> {
                 json!({"content_key":content_key,"revision":replica.content_revision,"pending":has_pending(&replica.state),"asset_ids":asset_ids}),
             )
         }
-        "replica_merge" => {
-            let path = Path::new(string(value, "path")?);
-            if std::fs::metadata(path)
-                .map_err(|_| "storage_read_failed")?
-                .len()
-                > (MAX_STATE + 1024) as u64
+        "replica_merge_preview" | "replica_merge" => {
+            let preview = incoming_state(&replica.state, value, false)?;
+            let review_revision = hash(&Zeroizing::new(
+                serde_json::to_vec(&preview).map_err(|_| "invalid_replica")?,
+            ));
+            let deletions = review_count(&preview);
+            if operation == "replica_merge_preview" {
+                return Ok(json!({"deletions":deletions, "review_revision":review_revision}));
+            }
+            if value
+                .get("review_revision")
+                .and_then(Value::as_str)
+                .is_some_and(|r| r != review_revision)
             {
-                return Err("replica_limit");
+                return Err("review_changed");
             }
-            let bytes = std::fs::read(path).map_err(|_| "storage_read_failed")?;
-            let key = peering::secret_key(string(value, "content_key")?)?;
-            let wire: Wire =
-                serde_json::from_slice(&unseal(&bytes, &key)?).map_err(|_| "invalid_replica")?;
-            if wire.version != 1
-                || wire.records.len() > MAX_RECORDS
-                || wire.aliases.len() > MAX_RECORDS * 2
-            {
-                return Err("replica_limit");
+            let omit = match value.get("deletion_policy").and_then(Value::as_str) {
+                None | Some("include") => false,
+                Some("omit") => true,
+                _ => return Err("invalid_request"),
+            };
+            if omit && !replica.physical_scan {
+                return Err("scan_required");
             }
-            for (id, record) in &wire.records {
-                validate_record(record)?;
-                if id != &record.id {
-                    return Err("invalid_record");
-                }
-            }
-            let mut state = replica.state.clone();
-            for (alias, canonical) in &wire.aliases {
-                if !peering::identifier(alias)
-                    || !peering::identifier(canonical)
-                    || alias <= canonical
-                {
-                    return Err("invalid_alias");
-                }
-                attach_alias(&mut state, alias, canonical)?;
-            }
-            for mut record in wire.records.into_values() {
-                record.id = resolve(&state, &record.id);
-                // Root metadata belongs to its source vault, even when two vaults have the same tags.
-                if !state.records.contains_key(&record.id)
-                    && !record.deleted
-                    && record.data.get("entry_type").and_then(Value::as_str)
-                        != Some("vault-metadata")
-                {
-                    let f = fingerprint(false, &record.data)?;
-                    let duplicate = state
-                        .records
-                        .values()
-                        .find(|existing| {
-                            !existing.deleted
-                                && existing.origins.is_disjoint(&record.origins)
-                                && fingerprint(false, &existing.data).ok().as_deref()
-                                    == Some(f.as_str())
-                        })
-                        .map(|existing| existing.id.clone());
-                    if let Some(duplicate) = duplicate {
-                        attach_alias(&mut state, &record.id, &duplicate)?;
-                        record.id = resolve(&state, &record.id);
-                    }
-                }
-                state.counter = state
-                    .counter
-                    .max(record.clock.get(&state.node).copied().unwrap_or(0));
-                merge_record(&mut state, record, 0)?;
+            let mut state = if omit {
+                incoming_state(&replica.state, value, true)?
+            } else {
+                preview
+            };
+            if omit {
+                retain_pending(&mut state, &replica.locals)?;
             }
             commit(replica, state)?;
             Ok(json!({"revision":replica.content_revision}))
@@ -1070,6 +1253,137 @@ mod tests {
             deleted: false,
             data: json!({"title":"Synthetic login","password":password}),
         }
+    }
+
+    fn receive_file(wire: Wire) -> (PathBuf, Value) {
+        let root = std::env::temp_dir().join(format!("monica-review-{}", peering::random_id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("changes.mdbxsync");
+        let content_key = peering::random_key();
+        let key = peering::secret_key(&content_key).unwrap();
+        std::fs::write(
+            &path,
+            seal(&serde_json::to_vec(&wire).unwrap(), &key).unwrap(),
+        )
+        .unwrap();
+        (
+            root,
+            json!({"path":path.to_str().unwrap(),"content_key":content_key}),
+        )
+    }
+
+    #[test]
+    fn receive_preview_does_not_commit_and_omit_keeps_content_while_accepting_updates() {
+        for soft in [false, true] {
+            let mut target = state("phone");
+            reconcile(&mut target, local("one", "one", "keep me")).unwrap();
+            reconcile(&mut target, local("two", "two", "old")).unwrap();
+            let before = serde_json::to_vec(&target).unwrap();
+            let mut source = target.clone();
+            source.node = "browser".into();
+            let mut deleted = source.records["one"].clone();
+            deleted.clock.insert("browser".into(), 1);
+            deleted.writer = "browser".into();
+            deleted.deleted = true;
+            deleted.data = if soft {
+                json!({"title":"Trashed", "trashed":true})
+            } else {
+                json!({})
+            };
+            merge_record(&mut source, deleted, 0).unwrap();
+            let mut update = source.records["two"].clone();
+            update.clock.insert("browser".into(), 2);
+            update.writer = "browser".into();
+            update.data["password"] = json!("updated");
+            merge_record(&mut source, update, 0).unwrap();
+            reconcile(&mut source, local("three", "three", "new")).unwrap();
+            let (root, request) = receive_file(export_wire(&source, false));
+            let preview = incoming_state(&target, &request, false).unwrap();
+            assert_eq!(review_count(&preview), 1);
+            assert_eq!(serde_json::to_vec(&target).unwrap(), before);
+            let mut kept = incoming_state(&target, &request, true).unwrap();
+            retain_pending(
+                &mut kept,
+                &BTreeMap::from([("one".into(), local("one", "one", "keep me"))]),
+            )
+            .unwrap();
+            assert_eq!(review_count(&kept), 0);
+            let reopened: State =
+                serde_json::from_slice(&serde_json::to_vec(&kept).unwrap()).unwrap();
+            assert_eq!(
+                review_count(&incoming_state(&reopened, &request, false).unwrap()),
+                0,
+                "the same deletion must not prompt again after keeping and reopening"
+            );
+            assert!(!serde_json::to_value(export_wire(&kept, false))
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .contains_key("ignored_deletions"));
+            let mut later = source.records["one"].clone();
+            later.clock.insert("browser".into(), 100);
+            source.records.insert("one".into(), later);
+            let (later_root, later_request) = receive_file(export_wire(&source, false));
+            assert_eq!(
+                review_count(&incoming_state(&reopened, &later_request, false).unwrap()),
+                1,
+                "a newer deletion must ask again"
+            );
+            std::fs::remove_dir_all(later_root).unwrap();
+            assert!(!kept.records["one"].deleted);
+            assert_eq!(kept.records["one"].data["password"], "keep me");
+            assert_eq!(kept.records["two"].data["password"], "updated");
+            assert_eq!(kept.records["three"].data["password"], "new");
+            assert!(preview.records["one"].deleted);
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn retain_repairs_old_pending_tombstones_without_fake_delete_acknowledgements() {
+        let mut s = state("phone");
+        let physical = local("local", "entry", "preserved");
+        reconcile(&mut s, physical.clone()).unwrap();
+        let mut deletion = s.records["entry"].clone();
+        deletion.clock.insert("browser".into(), 9);
+        deletion.writer = "browser".into();
+        deletion.deleted = true;
+        deletion.data = json!({});
+        merge_record(&mut s, deletion.clone(), 0).unwrap();
+        assert_eq!(review_count(&s), 1);
+        retain_pending(&mut s, &BTreeMap::from([("local".into(), physical)])).unwrap();
+        assert_eq!(review_count(&s), 0);
+        assert!(!s.bindings["local"].deleted);
+        assert_eq!(s.records["entry"].data["password"], "preserved");
+        assert!(dominates(&s.records["entry"].clock, &deletion.clock));
+        assert!(!needs_apply(&s, &s.records["entry"]));
+        let restored_revision = revision(&s).unwrap();
+        merge_record(&mut s, deletion, 0).unwrap();
+        assert_eq!(revision(&s).unwrap(), restored_revision);
+        assert!(!export_wire(&s, false).records["entry"].deleted);
+    }
+
+    #[test]
+    fn omit_never_imports_unbound_trash_and_preview_authenticates_before_any_changes() {
+        let mut source = state("browser");
+        let mut item = local("deleted", "deleted", "trash");
+        item.deleted = true;
+        item.data["trashed"] = json!(true);
+        reconcile(&mut source, item).unwrap();
+        let target = state("phone");
+        let (root, request) = receive_file(export_wire(&source, false));
+        assert_eq!(
+            review_count(&incoming_state(&target, &request, false).unwrap()),
+            1
+        );
+        assert!(incoming_state(&target, &request, true)
+            .unwrap()
+            .records
+            .is_empty());
+        std::fs::write(request["path"].as_str().unwrap(), b"tampered").unwrap();
+        assert!(incoming_state(&target, &request, false).is_err());
+        assert!(target.records.is_empty());
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1294,6 +1608,7 @@ mod tests {
         let scan = Scan {
             state: s,
             scopes: BTreeSet::from(["passwords".into()]),
+            locals: BTreeMap::new(),
             seen: BTreeSet::from(["native1".into()]),
         };
         let after = finish_scan(scan).unwrap();
@@ -1310,6 +1625,7 @@ mod tests {
             state: s,
             scopes: BTreeSet::from(["another-source".into()]),
             seen: BTreeSet::new(),
+            locals: BTreeMap::new(),
         })
         .unwrap();
         assert!(!after.records["entry1"].deleted);
@@ -1317,6 +1633,7 @@ mod tests {
             state: after,
             scopes: BTreeSet::from(["passwords".into()]),
             seen: BTreeSet::new(),
+            locals: BTreeMap::new(),
         })
         .unwrap();
         assert!(after.records["entry1"].deleted);
@@ -1364,6 +1681,8 @@ mod tests {
             state: state("desktop"),
             content_revision: String::new(),
             scan: None,
+            locals: BTreeMap::new(),
+            physical_scan: false,
         };
         let mut staged = replica.state.clone();
         reconcile(&mut staged, local("local", "entry", "secret")).unwrap();
@@ -1384,6 +1703,8 @@ mod tests {
             state: state("desktop"),
             content_revision: String::new(),
             scan: None,
+            locals: BTreeMap::new(),
+            physical_scan: false,
         };
         let mut staged = replica.state.clone();
         reconcile(&mut staged, local("local", "entry", "old")).unwrap();

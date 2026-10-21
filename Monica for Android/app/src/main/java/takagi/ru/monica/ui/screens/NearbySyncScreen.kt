@@ -60,7 +60,8 @@ fun LanSyncScreen(onNavigateBack: () -> Unit, onScanPairingQr: () -> Unit) {
     NearbySyncContent(state, NearbySyncActions(onNavigateBack, onScanPairingQr, { coordinator.pair() },
         { coordinator.pair(it) }, coordinator::cancelPairing, coordinator::setEnabled, coordinator::setMode,
         coordinator::setInterval, coordinator::syncNow, coordinator::forget, coordinator::setDatabase, coordinator::cancelSync,
-        coordinator::setPasskeyNoticeSuppressed, coordinator::refreshPasskeyDiagnostics),
+        coordinator::setPasskeyNoticeSuppressed, coordinator::refreshPasskeyDiagnostics, coordinator::forgetDevices,
+        coordinator::confirmReceivedDeletions),
         databases.filter { it.isUsable })
 }
 
@@ -84,7 +85,9 @@ internal data class NearbySyncActions(
     val enabled: (Boolean) -> Unit = {}, val mode: (DeviceSyncMode) -> Unit = {},
     val interval: (Int) -> Unit = {}, val sync: () -> Unit = {}, val forget: (String) -> Unit = {},
     val database: (Long?) -> Unit = {}, val cancelSync: () -> Unit = {},
-    val suppressPasskeyNotice: (Boolean) -> Unit = {}, val refreshPasskeys: () -> Unit = {})
+    val suppressPasskeyNotice: (Boolean) -> Unit = {}, val refreshPasskeys: () -> Unit = {},
+    val forgetDevices: ((Set<String>) -> Unit)? = null,
+    val receivedDeletions: (DeviceDeletionReview, Boolean) -> Unit = { _, _ -> })
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,7 +97,6 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
     var invitation by rememberSaveable { mutableStateOf("") }
     var minutes by rememberSaveable { mutableStateOf("10") }
     var custom by rememberSaveable { mutableStateOf(false) }
-    var forgetting by rememberSaveable { mutableStateOf<String?>(null) }
     var viewingPasskeys by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(sheet, state.databaseId) { if (sheet == "details") actions.refreshPasskeys() }
     if (viewingPasskeys && state.passkeyReview == null) {
@@ -119,11 +121,8 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
                 enabled = value != null && value in 1..1440) { Text(stringResource(R.string.device_sync_save)) } },
             dismissButton = { TextButton({ custom = false }) { Text(stringResource(R.string.cancel)) } })
     }
-    forgetting?.let { id ->
-        AlertDialog(onDismissRequest = { forgetting = null }, title = { Text(stringResource(R.string.device_sync_forget)) },
-            text = { Text(stringResource(R.string.device_sync_forget_hint)) },
-            confirmButton = { TextButton({ actions.forget(id); forgetting = null }) { Text(stringResource(R.string.device_sync_forget)) } },
-            dismissButton = { TextButton({ forgetting = null }) { Text(stringResource(R.string.cancel)) } })
+    if (takagi.ru.monica.ui.password.LocalNearbySyncMenu.current == null) state.deletionReview?.let { review ->
+        NearbyDeletionReviewDialog(review, actions.cancelSync) { actions.receivedDeletions(review, it) }
     }
     if (sheet != null) ModalBottomSheet(onDismissRequest = ::closeSheet,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -206,6 +205,8 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
     }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            NearbySyncStatus(state, diagnostics = { sheet = "details" }, cancelPairing = actions.cancelPairing,
+                sync = actions.sync, cancelSync = actions.cancelSync)
             Text(stringResource(R.string.nearby_intro), Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SettingsPanelGroup(stringResource(R.string.nearby_settings)) {
@@ -219,35 +220,8 @@ internal fun NearbySyncContent(state: DeviceSyncState, actions: NearbySyncAction
                     if (state.enabled) frequencyName(state.intervalSeconds) else stringResource(R.string.nearby_frequency_disabled),
                     onClick = { sheet = "frequency" }, enabled = state.enabled)
             }
-            Button(if (state.manualSync) actions.cancelSync else actions.sync, Modifier.fillMaxWidth(),
-                enabled = state.manualSync || state.peers.isNotEmpty() && !state.pairing) {
-                Icon(if (state.manualSync) Icons.Default.Close else Icons.Default.Sync, null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(if (state.manualSync) R.string.nearby_cancel_sync else R.string.device_sync_now))
-            }
-            NearbySyncStatus(state, diagnostics = { sheet = "details" }, cancelPairing = actions.cancelPairing)
-            SettingsPanelGroup(stringResource(R.string.device_sync_devices), Modifier.testTag("nearby-devices")) {
-                if (state.peers.isEmpty()) SettingsPanelRow(Icons.Default.Devices, stringResource(R.string.nearby_no_devices_title), stringResource(R.string.device_sync_no_devices))
-                state.peers.forEach { peer ->
-                    val status = stringResource(when (peer.status) {
-                        "syncing" -> R.string.device_sync_syncing
-                        "online" -> R.string.device_sync_online
-                        "scheduled" -> R.string.device_sync_scheduled
-                        "app_closed" -> R.string.nearby_status_waiting_apps
-                        "manual" -> R.string.nearby_wait_manual
-                        "paused" -> R.string.device_sync_paused
-                        "locked" -> R.string.device_sync_locked
-                        "preparation_failed" -> R.string.device_sync_preparation_failed_status
-                        "first_sync_pending" -> R.string.device_sync_first_pending
-                        "waiting" -> if (peer.lastSyncedAt == 0L) R.string.device_sync_first_pending else R.string.device_sync_waiting
-                        else -> if (peer.lastSyncedAt == 0L) R.string.device_sync_first_pending else R.string.device_sync_offline
-                    })
-                    val last = if (peer.lastSyncedAt > 0) "\n" + stringResource(R.string.device_sync_last,
-                        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(peer.lastSyncedAt))) else ""
-                    SettingsPanelRow(Icons.Default.Devices, peer.name, status + last, trailing = {
-                        IconButton({ forgetting = peer.deviceId }) { Icon(Icons.Default.LinkOff, stringResource(R.string.device_sync_forget)) }
-                    })
-                }
+            NearbyPairedDevices(state.peers) { ids ->
+                actions.forgetDevices?.invoke(ids) ?: ids.forEach(actions.forget)
             }
             SettingsPanelGroup(stringResource(R.string.nearby_add_device)) {
                 SettingsPanelRow(Icons.Default.QrCode2, stringResource(R.string.device_sync_show_qr), stringResource(R.string.nearby_generate_hint),

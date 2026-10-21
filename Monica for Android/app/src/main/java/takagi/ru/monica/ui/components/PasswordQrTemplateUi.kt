@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
@@ -66,6 +67,12 @@ fun PasswordQrContentEditor(
     val latestSave by rememberUpdatedState(onSave)
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val fieldColors = TextFieldDefaults.colors(
+        focusedIndicatorColor = Color.Transparent,
+        unfocusedIndicatorColor = Color.Transparent,
+        disabledIndicatorColor = Color.Transparent,
+        errorIndicatorColor = Color.Transparent,
+    )
     fun draft() = block.edited(title, mapOf("content" to content.text, "notes" to notes,
         "mode" to if (template) "template" else "literal", "templateVersion" to "1"))
     fun failed(cause: Throwable) {
@@ -80,7 +87,8 @@ fun PasswordQrContentEditor(
             verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(stringResource(R.string.content_block_qr), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(12.dp))
             TextField(title, { title = it }, label = { Text(stringResource(R.string.title)) },
-                enabled = !busy, modifier = Modifier.fillMaxWidth().testTag("block_title"), shape = entryGroupShape(0, 1))
+                enabled = !busy, modifier = Modifier.fillMaxWidth().testTag("block_title"), shape = entryGroupShape(0, 1),
+                colors = fieldColors)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = !template, onClick = { template = false; error = null }, enabled = !busy,
                     label = { Text(stringResource(R.string.qr_template_literal)) }, modifier = Modifier.testTag("qr_mode_literal"))
@@ -93,7 +101,8 @@ fun PasswordQrContentEditor(
                 visualTransformation = if (!template && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
                 trailingIcon = { if (!template) IconButton(onClick = { reveal = !reveal }) {
                     Icon(if (reveal) Icons.Default.VisibilityOff else Icons.Default.Visibility, stringResource(R.string.show_password))
-                } }, modifier = Modifier.fillMaxWidth().testTag("block_field_content"), shape = entryGroupShape(0, 1))
+                } }, modifier = Modifier.fillMaxWidth().testTag("block_field_content"), shape = entryGroupShape(0, 1),
+                colors = fieldColors)
             if (template) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(enabled = !busy, modifier = Modifier.testTag("qr_insert_field"), onClick = {
@@ -114,7 +123,8 @@ fun PasswordQrContentEditor(
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
             }
             TextField(notes, { notes = it }, label = { Text(stringResource(R.string.notes)) }, enabled = !busy,
-                modifier = Modifier.fillMaxWidth().testTag("block_field_notes"), shape = entryGroupShape(0, 1), maxLines = 4)
+                modifier = Modifier.fillMaxWidth().testTag("block_field_notes"), shape = entryGroupShape(0, 1), maxLines = 4,
+                colors = fieldColors)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp).testTag("qr_template_error")) }
             FilledTonalButton(enabled = !busy && content.text.isNotEmpty() && (!template || readValues != null),
                 modifier = Modifier.fillMaxWidth().testTag("qr_template_generate"), onClick = {

@@ -4762,4 +4762,5 @@
     <string name="wallet_pass_gate">Gate</string>
     <string name="wallet_pass_seat">Seat</string>
     <string name="wallet_pass_class">Travel class</string>
+    <string name="wallet_pass_show_code">View membership code</string>
 </resources>

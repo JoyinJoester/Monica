@@ -66,25 +66,36 @@ class NearbySyncStatusTest {
             }
         }
         val devices = compose.onNodeWithTag("nearby-devices")
-        devices.performScrollTo()
         val top = devices.getUnclippedBoundsInRoot().top.value
         fun statusHeight() = compose.onNodeWithTag("nearby-status").getUnclippedBoundsInRoot().let { (it.bottom - it.top).value }
         val height = statusHeight()
+        fun indicatorSize() = compose.onNodeWithTag("nearby-sync-indicator").getUnclippedBoundsInRoot().let { (it.right - it.left) to (it.bottom - it.top) }
+        val indicatorSize = indicatorSize()
+        assertTrue("Status should precede settings", compose.onNodeWithTag("nearby-status").getUnclippedBoundsInRoot().top.value <
+            compose.onNodeWithText(localized.getString(R.string.nearby_settings)).getUnclippedBoundsInRoot().top.value)
         val transitions = listOf(
             initial.copy(phase = "preparing", manualSync = true, progress = DeviceSyncProgress("preparing")),
             initial.copy(phase = "preparing", manualSync = true, progress = DeviceSyncProgress("preparing", 64, 300)),
             initial.copy(phase = "transferring", manualSync = true, activeConnections = 1, progress = DeviceSyncProgress("transferring", bytes = 250000, totalBytes = 1000000)),
             initial.copy(phase = "received", manualSync = true, activeConnections = 1),
             initial.copy(phase = "failed", error = "invalid_request", failureStage = "preparing", failureOperation = "replica_resolve"),
-            initial.copy(phase = "completed"), initial.copy(phase = "waiting", pairing = true), initial
+            initial.copy(phase = "completed"), initial.copy(phase = "waiting", pairing = true),
+            initial.copy(phase = "cancelling", manualSync = true), initial.copy(phase = "cancelled"), initial
         )
         transitions.forEach { next ->
             compose.runOnIdle { state.value = next }
             compose.waitForIdle()
             assertEquals("Device group moved at ${next.phase}", top, devices.getUnclippedBoundsInRoot().top.value, .5f)
             assertEquals("Status height changed at ${next.phase}", height, statusHeight(), .5f)
+            assertEquals(indicatorSize, indicatorSize())
+            val cardBounds = compose.onNodeWithTag("nearby-status").getUnclippedBoundsInRoot()
+            val diagnosticBounds = compose.onNodeWithTag("nearby-diagnostics-button").getUnclippedBoundsInRoot()
+            assertEquals("Diagnostics must be horizontally centered at ${next.phase}",
+                (cardBounds.left.value + cardBounds.right.value) / 2,
+                (diagnosticBounds.left.value + diagnosticBounds.right.value) / 2, .5f)
             if (next.phase == "transferring") {
                 compose.onNodeWithTag("nearby-status-title").assertTextEquals(localized.getString(R.string.nearby_status_transferring))
+                compose.onNodeWithTag("nearby-sync-percentage").assertTextEquals("25%")
                 capture("transfer-$scale")
             }
             if (next.error != null) capture("failure-$scale")

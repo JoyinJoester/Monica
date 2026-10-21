@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Rule
@@ -44,8 +45,8 @@ internal fun UrlMatchModeDialog(url: String, initial: Mode, onConfirm: (Mode) ->
                 Text(url, style = MaterialTheme.typography.bodySmall)
                 Text(stringResource(R.string.url_match_explanation))
                 Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Mode.entries.forEachIndexed { index, mode ->
-                        Surface(shape = entryGroupShape(index, Mode.entries.size),
+                    Mode.entries.forEach { mode ->
+                        Surface(shape = RoundedCornerShape(12.dp),
                             color = if (selected == mode) MaterialTheme.colorScheme.secondaryContainer
                                 else MaterialTheme.colorScheme.surfaceContainerHigh) {
                             Row(Modifier.fillMaxWidth().selectable(selected == mode, role = Role.RadioButton,

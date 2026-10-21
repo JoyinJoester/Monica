@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.ui.components.WalletPassDetails
+import takagi.ru.monica.ui.components.WalletPassCodeButton
 import takagi.ru.monica.ui.components.labelRes
 import takagi.ru.monica.ui.components.icon
 import takagi.ru.monica.R
@@ -303,6 +304,7 @@ fun DocumentDetailScreen(
                                 context = context
                             )
                         }
+                        WalletPassCodeButton(data)
                     }
                 }
                 

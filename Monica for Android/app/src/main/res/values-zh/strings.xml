@@ -4697,4 +4697,5 @@
     <string name="url_match_limited_context">主机名不匹配其他子域名。浏览器仅提供域名时，不推测协议、路径或查询参数；精确 URL 和含路径的前缀规则需有完整 URL 才能匹配。正则使用 RE2 语法。</string>
     <string name="url_match_regex_error">当前 URL 不是有效的 RE2 正则表达式，请先修改 URL。</string>
     <string name="url_match_unreadable">此条目的 URL 匹配规则无法读取，已保留原数据并暂停保存。</string>
+    <string name="wallet_pass_show_code">查看会员码</string>
 </resources>

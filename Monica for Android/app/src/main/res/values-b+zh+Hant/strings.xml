@@ -4375,4 +4375,5 @@
     <string name="url_match_limited_context">主機不含其他子網域。瀏覽器僅提供主機名稱時，不推測協定、路徑或查詢；精確 URL 和 URL 前綴須提供完整 URL。正規表示式使用 RE2 語法。</string>
     <string name="url_match_regex_error">請先將 URL 改為有效的 RE2 正規表示式。</string>
     <string name="url_match_unreadable">無法讀取 URL 比對資料。保留現有資料並停用儲存。</string>
+    <string name="wallet_pass_show_code">檢視會員碼</string>
 </resources>

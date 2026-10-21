@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import androidx.room.Room
 import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -66,6 +68,72 @@ class DeviceVaultProviderTest {
         return database to DevicePasswordSyncProvider(context,security,preferences,database,
             File(context.filesDir,"fixture-${UUID.randomUUID()}.replica"))
     }
+
+    @Test fun receiving_deletions_waits_for_consent_and_keep_accepts_only_live_changes() = runBlocking { withTimeout(90000) {
+        SessionManager.markUnlocked()
+        val (a, source) = vault(true); val (b, keep) = vault(true); val (c, include) = vault(true); val (d, forward) = vault(true)
+        fun directory() = File(RuntimeEnvironment.getApplication().filesDir, "deletion-consent-${UUID.randomUUID()}")
+        fun peer(out: DevicePasswordExport) = JSONObject().put("pairing", JSONObject().put("content_key", out.contentKey))
+        try {
+            val removed = a.passwordEntryDao().insertPasswordEntry(PasswordEntry(title="Delete after consent",website="",username="",password="synthetic"))
+            val updated = a.passwordEntryDao().insertPasswordEntry(PasswordEntry(title="Update normally",website="",username="",password="old"))
+            val trashed = a.secureItemDao().insertItem(SecureItem(itemType=ItemType.NOTE,title="Trash after consent",itemData="{\"content\":\"kept\"}"))
+            val initial = source.prepare(directory())
+            keep.apply(initial.directory, peer(initial)); include.apply(initial.directory, peer(initial))
+            a.passwordEntryDao().deletePasswordEntryById(removed)
+            a.passwordEntryDao().updatePasswordEntry(a.passwordEntryDao().getPasswordEntryById(updated)!!.copy(password="new"))
+            a.secureItemDao().updateItem(a.secureItemDao().getItemById(trashed)!!.copy(isDeleted=true,deletedAt=java.util.Date()))
+            a.passwordEntryDao().insertPasswordEntry(PasswordEntry(title="New item",website="",username="",password="new synthetic"))
+            val outgoing = source.prepare(directory())
+            val awaiting = kotlinx.coroutines.CompletableDeferred<Int>()
+            val answer = kotlinx.coroutines.CompletableDeferred<Boolean>()
+            val receive = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.currentCoroutineContext()).async {
+                keep.apply(outgoing.directory, peer(outgoing)) { count -> awaiting.complete(count); answer.await() }
+            }
+            assertEquals(2, awaiting.await())
+            assertEquals(2, b.passwordEntryDao().getDeviceSyncLocalPasswords().size)
+            assertEquals("old", b.passwordEntryDao().getDeviceSyncLocalPasswords().single { it.title=="Update normally" }.password)
+            assertFalse(b.secureItemDao().getDeviceSyncLocalItems().single().isDeleted)
+            answer.complete(false); receive.await()
+            assertEquals(3, b.passwordEntryDao().getDeviceSyncLocalPasswords().size)
+            assertEquals("new", b.passwordEntryDao().getDeviceSyncLocalPasswords().single { it.title=="Update normally" }.password)
+            assertFalse(b.secureItemDao().getDeviceSyncLocalItems().single().isDeleted)
+            var prompts = 0
+            include.apply(outgoing.directory, peer(outgoing)) { count -> prompts++; assertEquals(2,count); true }
+            assertEquals(1,prompts)
+            assertEquals(2,c.passwordEntryDao().getDeviceSyncLocalPasswords().size)
+            assertTrue(c.secureItemDao().getDeviceSyncLocalItems().single().isDeleted)
+            keep.pause() // Retention must survive reopening and forwarding to another device.
+            keep.apply(outgoing.directory, peer(outgoing)) { error("A skipped deletion version must not prompt again") }
+            val forwarded = keep.prepare(directory())
+            forward.apply(forwarded.directory, peer(forwarded)) { error("Kept content must not forward deletions") }
+            assertEquals(3,d.passwordEntryDao().getDeviceSyncLocalPasswords().size)
+            assertFalse(d.secureItemDao().getDeviceSyncLocalItems().single().isDeleted)
+            include.apply(outgoing.directory, peer(outgoing)) { error("Identical applied deletions must not prompt again") }
+            assertEquals(2,c.passwordEntryDao().getDeviceSyncLocalPasswords().size)
+        } finally { source.pause(); keep.pause(); include.pause(); forward.pause() }
+    } }
+
+    @Test fun cancelling_receive_review_does_not_merge_or_delete_and_can_be_retried() = runBlocking { withTimeout(60000) {
+        SessionManager.markUnlocked(); val (a, source) = vault(true); val (b, target) = vault(true)
+        fun directory() = File(RuntimeEnvironment.getApplication().filesDir,"cancel-review-${UUID.randomUUID()}")
+        fun peer(out: DevicePasswordExport) = JSONObject().put("pairing",JSONObject().put("content_key",out.contentKey))
+        try {
+            val id=a.passwordEntryDao().insertPasswordEntry(PasswordEntry(title="Retained until confirmation",website="",username="",password="synthetic"))
+            val initial=source.prepare(directory()); target.apply(initial.directory,peer(initial))
+            a.passwordEntryDao().deletePasswordEntryById(id)
+            val deleted=source.prepare(directory()); val entered=kotlinx.coroutines.CompletableDeferred<Unit>()
+            val work=kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.currentCoroutineContext()).async {
+                target.apply(deleted.directory,peer(deleted)) { entered.complete(Unit); kotlinx.coroutines.awaitCancellation() }
+            }
+            entered.await(); work.cancelAndJoin()
+            assertEquals(1,b.passwordEntryDao().getDeviceSyncLocalPasswords().size)
+            target.pause()
+            var reviews=0
+            target.apply(deleted.directory,peer(deleted)) { count -> reviews++; assertEquals(1,count); true }
+            assertEquals(1,reviews); assertTrue(b.passwordEntryDao().getDeviceSyncLocalPasswords().isEmpty())
+        } finally { source.pause(); target.pause() }
+    } }
 
     @Test fun metadata_attachment_bytes_survive_room_adoption_and_forwarding() = runBlocking { withTimeout(60000) {
         SessionManager.markUnlocked()
@@ -563,3 +631,6 @@ class DeviceVaultProviderTest {
         }
     }
 }
+
+// Existing fixtures explicitly grant deletion consent; production callers must supply a decision.
+internal suspend fun DevicePasswordSyncProvider.apply(directory: File, peer: JSONObject): Int = apply(directory, peer) { true }
