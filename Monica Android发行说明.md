@@ -1,6 +1,6 @@
 # Monica for Android 1.0.321
 
-> 未发布 / Unreleased
+> 发布日期 / Released: 2026-10-21
 
 ## 中文
 
