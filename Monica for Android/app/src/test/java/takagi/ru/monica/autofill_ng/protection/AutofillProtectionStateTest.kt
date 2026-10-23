@@ -55,4 +55,15 @@ class AutofillProtectionStateTest {
     @Test fun movingClockBackDoesNotBypassTheCooldown() {
         assertFalse(eligible.shouldRecoverAutomatically(1_000, 2_000))
     }
+
+    @Test fun directRootWorksWithoutShizukuOnlyWhenSelectedAndAuthorized() {
+        val root = eligible.copy(useRoot = true, rootAuthorized = true, shizuku = ShizukuAccess.UNAVAILABLE)
+        assertTrue(root.canRecoverAccessibility())
+        assertFalse(root.copy(rootAuthorized = false, shizuku = ShizukuAccess.ADB_AUTHORIZED).canRecoverAccessibility())
+        assertFalse(root.copy(useRoot = false).canRecoverAccessibility())
+        assertFalse(root.copy(backgroundEnabled = false).canRecoverAccessibility())
+        assertFalse(root.copy(enhancedRecoveryEnabled = false).canRecoverAccessibility())
+        assertFalse(root.copy(accessibility = AccessibilityConnection.DISABLED).canRecoverAccessibility())
+        assertFalse(root.copy(accessibility = AccessibilityConnection.CONNECTED).canRecoverAccessibility())
+    }
 }

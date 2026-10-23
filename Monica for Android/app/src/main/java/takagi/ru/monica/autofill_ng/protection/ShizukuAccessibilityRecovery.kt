@@ -21,6 +21,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import rikka.shizuku.Shizuku
 import takagi.ru.monica.service.MonicaAccessibilityService
 
+import takagi.ru.monica.autofill_ng.privilege.PrivilegeAccess
+
 object ShizukuAccessibilityRecovery {
     const val PERMISSION_REQUEST = 9531
     private val recoveryLock = Mutex()
@@ -77,13 +79,24 @@ object ShizukuAccessibilityRecovery {
         }
 
         // A coroutine cancellation must not kill the helper between disconnect and restoration.
-        val result = withContext(NonCancellable) { restartThroughShizuku(appContext) }
+        val result = withContext(NonCancellable) {
+            if (state.useRoot) restartThroughRoot(appContext) else restartThroughShizuku(appContext)
+        }
         AutofillProtection.refresh()
         if (result != AccessibilityRecoveryResult.RESTART_REQUESTED) return@withLock result
         val connected = withTimeoutOrNull(6_000) {
             MonicaAccessibilityService.connectionState.first { it }
         } ?: false
         if (connected) AccessibilityRecoveryResult.CONNECTED else AccessibilityRecoveryResult.FAILED
+    }
+
+    private suspend fun restartThroughRoot(context: Context): AccessibilityRecoveryResult = withContext(Dispatchers.IO) {
+        PrivilegeAccess.transaction.withLock {
+            if (!AutofillProtection.snapshot(context).let { it.useRoot && it.canRecoverAccessibility() }) {
+                return@withLock AccessibilityRecoveryResult.NOT_AUTHORIZED
+            }
+            PrivilegeAccess.restartAccessibility(context)
+        }
     }
 
     private suspend fun restartThroughShizuku(context: Context): AccessibilityRecoveryResult {
@@ -111,7 +124,7 @@ object ShizukuAccessibilityRecovery {
             withContext(Dispatchers.Main.immediate) { Shizuku.bindUserService(args, connection) }
             val helper = withTimeout(8_000) { ready.await() }
             // Re-check consent after binding, including revocation or a switch turned off meanwhile.
-            if (!AutofillProtection.snapshot(context).canRecoverAccessibility()) {
+            if (!AutofillProtection.snapshot(context).let { !it.useRoot && it.canRecoverAccessibility() }) {
                 AccessibilityRecoveryResult.NOT_AUTHORIZED
             } else {
                 withContext(Dispatchers.IO) {

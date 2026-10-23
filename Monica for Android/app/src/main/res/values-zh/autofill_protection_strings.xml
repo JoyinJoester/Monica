@@ -2,7 +2,7 @@
 <resources>
     <string name="autofill_protection_title">填充服务保护</string>
     <string name="autofill_protection_entry_title">后台保护与无障碍运行检查</string>
-    <string name="autofill_protection_entry_desc">检查连接、自启动和电池限制，可选 Shizuku 增强恢复。</string>
+    <string name="autofill_protection_entry_desc">检查连接、自启动和电池限制，可选 Shizuku 或 Root 增强恢复。</string>
     <string name="autofill_protection_accessibility_connected">无障碍服务运行中</string>
     <string name="autofill_protection_accessibility_disconnected">无障碍已开启，但尚未连接</string>
     <string name="autofill_protection_accessibility_disabled">尚未开启无障碍服务</string>
@@ -16,7 +16,7 @@
     <string name="autofill_protection_starting">正在启动后台保护…</string>
     <string name="autofill_protection_stopped">后台保护未运行，请重试并检查系统限制。</string>
     <string name="autofill_protection_boot_desc">开启后，在手机重启并首次解锁时自动恢复后台保护。部分手机还需允许自启动；系统强行停止应用后，需要手动打开 Monica。</string>
-    <string name="autofill_protection_vault_desc">后台保护不会解锁密码库。关闭后也会停用 Shizuku 增强恢复。</string>
+    <string name="autofill_protection_vault_desc">后台保护不会解锁密码库。关闭后也会停用增强恢复。</string>
     <string name="autofill_protection_battery_title">电池优化</string>
     <string name="autofill_protection_battery_desc">可允许 Monica 不受电池优化限制，以改善息屏后的可用性；这可能增加后台耗电。</string>
     <string name="autofill_protection_battery_exempt">已解除电池优化限制，可能增加后台耗电。</string>

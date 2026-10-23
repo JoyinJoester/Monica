@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="default_manager_title">默认密码管理器（Shizuku）</string>
-    <string name="default_manager_entry_hint">HyperOS 无法打开第三方密码管理器设置时，通过 Shizuku 设为 Monica</string>
-    <string name="default_manager_description">为当前 Android 用户设置默认密码管理器。需要 Android 14 或更新版本及 Shizuku 授权。设置成功不代表所有 HyperOS 通行密钥流程均可用。</string>
+    <string name="default_manager_title">默认密码管理器</string>
+    <string name="default_manager_entry_hint">HyperOS 无法打开第三方密码管理器设置时，通过 Shizuku 或 Root 设为 Monica</string>
+    <string name="default_manager_description">为当前 Android 用户设置默认密码管理器。需要 Android 14 或更新版本及 Shizuku 或 Root 授权。设置成功不代表所有 HyperOS 通行密钥流程均可用。</string>
     <string name="default_manager_denied">未获得授权，请在 Shizuku 中允许 Monica 后重试</string>
     <string name="default_manager_read_failed">无法读取系统设置，请刷新后重试</string>
     <string name="default_manager_unset">未设置</string>

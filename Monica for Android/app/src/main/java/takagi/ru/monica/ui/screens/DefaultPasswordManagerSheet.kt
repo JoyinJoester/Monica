@@ -25,6 +25,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import rikka.shizuku.Shizuku
+import takagi.ru.monica.autofill_ng.privilege.PrivilegeAccess
+import takagi.ru.monica.autofill_ng.privilege.PrivilegeBackend
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.defaultmanager.*
 import takagi.ru.monica.ui.components.SettingsPanelGroup
@@ -37,8 +40,12 @@ internal fun DefaultPasswordManagerSheet(onDismiss: () -> Unit) {
     val lifecycle = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val accessFlow = remember { ShizukuDefaultManager.observeAccess() }
-    var access by remember { mutableStateOf(ShizukuDefaultManager.access()) }
-    LaunchedEffect(accessFlow) { accessFlow.collect { access = it } }
+    var access by remember { mutableStateOf(ShizukuDefaultManager.access(context)) }
+    val rootStatus by PrivilegeAccess.status.collectAsStateWithLifecycle()
+    val privilegeChanges by PrivilegeAccess.changes.collectAsStateWithLifecycle()
+    val useRoot = remember(privilegeChanges) { PrivilegeAccess.backend(context) == PrivilegeBackend.ROOT }
+    LaunchedEffect(accessFlow) { accessFlow.collect { access = ShizukuDefaultManager.access(context) } }
+    LaunchedEffect(rootStatus, privilegeChanges) { access = ShizukuDefaultManager.access(context) }
     var snapshot by remember { mutableStateOf<SettingsSnapshot?>(null) }
     var backup by remember { mutableStateOf(ShizukuDefaultManager.previous(context)) }
     var includeAutofill by remember { mutableStateOf(true) }
@@ -50,7 +57,7 @@ internal fun DefaultPasswordManagerSheet(onDismiss: () -> Unit) {
     var restore by remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycle) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) { access = ShizukuDefaultManager.access(); refresh++ } }
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) { access = ShizukuDefaultManager.access(context); refresh++ } }
         lifecycle.lifecycle.addObserver(observer)
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
@@ -123,8 +130,12 @@ internal fun DefaultPasswordManagerSheet(onDismiss: () -> Unit) {
             .padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.default_manager_title), Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.headlineSmall)
             Text(stringResource(R.string.default_manager_description), Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodyMedium)
+            PrivilegeBackendSelector(enabled = !busy) {
+                access = ShizukuDefaultManager.access(context)
+                refresh++
+            }
             SettingsPanelGroup("") {
-                SettingsPanelRow(Icons.Default.Security, "Shizuku", stringResource(when (access) {
+                if (!useRoot) SettingsPanelRow(Icons.Default.Security, "Shizuku", stringResource(when (access) {
                     DefaultManagerAccess.READY -> R.string.default_manager_ready
                     DefaultManagerAccess.PERMISSION -> R.string.default_manager_permission
                     DefaultManagerAccess.STOPPED -> R.string.default_manager_stopped
@@ -135,7 +146,7 @@ internal fun DefaultPasswordManagerSheet(onDismiss: () -> Unit) {
                 SettingsPanelRow(Icons.Default.Settings, stringResource(R.string.default_manager_autofill),
                     snapshot?.let { serviceLabel(it[SettingKey.AUTOFILL]) } ?: stringResource(R.string.default_manager_unknown))
             }
-            if (access == DefaultManagerAccess.PERMISSION || access == DefaultManagerAccess.STOPPED) {
+            if (!useRoot && (access == DefaultManagerAccess.PERMISSION || access == DefaultManagerAccess.STOPPED)) {
                 Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                     if (access == DefaultManagerAccess.PERMISSION) {
                         if (!ShizukuDefaultManager.requestPermission()) message = R.string.default_manager_denied
@@ -154,9 +165,10 @@ internal fun DefaultPasswordManagerSheet(onDismiss: () -> Unit) {
                     stringResource(R.string.default_manager_keep_others_hint), enabled = !busy,
                     checked = keepOthers, onCheckedChange = { keepOthers = it })
             }
+            if (useRoot && access == DefaultManagerAccess.UNSUPPORTED) Text(stringResource(R.string.privilege_default_requires_android14))
             if (message != 0) Text(stringResource(message), Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodyMedium)
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            TextButton(enabled = !busy, onClick = { message = 0; access = ShizukuDefaultManager.access(); refresh++ }) {
+            TextButton(enabled = !busy, onClick = { message = 0; access = ShizukuDefaultManager.access(context); refresh++ }) {
                 Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.default_manager_refresh))
             }
             TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW,

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="privilege_method">Authorization method</string>
+    <string name="privilege_root_hint">Use this device’s Root access directly</string>
+    <string name="privilege_shizuku_hint">Authorize through a running Shizuku service</string>
+    <string name="privilege_root_requesting">Waiting for Root authorization…</string>
+    <string name="privilege_root_denied">Root access was denied. Allow Monica in your Root manager and retry.</string>
+    <string name="privilege_root_unavailable">No usable su command found. This device needs to be rooted first.</string>
+    <string name="privilege_root_timeout">Root authorization or command timed out. Check your Root manager and retry.</string>
+    <string name="privilege_root_ready">Root enabled for system settings</string>
+    <string name="privilege_root_not_authorized">Root is not authorized. Tap Authorize Root to continue.</string>
+    <string name="privilege_root_grant">Authorize Root</string>
+    <string name="privilege_root_disable">Disable Root in Monica</string>
+    <string name="privilege_root_confirm_title">Allow Monica to use Root?</string>
+    <string name="privilege_root_confirm_body">This requires an already rooted device and approval in its Root manager. Monica uses Root only for the system settings needed by enhanced accessibility recovery and the default password manager. It does not unlock your vault or read other app data.\n\nEnhanced recovery only reconnects an already enabled Monica accessibility service. Once enabled, it can continue after an app or device restart and may briefly interrupt filling.\n\nDisable Root here to stop future use. To revoke system authorization, remove Monica from your Root manager. Root is never requested as a fallback for Shizuku.</string>
+    <string name="privilege_recovery_title">Enhanced recovery · Optional</string>
+    <string name="privilege_default_requires_android14">Setting the default password manager requires Android 14 or later.</string>
+</resources>

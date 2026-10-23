@@ -72,6 +72,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import rikka.shizuku.Shizuku
+import takagi.ru.monica.autofill_ng.privilege.PrivilegeAccess
 import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.AutofillPreferences
 import takagi.ru.monica.autofill_ng.protection.AccessibilityConnection
@@ -130,7 +131,7 @@ fun AutofillProtectionScreen(onNavigateBack: () -> Unit) {
     }
     DisposableEffect(context) {
         val listener = Shizuku.OnRequestPermissionResultListener { requestCode, grant ->
-            if (requestCode == ShizukuAccessibilityRecovery.PERMISSION_REQUEST && awaitingShizukuPermission) {
+            if (requestCode == ShizukuAccessibilityRecovery.PERMISSION_REQUEST && awaitingShizukuPermission && !AutofillProtection.snapshot(context).useRoot) {
                 awaitingShizukuPermission = false
                 if (grant == PackageManager.PERMISSION_GRANTED && ShizukuAccessibilityRecovery.access() == ShizukuAccess.ADB_AUTHORIZED) {
                     AutofillProtection.setEnhancedRecoveryEnabled(context, true)
@@ -162,7 +163,12 @@ fun AutofillProtectionScreen(onNavigateBack: () -> Unit) {
                     if (!event.enabled) awaitingShizukuPermission = false
                 }
                 is ProtectionEvent.EnhancedRecovery -> {
-                    if (event.enabled) showRiskDialog = true else {
+                    if (event.enabled) {
+                        if (state.useRoot) {
+                            if (state.rootAuthorized) AutofillProtection.setEnhancedRecoveryEnabled(context, true)
+                            else message(R.string.privilege_root_not_authorized)
+                        } else showRiskDialog = true
+                    } else {
                         awaitingShizukuPermission = false
                         AutofillProtection.setEnhancedRecoveryEnabled(context, false)
                     }
@@ -181,7 +187,7 @@ fun AutofillProtectionScreen(onNavigateBack: () -> Unit) {
                                 AccessibilityRecoveryResult.CONNECTED -> R.string.autofill_protection_recovery_success
                                 AccessibilityRecoveryResult.NOT_ENABLED -> R.string.autofill_protection_recovery_disabled
                                 AccessibilityRecoveryResult.SETTINGS_CHANGED -> R.string.autofill_protection_recovery_settings_changed
-                                AccessibilityRecoveryResult.NOT_AUTHORIZED -> R.string.autofill_protection_shizuku_denied
+                                AccessibilityRecoveryResult.NOT_AUTHORIZED -> if (state.useRoot) R.string.privilege_root_not_authorized else R.string.autofill_protection_shizuku_denied
                                 AccessibilityRecoveryResult.COOLDOWN -> R.string.autofill_protection_recovery_cooldown
                                 else -> R.string.autofill_protection_recovery_failed
                             })
@@ -340,8 +346,9 @@ internal fun AutofillProtectionContent(
             }
 
             ProtectionCard {
-                Text(stringResource(R.string.autofill_protection_shizuku_title), style = MaterialTheme.typography.titleMedium)
-                Text(
+                PrivilegeBackendSelector(enabled = !recovering)
+                Text(stringResource(R.string.privilege_recovery_title), style = MaterialTheme.typography.titleMedium)
+                if (!state.useRoot) Text(
                     stringResource(when (state.shizuku) {
                         ShizukuAccess.ADB_AUTHORIZED -> R.string.autofill_protection_shizuku_authorized
                         ShizukuAccess.NEEDS_PERMISSION -> R.string.autofill_protection_shizuku_needs_permission
@@ -356,7 +363,7 @@ internal fun AutofillProtectionContent(
                     description = stringResource(if (state.backgroundEnabled) R.string.autofill_protection_enhanced_desc else R.string.autofill_protection_enhanced_needs_background),
                     checked = state.enhancedRecoveryEnabled,
                     enabled = state.enhancedRecoveryEnabled || state.backgroundEnabled &&
-                        state.shizuku in setOf(ShizukuAccess.ADB_AUTHORIZED, ShizukuAccess.NEEDS_PERMISSION),
+                        (if (state.useRoot) state.rootAuthorized else state.shizuku in setOf(ShizukuAccess.ADB_AUTHORIZED, ShizukuAccess.NEEDS_PERMISSION)),
                     tag = "enhanced-recovery-toggle",
                     onCheckedChange = { onEvent(ProtectionEvent.EnhancedRecovery(it)) },
                 )
@@ -367,7 +374,7 @@ internal fun AutofillProtectionContent(
                         modifier = Modifier.testTag("recover-accessibility"),
                     ) { Text(stringResource(if (recovering) R.string.autofill_protection_recovering else R.string.autofill_protection_recover_now)) }
                 }
-                ProtectionSettingsRow(
+                if (!state.useRoot) ProtectionSettingsRow(
                     Icons.Outlined.Settings, stringResource(R.string.autofill_protection_shizuku_open),
                     stringResource(R.string.autofill_protection_shizuku_availability),
                 ) { onEvent(ProtectionEvent.OpenSettings(ProtectionSettingsDestination.SHIZUKU)) }

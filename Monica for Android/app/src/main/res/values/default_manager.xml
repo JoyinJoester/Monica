@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="default_manager_title">Default password manager (Shizuku)</string>
-    <string name="default_manager_entry_hint">Set Monica using Shizuku when HyperOS hides third-party password manager settings</string>
-    <string name="default_manager_description">Set the default manager for the current Android user. Requires Android 14 or later and Shizuku authorization. Successful settings verification does not guarantee every HyperOS passkey flow.</string>
+    <string name="default_manager_title">Default password manager</string>
+    <string name="default_manager_entry_hint">Set Monica using Shizuku or Root when HyperOS hides third-party password manager settings</string>
+    <string name="default_manager_description">Set the default manager for the current Android user. Requires Android 14 or later and Shizuku or Root authorization. Successful settings verification does not guarantee every HyperOS passkey flow.</string>
     <string name="default_manager_denied">Permission denied. Allow Monica in Shizuku and retry</string>
     <string name="default_manager_read_failed">Could not read system settings. Refresh and retry</string>
     <string name="default_manager_unset">Not set</string>

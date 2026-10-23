@@ -18,6 +18,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import rikka.shizuku.Shizuku
 
+import takagi.ru.monica.autofill_ng.privilege.PrivilegeAccess
+import takagi.ru.monica.autofill_ng.privilege.PrivilegeBackend
+
 enum class DefaultManagerAccess { UNSUPPORTED, STOPPED, PERMISSION, READY }
 
 object ShizukuDefaultManager {
@@ -25,7 +28,14 @@ object ShizukuDefaultManager {
     private val lock = Mutex()
     private const val BACKUP = "previous"
 
-    fun access(): DefaultManagerAccess = runCatching {
+    fun access(context: Context? = null): DefaultManagerAccess = runCatching {
+        if (context != null && PrivilegeAccess.backend(context) == PrivilegeBackend.ROOT) {
+            return@runCatching when {
+                Build.VERSION.SDK_INT < 34 -> DefaultManagerAccess.UNSUPPORTED
+                PrivilegeAccess.rootAllowed(context) -> DefaultManagerAccess.READY
+                else -> DefaultManagerAccess.PERMISSION
+            }
+        }
         when {
             Build.VERSION.SDK_INT < 34 -> DefaultManagerAccess.UNSUPPORTED
             !Shizuku.pingBinder() -> DefaultManagerAccess.STOPPED
@@ -74,7 +84,7 @@ object ShizukuDefaultManager {
             else {
                 // Persist before the first write. Only component names; no vault or credential contents.
                 check(preferences(context).edit().putString(BACKUP, current.toJson()).commit())
-                check(access() == DefaultManagerAccess.READY)
+                check(access(context) == DefaultManagerAccess.READY)
                 service.apply(expected.toBundle(), includeAutofill, keepOthers).checkedSnapshot()
             }
         }
@@ -92,7 +102,15 @@ object ShizukuDefaultManager {
     }
 
     private suspend fun <T> withService(context: Context, action: (IMonicaDefaultManager) -> T): T = lock.withLock {
-        check(access() == DefaultManagerAccess.READY)
+        check(access(context) == DefaultManagerAccess.READY)
+        if (PrivilegeAccess.backend(context) == PrivilegeBackend.ROOT) {
+            return@withLock withContext(NonCancellable + Dispatchers.IO) {
+                PrivilegeAccess.transaction.withLock {
+                    check(PrivilegeAccess.backend(context) == PrivilegeBackend.ROOT && access(context) == DefaultManagerAccess.READY)
+                    action(RootDefaultManager(context.applicationContext))
+                }
+            }
+        }
         val app = context.applicationContext
         // A fresh connection must not receive the previous transient service's delayed death callback.
         val args = Shizuku.UserServiceArgs(ComponentName(app, DefaultManagerUserService::class.java))
@@ -113,7 +131,7 @@ object ShizukuDefaultManager {
             val helper = withTimeout(10_000) { ready.await() }
             // Finish verification/rollback even if the user closes the settings panel.
             withContext(NonCancellable + Dispatchers.IO) {
-                check(access() == DefaultManagerAccess.READY)
+                check(PrivilegeAccess.backend(context) == PrivilegeBackend.SHIZUKU && access(context) == DefaultManagerAccess.READY)
                 action(helper)
             }
         } finally {

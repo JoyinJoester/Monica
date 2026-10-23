@@ -25,6 +25,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import takagi.ru.monica.service.MonicaAccessibilityService
 
+import takagi.ru.monica.autofill_ng.privilege.PrivilegeAccess
+import takagi.ru.monica.autofill_ng.privilege.PrivilegeBackend
+
 object AutofillProtection {
     private const val PREFS = "autofill_protection"
     private const val KEY_ENABLED = "background_enabled"
@@ -62,7 +65,8 @@ object AutofillProtection {
 
     fun setEnhancedRecoveryEnabled(context: Context, enabled: Boolean) {
         val allowed = enabled && isEnabled(context) &&
-            ShizukuAccessibilityRecovery.access() == ShizukuAccess.ADB_AUTHORIZED
+            (if (PrivilegeAccess.backend(context) == PrivilegeBackend.ROOT) PrivilegeAccess.rootAllowed(context)
+             else ShizukuAccessibilityRecovery.access() == ShizukuAccess.ADB_AUTHORIZED)
         preferences(context).edit().putBoolean(KEY_ENHANCED, allowed).apply()
         refresh()
     }
@@ -105,6 +109,8 @@ object AutofillProtection {
                 appContext.getSystemService(ActivityManager::class.java)?.isBackgroundRestricted == true,
             notificationsAllowed = NotificationManagerCompat.from(appContext).areNotificationsEnabled(),
             shizuku = shizuku,
+            useRoot = PrivilegeAccess.backend(context) == PrivilegeBackend.ROOT,
+            rootAuthorized = PrivilegeAccess.rootAllowed(context),
         )
     }
 
@@ -122,7 +128,8 @@ object AutofillProtection {
             runtime,
             MonicaAccessibilityService.connectionState,
             ShizukuAccessibilityRecovery.observeAccess(),
-        ) { _, _, _, _ -> snapshot(appContext) }.distinctUntilChanged()
+            PrivilegeAccess.status,
+        ) { _, _, _, _, _ -> snapshot(appContext) }.distinctUntilChanged()
     }
 
     private fun systemChanges(context: Context): Flow<Unit> = callbackFlow {

@@ -13,11 +13,13 @@ data class AutofillProtectionState(
     val backgroundRestricted: Boolean = false,
     val notificationsAllowed: Boolean = false,
     val shizuku: ShizukuAccess = ShizukuAccess.UNAVAILABLE,
+    val useRoot: Boolean = false,
+    val rootAuthorized: Boolean = false,
 ) {
     fun canRecoverAccessibility(): Boolean =
         backgroundEnabled && enhancedRecoveryEnabled &&
             accessibility == AccessibilityConnection.DISCONNECTED &&
-            shizuku == ShizukuAccess.ADB_AUTHORIZED
+            (if (useRoot) rootAuthorized else shizuku == ShizukuAccess.ADB_AUTHORIZED)
 
     fun shouldRecoverAutomatically(now: Long, lastAttempt: Long): Boolean =
         runtime == ProtectionRuntime.RUNNING && canRecoverAccessibility() &&

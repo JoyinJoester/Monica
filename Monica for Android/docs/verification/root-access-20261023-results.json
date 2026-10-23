@@ -1,0 +1,107 @@
+{
+  "date": "2026-10-23",
+  "avd": "Monica_Issue136_API_32",
+  "api": 32,
+  "abi": "x86_64",
+  "real_root_tested": false,
+  "results": {
+    "main": {
+      "baseline_commit": "6181922b040a0e8cf0db5abd79a5576fb54d684b",
+      "unit_suites": [
+        {
+          "name": "takagi.ru.monica.autofill_ng.defaultmanager.SettingsControllerTest",
+          "tests": "15",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0"
+        },
+        {
+          "name": "takagi.ru.monica.autofill_ng.privilege.RootCommandTest",
+          "tests": "6",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0"
+        },
+        {
+          "name": "takagi.ru.monica.autofill_ng.protection.AccessibilityServiceRestartTest",
+          "tests": "12",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0"
+        },
+        {
+          "name": "takagi.ru.monica.autofill_ng.protection.AutofillProtectionStateTest",
+          "tests": "9",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0"
+        }
+      ],
+      "unit_tests": 42,
+      "device_tests": 19,
+      "device_failures": 0,
+      "build": "passed"
+    },
+    "fdroid": {
+      "baseline_commit": "fd3171ba735f1b467605c06b066b113213965d07",
+      "unit_suites": [
+        {
+          "name": "takagi.ru.monica.autofill_ng.defaultmanager.SettingsControllerTest",
+          "tests": "15",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0"
+        },
+        {
+          "name": "takagi.ru.monica.autofill_ng.privilege.RootCommandTest",
+          "tests": "6",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0"
+        },
+        {
+          "name": "takagi.ru.monica.autofill_ng.protection.AccessibilityServiceRestartTest",
+          "tests": "14",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0"
+        },
+        {
+          "name": "takagi.ru.monica.autofill_ng.protection.AutofillProtectionStateTest",
+          "tests": "9",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0"
+        }
+      ],
+      "unit_tests": 44,
+      "device_tests": 19,
+      "device_failures": 0,
+      "build": "passed"
+    }
+  },
+  "source_sha256": {
+    "app/src/androidTest/java/takagi/ru/monica/ui/screens/RootAuthorizationUiTest.kt": "271a04671ca4e2d3976d28223a0e0bf2067064c4ce1ac573b10fd9145e0ef7b9",
+    "app/src/main/java/takagi/ru/monica/autofill_ng/defaultmanager/RootDefaultManager.kt": "56e351043049c157eed9547ce77f176948dd9452f54d031cd10b2827263da559",
+    "app/src/main/java/takagi/ru/monica/autofill_ng/defaultmanager/ShizukuDefaultManager.kt": "5374eee4cacd3f7768110dc7b4b9568fa87ec4a2d81bc24974febcd90e0ff404",
+    "app/src/main/java/takagi/ru/monica/autofill_ng/privilege/PrivilegeAccess.kt": "6f4a1f706610c274538c019a7a61e2460b7c4eedc5af62c212e13520c3fe031f",
+    "app/src/main/java/takagi/ru/monica/autofill_ng/privilege/RootAccessibilityMain.kt": "c946d743895a0b14adb5a1f8a65f48070a008a4df7f34113500a81dcb064b825",
+    "app/src/main/java/takagi/ru/monica/autofill_ng/privilege/RootCommand.kt": "403f263e04a59edcfa80cecd482e935bec68c549894188ea81f77e17264d0a63",
+    "app/src/main/java/takagi/ru/monica/autofill_ng/protection/AutofillProtection.kt": "3503e2c437db5f825c29f288114e67d4b586d7f7177db4453d87076a8416b929",
+    "app/src/main/java/takagi/ru/monica/autofill_ng/protection/AutofillProtectionState.kt": "3bbbefe9aa0c1eb56c171b14631caac329094b368d5fe85517b49cd07a18ffb3",
+    "app/src/main/java/takagi/ru/monica/autofill_ng/protection/ShizukuAccessibilityRecovery.kt": "ac8ec87448c9e3e241d3845e0104fd044d2ded256a32d2af6e2e27b510f5d2a6",
+    "app/src/main/java/takagi/ru/monica/ui/screens/AutofillProtectionScreen.kt": "4565436dc29de2d83ccab2c6b87b2e475222d4db1117b577e1865d2f4d5edc9a",
+    "app/src/main/java/takagi/ru/monica/ui/screens/DefaultPasswordManagerSheet.kt": "cc9adffaa013a713facfc8d8f445600dc51562a8cd0d79c56da629f3713ff3e7",
+    "app/src/main/java/takagi/ru/monica/ui/screens/PrivilegeBackendSelector.kt": "74f1a3c3b380ec693c4aa182c72617fffe16ecaeb8636926b1f6fa8a7c40adaf",
+    "app/src/main/res/values-zh-rCN/default_manager.xml": "c7a698c3c2f15fc484cc26134b89d611b7a69fb7b78fd7fe755ca4388341b9a3",
+    "app/src/main/res/values-zh-rCN/privilege_strings.xml": "5e106a46b3b9495a719c7ed51c565baae2c3a1c04123145073afb0b449b8aa8a",
+    "app/src/main/res/values-zh/autofill_protection_strings.xml": "fa589fd7432440b94d78c2c76a4090c04d8c5ac40c7a25be4f40ae3cda04ee91",
+    "app/src/main/res/values-zh/privilege_strings.xml": "5e106a46b3b9495a719c7ed51c565baae2c3a1c04123145073afb0b449b8aa8a",
+    "app/src/main/res/values/autofill_protection_strings.xml": "d93ef91d71d3fa01dae3b68249cd591711a2e8b85226de298cff8bdf71cd163d",
+    "app/src/main/res/values/default_manager.xml": "b1dc8a8c9ec967dc484347db89bc992b17d5f9aabe985d9e88596a073371364f",
+    "app/src/main/res/values/privilege_strings.xml": "7e366319379c80df2e647fd212c728bbe5ae11ef572737d879858e18d8801379",
+    "app/src/test/java/takagi/ru/monica/autofill_ng/privilege/RootCommandTest.kt": "8f434ef8e5b183efb21b08b20e77d80debd8f6bd30ef6cc3a1e60fb780576066",
+    "app/src/test/java/takagi/ru/monica/autofill_ng/privilege/RootProcessFixture.java": "8288e523f4a7eeb398ff386e4b1e7c8a7cd2d0d99b551ff085e744ee4271610a",
+    "app/src/test/java/takagi/ru/monica/autofill_ng/protection/AutofillProtectionStateTest.kt": "228901aaebf24ea41f1b5458e8f6940bb7f8284e7a8a21990d7e987d2fe579bf"
+  }
+}

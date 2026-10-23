@@ -2,7 +2,7 @@
 <resources>
     <string name="autofill_protection_title">Fill service protection</string>
     <string name="autofill_protection_entry_title">Background protection and accessibility status</string>
-    <string name="autofill_protection_entry_desc">Check connections, auto-start, and battery restrictions. Optional enhanced recovery with Shizuku.</string>
+    <string name="autofill_protection_entry_desc">Check connections, auto-start and battery restrictions. Optional recovery using Shizuku or Root.</string>
     <string name="autofill_protection_accessibility_connected">Accessibility service connected</string>
     <string name="autofill_protection_accessibility_disconnected">Accessibility enabled, but not connected</string>
     <string name="autofill_protection_accessibility_disabled">Accessibility service not enabled</string>
@@ -16,7 +16,7 @@
     <string name="autofill_protection_starting">Starting background protection…</string>
     <string name="autofill_protection_stopped">Background protection is stopped. Retry and check system restrictions.</string>
     <string name="autofill_protection_boot_desc">When enabled, protection resumes after a restart and the first device unlock. Some phones also require auto-start permission. After a system force-stop, open Monica manually.</string>
-    <string name="autofill_protection_vault_desc">Background protection does not unlock your vault. Turning it off also disables enhanced Shizuku recovery.</string>
+    <string name="autofill_protection_vault_desc">Background protection does not unlock your vault. Turning it off also disables enhanced recovery.</string>
     <string name="autofill_protection_battery_title">Battery optimization</string>
     <string name="autofill_protection_battery_desc">Allow Monica to bypass battery optimization to improve availability with the screen off. This may increase background battery use.</string>
     <string name="autofill_protection_battery_exempt">Battery optimization exemption is active. Background battery use may increase.</string>
